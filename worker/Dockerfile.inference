@@ -13,6 +13,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+RUN groupadd --gid 1000 app \
+    && useradd \
+        --uid 1000 \
+        --gid 1000 \
+        --create-home \
+        --shell /usr/sbin/nologin \
+        app
 
 COPY requirements.inference.txt /app/requirements.inference.txt
 
@@ -24,7 +31,10 @@ COPY inference_celery_app.py /app/inference_celery_app.py
 COPY inference_tasks.py /app/inference_tasks.py
 COPY object_storage_gateway.py /app/object_storage_gateway.py
 
-RUN chmod +x /app/inference/run_pipeline.sh
+RUN chmod +x /app/inference/run_pipeline.sh \
+    && chown -R app:app /app \
+    && chmod 755 /root
 
+USER app
 ENTRYPOINT ["/app/inference/run_pipeline.sh"]
 CMD ["test1"]
