@@ -20,6 +20,8 @@ RUN python -m pip install --upgrade pip \
     && pip install -r /app/requirements.inference.txt
 
 COPY inference /app/inference
+COPY inference_celery_app.py /app/inference_celery_app.py
+COPY inference_tasks.py /app/inference_tasks.py
 
 RUN chmod +x /app/inference/run_pipeline.sh
 

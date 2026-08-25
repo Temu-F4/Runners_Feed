@@ -10,3 +10,26 @@ services:
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
     networks:
       - backend
+  inference-worker:
+    profiles:
+      - poc
+    build:
+      context: ./worker
+      dockerfile: Dockerfile.inference
+    entrypoint:
+      - celery
+      - -A
+      - inference_celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=1
+      - --queues=inference
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      INFERENCE_TIMEOUT_SECONDS: "3600"
+    volumes:
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
+    networks:
+      - backend
