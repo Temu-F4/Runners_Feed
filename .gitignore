@@ -1,0 +1,49 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Private keys and credentials
+*.key
+*.pem
+*.p12
+*.pfx
+.ssh/
+.oci/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime data
+data/
+uploads/
+outputs/
+results/
+logs/
+
+# Model files and caches
+models/
+checkpoints/
+*.pth
+*.pt
+*.onnx
+
+# Database and Docker runtime data
+postgres_data/
+redis_data/
+
+# Videos
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Backups
+*.bak
+*.before-*
+
+# macOS
+.DS_Store
