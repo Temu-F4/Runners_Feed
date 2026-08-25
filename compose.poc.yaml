@@ -1,0 +1,12 @@
+services:
+  inference-poc:
+    profiles:
+      - poc
+    build:
+      context: ./worker
+      dockerfile: Dockerfile.inference
+    volumes:
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
+    networks:
+      - backend

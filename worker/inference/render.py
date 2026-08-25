@@ -21,8 +21,8 @@ def render(img_dir: Path, output_dir: Path) -> None:
     # import json
     with open(output_dir / "pose_predictions.json", "r", encoding="utf-8") as f:
         data = json.load(f)
-    
-    
+
+
     RENDER_PATH.mkdir(parents=True, exist_ok=True)
     image_paths = sorted(img_dir.glob("*.png"))
 

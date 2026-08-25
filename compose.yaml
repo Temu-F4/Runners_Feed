@@ -8,6 +8,17 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
 
   redis:
     image: redis:7.4.10-alpine
@@ -73,17 +84,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    networks:
-      - backend
-  inference-poc:
-    profiles:
-      - poc
-    build:
-      context: ./worker
-      dockerfile: Dockerfile.inference
-    volumes:
-      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
-      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
     networks:
       - backend
 
