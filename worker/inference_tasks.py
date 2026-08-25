@@ -4,19 +4,25 @@ import subprocess
 from pathlib import Path
 
 from inference_celery_app import celery_app
+from object_storage_gateway import ObjectStorageGateway
 
 
 WORKSPACE_DIR = Path("/workspace")
-CASE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-
-
-@celery_app.task(
-    name="inference.run_video",
-    bind=True,
+CASE_ID_PATTERN = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
 )
-def run_video(self, case_id: str) -> dict:
+
+
+def validate_case_id(case_id: str) -> None:
     if not CASE_ID_PATTERN.fullmatch(case_id):
         raise ValueError("Invalid case_id")
+
+
+def execute_pipeline(
+    case_id: str,
+    job_id: str,
+) -> dict:
+    validate_case_id(case_id)
 
     run_dir = WORKSPACE_DIR / "run" / case_id
     video_files = sorted(run_dir.glob("*.mp4"))
@@ -25,6 +31,12 @@ def run_video(self, case_id: str) -> dict:
         raise ValueError(
             f"Expected exactly one MP4 in {run_dir}, "
             f"found {len(video_files)}"
+        )
+
+    output_dir = run_dir / "outputs"
+    if output_dir.exists():
+        raise FileExistsError(
+            f"Output already exists: {output_dir}"
         )
 
     timeout_seconds = int(
@@ -44,19 +56,21 @@ def run_video(self, case_id: str) -> dict:
         )
 
     except subprocess.CalledProcessError as error:
-        error_log = (error.stderr or error.stdout or "")[-4000:]
+        error_log = (
+            error.stderr or error.stdout or ""
+        )[-4000:]
         raise RuntimeError(
             f"RTMPose pipeline failed:\n{error_log}"
         ) from error
 
-    output_dir = run_dir / "outputs"
-
     return {
-        "job_id": self.request.id,
+        "job_id": job_id,
         "case_id": case_id,
         "status": "success",
         "artifacts": {
-            "details": str(output_dir / "details.json"),
+            "details": str(
+                output_dir / "details.json"
+            ),
             "predictions": str(
                 output_dir / "pose_predictions.json"
             ),
@@ -68,3 +82,83 @@ def run_video(self, case_id: str) -> dict:
             completed.stdout + completed.stderr
         )[-4000:],
     }
+
+
+@celery_app.task(
+    name="inference.run_video",
+    bind=True,
+)
+def run_video(self, case_id: str) -> dict:
+    return execute_pipeline(
+        case_id=case_id,
+        job_id=self.request.id,
+    )
+
+
+@celery_app.task(
+    name="inference.run_object_storage",
+    bind=True,
+)
+def run_object_storage(
+    self,
+    case_id: str,
+    input_object_name: str,
+) -> dict:
+    validate_case_id(case_id)
+
+    if not input_object_name:
+        raise ValueError(
+            "input_object_name must not be empty"
+        )
+
+    run_dir = WORKSPACE_DIR / "run" / case_id
+    if run_dir.exists():
+        raise FileExistsError(
+            f"Case directory already exists: {run_dir}"
+        )
+
+    input_path = run_dir / "input.mp4"
+    storage = ObjectStorageGateway()
+
+    storage.download_input(
+        object_name=input_object_name,
+        destination=input_path,
+    )
+
+    result = execute_pipeline(
+        case_id=case_id,
+        job_id=self.request.id,
+    )
+
+    output_dir = run_dir / "outputs"
+    output_prefix = f"jobs/{case_id}"
+
+    result_objects = {
+        "details": f"{output_prefix}/details.json",
+        "predictions": (
+            f"{output_prefix}/pose_predictions.json"
+        ),
+        "rendered_video": (
+            f"{output_prefix}/rendered.mp4"
+        ),
+    }
+
+    storage.upload_result(
+        source=output_dir / "details.json",
+        object_name=result_objects["details"],
+        content_type="application/json",
+    )
+    storage.upload_result(
+        source=output_dir / "pose_predictions.json",
+        object_name=result_objects["predictions"],
+        content_type="application/json",
+    )
+    storage.upload_result(
+        source=output_dir / "rendered.mp4",
+        object_name=result_objects["rendered_video"],
+        content_type="video/mp4",
+    )
+
+    result["input_object"] = input_object_name
+    result["result_objects"] = result_objects
+    return result

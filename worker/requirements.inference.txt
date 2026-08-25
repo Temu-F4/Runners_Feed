@@ -8,3 +8,4 @@ rtmlib==0.0.16
 tqdm==4.70.0
 celery>=5.4,<6
 redis>=5,<7
+oci==2.184.2

@@ -31,5 +31,8 @@ celery_app.conf.update(
         "inference.run_video": {
             "queue": "inference",
         },
+        "inference.run_object_storage": {
+            "queue": "inference",
+        },
     },
 )

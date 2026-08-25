@@ -22,6 +22,7 @@ RUN python -m pip install --upgrade pip \
 COPY inference /app/inference
 COPY inference_celery_app.py /app/inference_celery_app.py
 COPY inference_tasks.py /app/inference_tasks.py
+COPY object_storage_gateway.py /app/object_storage_gateway.py
 
 RUN chmod +x /app/inference/run_pipeline.sh
 
