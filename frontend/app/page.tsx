@@ -22,7 +22,48 @@ interface ReportMetric {
   value: number | null;
   unit: string;
   description: string;
+  measurement_basis: string;
+  evidence_query: string[];
 }
+
+interface ReportEvidence {
+  evidence_id: string;
+  page: number;
+  section: string;
+  text: string;
+  caveat: string;
+  source: {
+    title: string;
+    authors: string;
+    year: number;
+    doi: string;
+  };
+}
+
+interface NarrativeFinding {
+  feature_id: string;
+  label: string;
+  measured_value: number | null;
+  unit: string;
+  interpretation: string;
+  evidence_ids: string[];
+  limitation: string;
+}
+
+type NarrativeReport =
+  | {
+      status: "success";
+      model: string;
+      overall_summary: string;
+      findings: NarrativeFinding[];
+      coaching_points: string[];
+      disclaimer: string;
+    }
+  | {
+      status: "disabled" | "unavailable";
+      message: string;
+      error_code?: string;
+    };
 
 interface AnalysisReport {
   video: {
@@ -40,6 +81,8 @@ interface AnalysisReport {
     average_keypoint_score_pct: number | null;
   };
   metrics: ReportMetric[];
+  evidence: ReportEvidence[];
+  narrative: NarrativeReport;
   notice: string;
 }
 
@@ -251,6 +294,60 @@ export default function Home() {
                 <small>{metric.description}</small>
               </article>
             ))}
+          </div>
+
+          {report.narrative.status === "success" ? (
+            <div className="narrative-block">
+              <div className="narrative-intro">
+                <p className="step-label">AI INTERPRETATION · {report.narrative.model}</p>
+                <h3>{report.narrative.overall_summary}</h3>
+              </div>
+
+              <div className="findings-list">
+                {report.narrative.findings.map((finding) => (
+                  <article className="finding-card" key={finding.feature_id}>
+                    <div>
+                      <p>{finding.label}</p>
+                      <strong>{finding.measured_value ?? "—"}<span>{finding.measured_value === null ? "" : finding.unit}</span></strong>
+                    </div>
+                    <div>
+                      <p>{finding.interpretation}</p>
+                      <small>{finding.limitation}</small>
+                      <small>근거: {finding.evidence_ids.join(", ")}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="coaching-block">
+                <h3>이번 영상에서 시도해 볼 점</h3>
+                <ol>
+                  {report.narrative.coaching_points.map((point) => <li key={point}>{point}</li>)}
+                </ol>
+                <p>{report.narrative.disclaimer}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="narrative-unavailable">{report.narrative.message}</p>
+          )}
+
+          <div className="evidence-block">
+            <p className="step-label">EVIDENCE</p>
+            <h3>리포트에 사용된 논문 근거</h3>
+            <div className="evidence-list">
+              {report.evidence.map((item) => (
+                <article key={item.evidence_id}>
+                  <p>p.{item.page} · {item.section}</p>
+                  <strong>{item.text}</strong>
+                  <small>{item.caveat}</small>
+                </article>
+              ))}
+            </div>
+            {report.evidence[0] && (
+              <a href={`https://doi.org/${report.evidence[0].source.doi}`} target="_blank" rel="noreferrer">
+                {report.evidence[0].source.authors} ({report.evidence[0].source.year}) · DOI {report.evidence[0].source.doi}
+              </a>
+            )}
           </div>
         </section>
       )}

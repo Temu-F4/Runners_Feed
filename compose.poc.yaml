@@ -6,6 +6,12 @@ services:
       context: ./worker
       dockerfile: Dockerfile.inference
     user: "${INFERENCE_UID:-1000}:${INFERENCE_GID:-1000}"
+    environment:
+      LLM_REPORT_ENABLED: ${LLM_REPORT_ENABLED:-false}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com}
+      OLLAMA_REPORT_MODEL: ${OLLAMA_REPORT_MODEL:-gemma4:31b-cloud}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-90}
     volumes:
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
@@ -36,6 +42,11 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       INFERENCE_TIMEOUT_SECONDS: "3600"
+      LLM_REPORT_ENABLED: ${LLM_REPORT_ENABLED:-false}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com}
+      OLLAMA_REPORT_MODEL: ${OLLAMA_REPORT_MODEL:-gemma4:31b-cloud}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-90}
     depends_on:
       postgres:
         condition: service_healthy
