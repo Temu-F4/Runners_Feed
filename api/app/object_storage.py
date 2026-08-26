@@ -48,11 +48,14 @@ def load_oci_config() -> dict[str, str]:
 
 class ObjectStorageGateway:
     def __init__(self) -> None:
-        self.client = oci.object_storage.ObjectStorageClient(
-            load_oci_config()
-        )
+        config = load_oci_config()
+        self.client = oci.object_storage.ObjectStorageClient(config)
         self.namespace = self.client.get_namespace().data
         self.results_bucket = os.environ["OCI_RESULTS_BUCKET"]
+        self.public_endpoint = os.getenv(
+            "OCI_OBJECT_STORAGE_PUBLIC_ENDPOINT",
+            f"https://objectstorage.{config['region']}.oraclecloud.com",
+        ).rstrip("/")
 
     def create_result_read_url(
         self,
@@ -80,5 +83,7 @@ class ObjectStorageGateway:
             create_preauthenticated_request_details=details,
         ).data
 
-        endpoint = self.client.base_client.endpoint.rstrip("/")
-        return f"{endpoint}{request.access_uri}", expires_at
+        return (
+            f"{self.public_endpoint}{request.access_uri}",
+            expires_at,
+        )
