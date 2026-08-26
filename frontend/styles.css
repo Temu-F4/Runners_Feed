@@ -95,11 +95,32 @@ progress::-moz-progress-bar { background: var(--accent); }
 .video-frame { overflow: hidden; border: 1px solid var(--line); background: #000; aspect-ratio: 16 / 9; }
 .video-frame video { width: 100%; height: 100%; object-fit: contain; }
 
+.report-section { margin-top: 64px; padding-top: 52px; border-top: 1px solid var(--line); }
+.report-heading { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 50px; align-items: end; }
+.report-heading h2 { margin: 8px 0 0; font-size: clamp(1.8rem, 4vw, 3.2rem); letter-spacing: -0.045em; }
+.report-heading > p { margin: 0; color: var(--muted); line-height: 1.7; }
+.report-summary { display: grid; grid-template-columns: repeat(4, 1fr); margin: 34px 0 20px; border: 1px solid var(--line); background: var(--surface); }
+.report-summary div { padding: 22px; border-right: 1px solid var(--line); }
+.report-summary div:last-child { border-right: 0; }
+.report-summary dt { color: var(--muted); font-size: 0.75rem; }
+.report-summary dd { margin: 9px 0 0; font-size: 1.35rem; font-weight: 800; }
+.metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; padding: 1px; background: var(--line); }
+.metric-card { min-height: 210px; padding: 25px; background: var(--surface-2); }
+.metric-card p { margin: 0; color: var(--muted); font-size: 0.78rem; }
+.metric-card strong { display: block; margin: 28px 0 22px; color: var(--accent); font-size: clamp(2rem, 4vw, 3.4rem); letter-spacing: -0.05em; }
+.metric-card strong span { margin-left: 6px; color: var(--muted); font-size: 0.9rem; letter-spacing: 0; }
+.metric-card small { color: var(--muted); line-height: 1.55; }
+
 @media (max-width: 800px) {
   .shell { width: min(100% - 24px, 640px); padding-top: 44px; }
   .workspace, .result-section { grid-template-columns: 1fr; }
   .process-panel { border-top: 1px solid var(--line); border-left: 0; }
   .result-section { gap: 24px; }
+  .report-heading { grid-template-columns: 1fr; gap: 16px; }
+  .report-summary { grid-template-columns: repeat(2, 1fr); }
+  .report-summary div:nth-child(2) { border-right: 0; }
+  .report-summary div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  .metrics-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS inference_jobs (
         CHECK (status IN ('QUEUED', 'PROCESSING', 'SUCCESS', 'FAILED')),
     result_details_object TEXT,
     result_predictions_object TEXT,
+    result_report_object TEXT,
     result_video_object TEXT,
     error_code TEXT,
     error_message TEXT,
@@ -29,6 +30,11 @@ CREATE INDEX IF NOT EXISTS inference_jobs_status_created_idx
 ON inference_jobs (status, created_at DESC)
 """
 
+ADD_REPORT_COLUMN_SQL = """
+ALTER TABLE inference_jobs
+ADD COLUMN IF NOT EXISTS result_report_object TEXT
+"""
+
 
 def _database_url() -> str:
     return os.environ["DATABASE_URL"]
@@ -38,6 +44,7 @@ def initialize_database() -> None:
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
             cursor.execute(CREATE_JOBS_TABLE_SQL)
+            cursor.execute(ADD_REPORT_COLUMN_SQL)
             cursor.execute(CREATE_JOBS_STATUS_INDEX_SQL)
 
 
@@ -93,6 +100,7 @@ def get_job(job_id: str) -> dict[str, Any] | None:
                        status,
                        result_details_object,
                        result_predictions_object,
+                       result_report_object,
                        result_video_object,
                        error_code,
                        created_at,

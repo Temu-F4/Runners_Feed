@@ -16,6 +16,33 @@ interface JobResponse {
   error?: string;
 }
 
+interface ReportMetric {
+  id: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  description: string;
+}
+
+interface AnalysisReport {
+  video: {
+    duration_seconds: number | null;
+    fps: number | null;
+    frame_count: number;
+    width: number | null;
+    height: number | null;
+  };
+  tracking: {
+    tracked_frames: number;
+    total_frames: number;
+    coverage_pct: number | null;
+    observed_keypoints_pct: number | null;
+    average_keypoint_score_pct: number | null;
+  };
+  metrics: ReportMetric[];
+  notice: string;
+}
+
 const maxUploadBytes = 262144000;
 const stages: Exclude<Stage, "idle">[] = ["upload", "queue", "analysis", "result"];
 
@@ -66,6 +93,7 @@ export default function Home() {
   const [jobStatus, setJobStatus] = useState<JobStatus>("IDLE");
   const [error, setError] = useState("");
   const [resultUrl, setResultUrl] = useState("");
+  const [report, setReport] = useState<AnalysisReport | null>(null);
   const [running, setRunning] = useState(false);
   const resultRef = useRef<HTMLElement>(null);
 
@@ -98,6 +126,7 @@ export default function Home() {
   async function analyze() {
     setError("");
     setResultUrl("");
+    setReport(null);
     if (!file) return setError("먼저 MP4 영상을 선택해 주세요.");
     if (!file.name.toLowerCase().endsWith(".mp4")) return setError("MP4 파일만 업로드할 수 있습니다.");
     if (file.size > maxUploadBytes) return setError("파일 크기는 250 MiB 이하여야 합니다.");
@@ -126,6 +155,11 @@ export default function Home() {
       updateProgress(92, "결과 영상을 준비하고 있습니다", "result");
       const result = await api<{ rendered_video_url: string }>(`/jobs/${job.job_id}/result-url`, { method: "POST", body: "{}" });
       setResultUrl(result.rendered_video_url);
+      try {
+        setReport(await api<AnalysisReport>(`/jobs/${job.job_id}/report`));
+      } catch {
+        setReport(null);
+      }
       setJobStatus("SUCCESS");
       updateProgress(100, "분석이 완료됐습니다", "result");
       window.setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -189,6 +223,35 @@ export default function Home() {
         <section ref={resultRef} className="result-section" aria-labelledby="result-title">
           <div className="result-copy"><p className="step-label">03 · RESULT</p><h2 id="result-title">분석이 완료됐습니다.</h2><p>관절 포인트가 합성된 영상을 재생하거나 전체 화면으로 확인하세요.</p></div>
           <div className="video-frame"><video src={resultUrl} controls playsInline preload="metadata" /></div>
+        </section>
+      )}
+
+      {report && (
+        <section className="report-section" aria-labelledby="report-title">
+          <div className="report-heading">
+            <div>
+              <p className="step-label">04 · REPORT</p>
+              <h2 id="report-title">러닝 자세 측정 리포트</h2>
+            </div>
+            <p>{report.notice}</p>
+          </div>
+
+          <dl className="report-summary">
+            <div><dt>분석 프레임</dt><dd>{report.tracking.tracked_frames} / {report.tracking.total_frames}</dd></div>
+            <div><dt>러너 추적률</dt><dd>{report.tracking.coverage_pct ?? "—"}%</dd></div>
+            <div><dt>관절 관측률</dt><dd>{report.tracking.observed_keypoints_pct ?? "—"}%</dd></div>
+            <div><dt>평균 신뢰도</dt><dd>{report.tracking.average_keypoint_score_pct ?? "—"}%</dd></div>
+          </dl>
+
+          <div className="metrics-grid">
+            {report.metrics.map((metric) => (
+              <article className="metric-card" key={metric.id}>
+                <p>{metric.label}</p>
+                <strong>{metric.value ?? "—"}<span>{metric.value === null ? "" : metric.unit}</span></strong>
+                <small>{metric.description}</small>
+              </article>
+            ))}
+          </div>
         </section>
       )}
     </main>

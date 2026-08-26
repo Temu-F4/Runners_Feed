@@ -35,6 +35,11 @@ python -m inference.hpe_model \
   "$CASE_ID" \
   --device cpu
 
+python -m inference.report \
+  "$OUTPUT_DIR/details.json" \
+  "$OUTPUT_DIR/pose_predictions.json" \
+  "$OUTPUT_DIR/report.json"
+
 python -m inference.render \
   "$INPUT_DIR" \
   "$OUTPUT_DIR"

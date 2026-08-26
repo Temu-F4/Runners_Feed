@@ -205,6 +205,7 @@ def _serialize_job(job: dict) -> dict:
         response["result_objects"] = {
             "details": job["result_details_object"],
             "predictions": job["result_predictions_object"],
+            "report": job["result_report_object"],
             "rendered_video": job["result_video_object"],
         }
 
@@ -392,6 +393,37 @@ def create_result_url(job_id: str):
         "rendered_video_url": url,
         "expires_at": expires_at,
     }
+
+
+@app.get("/jobs/{job_id}/report")
+def get_job_report(job_id: str):
+    try:
+        job = get_persisted_job(job_id)
+    except psycopg.errors.InvalidTextRepresentation as error:
+        raise HTTPException(status_code=404, detail="Job not found") from error
+
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] != "SUCCESS":
+        raise HTTPException(
+            status_code=409,
+            detail="Report is not available until the job succeeds",
+        )
+
+    report_object = job["result_report_object"]
+    if not report_object:
+        raise HTTPException(
+            status_code=409,
+            detail="Analysis report is not available",
+        )
+
+    try:
+        return ObjectStorageGateway().load_result_json(report_object)
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to load analysis report",
+        ) from error
 
 
 @app.get("/health/storage")

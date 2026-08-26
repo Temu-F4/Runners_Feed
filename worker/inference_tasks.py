@@ -87,6 +87,9 @@ def execute_pipeline(
             "predictions": str(
                 output_dir / "pose_predictions.json"
             ),
+            "report": str(
+                output_dir / "report.json"
+            ),
             "rendered_video": str(
                 output_dir / "rendered.mp4"
             ),
@@ -160,6 +163,7 @@ def run_object_storage(
             "predictions": (
                 f"{output_prefix}/pose_predictions.json"
             ),
+            "report": f"{output_prefix}/report.json",
             "rendered_video": (
                 f"{output_prefix}/rendered.mp4"
             ),
@@ -173,6 +177,11 @@ def run_object_storage(
         storage.upload_result(
             source=output_dir / "pose_predictions.json",
             object_name=result_objects["predictions"],
+            content_type="application/json",
+        )
+        storage.upload_result(
+            source=output_dir / "report.json",
+            object_name=result_objects["report"],
             content_type="application/json",
         )
         storage.upload_result(
