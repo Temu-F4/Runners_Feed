@@ -1,4 +1,6 @@
+import os
 import unittest
+from unittest.mock import patch
 
 from inference.evidence import load_corpus, retrieve_evidence, retrieve_for_metric
 
@@ -29,18 +31,19 @@ class EvidenceRetrieverTest(unittest.TestCase):
         self.assertIn("carson-2024-table1-lean-conditions", evidence_ids)
 
     def test_combined_retrieval_tracks_feature_matches(self) -> None:
-        results = retrieve_evidence(
-            [
-                {
-                    "id": "peak_hip_flexion_stance_deg",
-                    "evidence_query": ["peak hip flexion", "stance phase"],
-                },
-                {
-                    "id": "peak_knee_flexion_stance_deg",
-                    "evidence_query": ["peak knee flexion", "stance phase"],
-                },
-            ]
-        )
+        with patch.dict(os.environ, {"VECTOR_RAG_ENABLED": "false"}):
+            results = retrieve_evidence(
+                [
+                    {
+                        "id": "peak_hip_flexion_stance_deg",
+                        "evidence_query": ["peak hip flexion", "stance phase"],
+                    },
+                    {
+                        "id": "peak_knee_flexion_stance_deg",
+                        "evidence_query": ["peak knee flexion", "stance phase"],
+                    },
+                ]
+            )
         joint_table = next(
             result
             for result in results
@@ -54,6 +57,39 @@ class EvidenceRetrieverTest(unittest.TestCase):
                 "peak_knee_flexion_stance_deg",
             },
         )
+
+    def test_vector_retrieval_is_preferred_when_enabled(self) -> None:
+        vector_result = [
+            {
+                "evidence_id": "vector-result",
+                "retrieval_method": "pgvector_cosine",
+            }
+        ]
+        with (
+            patch.dict(os.environ, {"VECTOR_RAG_ENABLED": "true"}),
+            patch(
+                "inference.vector_store.retrieve_evidence_vector",
+                return_value=vector_result,
+            ) as retrieve_vector,
+        ):
+            result = retrieve_evidence([{"id": "postural_lean_angle_deg"}])
+
+        self.assertEqual(result, vector_result)
+        retrieve_vector.assert_called_once()
+
+    def test_vector_failure_falls_back_to_json(self) -> None:
+        with (
+            patch.dict(os.environ, {"VECTOR_RAG_ENABLED": "true"}),
+            patch(
+                "inference.vector_store.retrieve_evidence_vector",
+                side_effect=ConnectionError("vector store unavailable"),
+            ),
+            self.assertLogs("inference.evidence", level="ERROR"),
+        ):
+            result = retrieve_evidence([{"id": "postural_lean_angle_deg"}])
+
+        self.assertTrue(result)
+        self.assertNotIn("retrieval_method", result[0])
 
 
 if __name__ == "__main__":

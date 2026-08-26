@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
 from pathlib import Path
 from typing import Iterable
@@ -8,6 +10,7 @@ from typing import Iterable
 
 CORPUS_PATH = Path(__file__).with_name("knowledge") / "carson_2024_forward_lean.json"
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+LOGGER = logging.getLogger(__name__)
 
 
 def _tokens(values: Iterable[str]) -> set[str]:
@@ -68,7 +71,7 @@ def retrieve_for_metric(
     ]
 
 
-def retrieve_evidence(
+def retrieve_evidence_keyword(
     metrics: list[dict],
     *,
     limit_per_metric: int = 3,
@@ -98,4 +101,32 @@ def retrieve_evidence(
     return sorted(
         selected.values(),
         key=lambda item: (-item["retrieval_score"], item["evidence_id"]),
+    )
+
+
+def retrieve_evidence(
+    metrics: list[dict],
+    *,
+    limit_per_metric: int = 3,
+    path: Path = CORPUS_PATH,
+) -> list[dict]:
+    vector_enabled = os.getenv("VECTOR_RAG_ENABLED", "false").casefold() == "true"
+    if vector_enabled:
+        try:
+            from inference.vector_store import retrieve_evidence_vector
+
+            results = retrieve_evidence_vector(
+                metrics,
+                limit_per_metric=limit_per_metric,
+            )
+            if results:
+                return results
+            LOGGER.warning("Vector retrieval returned no evidence; using JSON fallback")
+        except Exception:
+            LOGGER.exception("Vector retrieval failed; using JSON fallback")
+
+    return retrieve_evidence_keyword(
+        metrics,
+        limit_per_metric=limit_per_metric,
+        path=path,
     )

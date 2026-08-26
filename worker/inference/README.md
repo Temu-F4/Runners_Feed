@@ -16,3 +16,21 @@ ONNX 모델, 입력 영상, 출력 결과는 GitHub에 저장하지 않습니다
 models/
 ├── detectors/rtmdet-nano-person-320x320/end2end.onnx
 └── pose/rtmpose-m-halpe26-384x288/end2end.onnx
+
+## PostgreSQL pgvector evidence retrieval
+
+The default evidence retriever remains the bundled JSON corpus. To use the
+pgvector retriever, start the `poc` profile, pull the local embedding model,
+initialize/ingest the corpus, and only then enable `VECTOR_RAG_ENABLED=true`.
+
+```bash
+docker compose -f compose.yaml -f compose.poc.yaml --profile poc up -d postgres ollama
+docker compose -f compose.yaml -f compose.poc.yaml --profile poc exec ollama ollama pull embeddinggemma
+docker compose -f compose.yaml -f compose.poc.yaml --profile poc run --rm --entrypoint python inference-poc -m inference.vector_store ingest
+```
+
+The ingestion command is idempotent: current chunks are upserted and stale
+chunks for the same source are removed. Runtime retrieval filters by
+`feature_ids` before cosine similarity search. If PostgreSQL or Ollama is
+unavailable, report generation logs the vector error and falls back to the
+JSON/keyword retriever.
