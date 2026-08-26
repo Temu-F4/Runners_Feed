@@ -1,0 +1,12 @@
+[Unit]
+Description=Renew the Runners Feed IP certificate
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=docker
+WorkingDirectory=/home/ubuntu/runners-feed-poc-deploy
+ExecStart=/home/ubuntu/runners-feed-poc-deploy/deploy/renew_ip_certificate.sh
