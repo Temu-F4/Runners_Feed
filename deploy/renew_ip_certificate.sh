@@ -12,6 +12,7 @@ docker compose \
   --profile tls-tools \
   run --rm certbot \
   renew \
+  --no-random-sleep-on-renew \
   --webroot \
   --webroot-path /var/www/certbot \
   --quiet
