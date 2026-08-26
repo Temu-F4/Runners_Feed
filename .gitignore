@@ -18,6 +18,7 @@ __pycache__/
 venv/
 
 # Runtime data
+runtime/
 data/
 uploads/
 outputs/

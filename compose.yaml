@@ -44,7 +44,7 @@ services:
       context: ./api
     restart: unless-stopped
     environment:
-      OCI_CONFIG_FILE: /root/.oci/config
+      OCI_CONFIG_FILE: /.oci/config
       OCI_CONFIG_PROFILE: DEFAULT
       OCI_REGION: ap-seoul-1
       OCI_RAW_BUCKET: bucket-t04-raw
@@ -54,7 +54,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
     volumes:
-      - /home/ubuntu/.oci:/root/.oci:ro
+      - /home/ubuntu/.oci:/.oci:ro
     depends_on:
       postgres:
         condition: service_healthy
