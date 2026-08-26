@@ -12,6 +12,7 @@ from job_repository import (
     mark_job_success,
 )
 from object_storage_gateway import ObjectStorageGateway
+from run_cleanup import remove_successful_run
 
 
 LOGGER = logging.getLogger(__name__)
@@ -191,6 +192,19 @@ def run_object_storage(
         )
 
         mark_job_success(job_id, result_objects)
+
+        try:
+            result["local_run_deleted"] = remove_successful_run(
+                run_dir,
+                run_root=WORKSPACE_DIR / "run",
+            )
+        except Exception:
+            result["local_run_deleted"] = False
+            LOGGER.warning(
+                "Failed to clean successful run directory for job %s",
+                job_id,
+                exc_info=True,
+            )
 
         result["input_object"] = input_object_name
         result["result_objects"] = result_objects

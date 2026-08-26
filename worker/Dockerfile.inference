@@ -33,6 +33,7 @@ COPY inference_celery_app.py /app/inference_celery_app.py
 COPY inference_tasks.py /app/inference_tasks.py
 COPY job_repository.py /app/job_repository.py
 COPY object_storage_gateway.py /app/object_storage_gateway.py
+COPY run_cleanup.py /app/run_cleanup.py
 
 RUN chmod +x /app/inference/run_pipeline.sh \
     && chown -R app:app /app
