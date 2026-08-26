@@ -47,8 +47,10 @@ services:
       OCI_CONFIG_FILE: /.oci/config
       OCI_CONFIG_PROFILE: DEFAULT
       OCI_REGION: ap-seoul-1
+      OCI_OBJECT_STORAGE_PUBLIC_ENDPOINT: https://objectstorage.ap-seoul-1.oraclecloud.com
       OCI_RAW_BUCKET: bucket-t04-raw
       OCI_RESULTS_BUCKET: bucket-t04-results
+      RESULT_URL_TTL_SECONDS: ${RESULT_URL_TTL_SECONDS:-900}
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}

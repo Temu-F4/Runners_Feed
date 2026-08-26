@@ -16,6 +16,7 @@ from app.database import (
     initialize_database,
     mark_job_dispatch_failed,
 )
+from app.object_storage import ObjectStorageGateway, load_oci_config
 
 
 celery_client = Celery(
@@ -41,6 +42,15 @@ app = FastAPI(
     title="Runners Feed API",
     lifespan=lifespan,
 )
+
+
+def _result_url_ttl_seconds() -> int:
+    ttl_seconds = int(os.getenv("RESULT_URL_TTL_SECONDS", "900"))
+    if not 60 <= ttl_seconds <= 3600:
+        raise ValueError(
+            "RESULT_URL_TTL_SECONDS must be between 60 and 3600"
+        )
+    return ttl_seconds
 
 
 class CreateInferenceJobRequest(BaseModel):
@@ -190,19 +200,50 @@ def get_job(job_id: str):
     return _serialize_job(job)
 
 
+@app.post("/jobs/{job_id}/result-url")
+def create_result_url(job_id: str):
+    try:
+        job = get_persisted_job(job_id)
+    except psycopg.errors.InvalidTextRepresentation as error:
+        raise HTTPException(status_code=404, detail="Job not found") from error
+
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] != "SUCCESS":
+        raise HTTPException(
+            status_code=409,
+            detail="Result is not available until the job succeeds",
+        )
+
+    result_object = job["result_video_object"]
+    if not result_object:
+        raise HTTPException(
+            status_code=409,
+            detail="Rendered video is not available",
+        )
+
+    try:
+        url, expires_at = ObjectStorageGateway().create_result_read_url(
+            object_name=result_object,
+            ttl_seconds=_result_url_ttl_seconds(),
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to create result URL",
+        ) from error
+
+    return {
+        "job_id": str(job["job_id"]),
+        "rendered_video_url": url,
+        "expires_at": expires_at,
+    }
+
+
 @app.get("/health/storage")
 def storage_health():
     try:
-        config = oci.config.from_file(
-            file_location=os.getenv(
-                "OCI_CONFIG_FILE",
-                "/.oci/config",
-            ),
-            profile_name=os.getenv(
-                "OCI_CONFIG_PROFILE",
-                "DEFAULT",
-            ),
-        )
+        config = load_oci_config()
 
         client = oci.object_storage.ObjectStorageClient(config)
         namespace = client.get_namespace().data

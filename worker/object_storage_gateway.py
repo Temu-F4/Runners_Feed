@@ -1,30 +1,53 @@
+import configparser
 import os
 from pathlib import Path
 
 import oci
 
 
+def load_oci_config() -> dict[str, str]:
+    config_path = Path(
+        os.getenv("OCI_CONFIG_FILE", "/.oci/config")
+    ).expanduser()
+    profile_name = os.getenv("OCI_CONFIG_PROFILE", "DEFAULT")
+
+    try:
+        config = oci.config.from_file(
+            file_location=str(config_path),
+            profile_name=profile_name,
+        )
+    except oci.exceptions.InvalidKeyFilePath:
+        parser = configparser.ConfigParser()
+        if not parser.read(config_path):
+            raise FileNotFoundError(
+                f"OCI config file does not exist: {config_path}"
+            )
+        if profile_name not in parser:
+            raise KeyError(
+                f"OCI config profile does not exist: {profile_name}"
+            )
+
+        config = dict(parser[profile_name])
+        configured_key_path = Path(
+            config["key_file"]
+        ).expanduser()
+        mounted_key_path = (
+            config_path.parent / configured_key_path.name
+        )
+        config["key_file"] = str(mounted_key_path)
+
+    region = os.getenv("OCI_REGION")
+    if region:
+        config["region"] = region
+
+    oci.config.validate_config(config)
+    return config
+
+
 class ObjectStorageGateway:
     def __init__(self) -> None:
-        config = oci.config.from_file(
-            file_location=os.getenv(
-                "OCI_CONFIG_FILE",
-                "/.oci/config",
-            ),
-            profile_name=os.getenv(
-                "OCI_CONFIG_PROFILE",
-                "DEFAULT",
-            ),
-        )
-
-        region = os.getenv("OCI_REGION")
-        if region:
-            config["region"] = region
-
-        oci.config.validate_config(config)
-
         self.client = oci.object_storage.ObjectStorageClient(
-            config
+            load_oci_config()
         )
         self.namespace = self.client.get_namespace().data
         self.raw_bucket = os.environ["OCI_RAW_BUCKET"]
