@@ -580,7 +580,51 @@ HTTPS upload URL 발급
 운영 코드 변경은 없으므로 rollback이 필요 없다.
 생성된 샘플 job과 결과는 검증 증거로 유지하고 보관 정책에 따라 나중에 정리한다.
 
-## 13. 현재 구조
+## 13. PostgreSQL 수동 백업과 복구 검증
+
+### WHAT
+
+운영 PostgreSQL을 custom-format으로 백업하고 격리된 임시 PostgreSQL에 실제 복원했다.
+
+### WHY
+
+백업 파일 생성만으로는 복구 가능성을 보장할 수 없으므로 실제 restore와 record 비교가 필요했다.
+
+### WHERE
+
+- 백업: `/home/ubuntu/runners-feed-backups/postgres/runners_feed_20260826_e2e.dump`
+- 임시 검증 컨테이너: `runners-feed-postgres-restore-test`
+
+### HOW
+
+`pg_dump --format=custom --no-owner --no-privileges`로 백업하고,
+외부 port를 열지 않은 PostgreSQL 16.15 임시 컨테이너에 `pg_restore`했다.
+
+### EXPECTED
+
+백업 파일이 비어 있지 않고 복원된 `inference_jobs` record 수가 운영 DB와 같아야 한다.
+
+### CHANGES
+
+- 권한 `700`의 백업 디렉터리 생성
+- 권한 `600`의 백업 파일 1개 생성
+- 임시 복구 컨테이너는 검증 후 삭제
+- 운영 PostgreSQL은 읽기만 수행
+
+### VERIFY
+
+- 운영 job record: 2개
+- 복원 job record: 2개
+- 백업 크기: 3.1KB
+- SHA-256: 생성 완료
+- 결과: `POSTGRES_BACKUP_RESTORE=PASS`
+
+### ROLLBACK
+
+운영 DB에는 변경이 없어 rollback이 필요 없다.
+백업 파일은 복구용으로 유지하고 보관기간이 결정되기 전 자동 삭제하지 않는다.
+
+## 14. 현재 구조
 
 ```text
 Browser
@@ -596,14 +640,14 @@ Nginx
                     └─ inference-worker: RTMPose
 ```
 
-## 14. 현재 남은 작업
+## 15. 현재 남은 작업
 
 ### 지금 필요한 작업
 
 1. `feat/ip-https` Pull Request를 `main`에 병합
 2. OCI checkout을 병합된 `main`으로 복귀
 3. 기존 운영 runbook의 오래된 완료/미구현 항목 갱신
-4. PostgreSQL 백업과 복구 테스트
+4. PostgreSQL 자동 백업 주기와 보관기간 결정
 5. Object Storage와 Runtime 보관·삭제 정책
 6. 최소 로그·장애 확인 절차
 
@@ -617,7 +661,7 @@ Nginx
 - 고급 중앙 모니터링
 - GitHub Actions 자동 배포
 
-## 15. 공통 작업 보고 규칙
+## 16. 공통 작업 보고 규칙
 
 앞으로 모든 작업은 실행 전과 완료 후 다음 항목을 빠짐없이 기록한다.
 

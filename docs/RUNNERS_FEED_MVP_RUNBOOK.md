@@ -943,9 +943,11 @@ Nginx가 공통 API key를 추가하는 MVP 보호는 적용되어 있지만 사
 현재 API 시작 시 `CREATE TABLE IF NOT EXISTS`로 MVP 테이블을 만든다.
 운영 단계에서는 Alembic 같은 migration 도구가 필요하다.
 
-### 고급 모니터링·백업 미구현
+### 고급 모니터링·자동 백업 미구현
 
-중앙 로그, 알림, PostgreSQL 백업, Object Storage Lifecycle 정책은 아직 없다.
+PostgreSQL 수동 `pg_dump`와 임시 PostgreSQL 복구 검증은 완료했다.
+정기 자동 백업, 외부 백업 복제, 중앙 로그, 알림,
+Object Storage Lifecycle 정책은 아직 없다.
 
 ## 15. 앞으로 할 작업: WHAT / WHY / HOW
 
@@ -966,11 +968,11 @@ Nginx가 공통 API key를 추가하는 MVP 보호는 적용되어 있지만 사
 - `git switch main`과 fast-forward
 - HTTPS/API/E2E health 재확인
 
-### 우선순위 2: 운영 문서와 백업
+### 우선순위 2: 자동 백업과 보관 정책
 
 **WHAT**
 
-PostgreSQL 백업·복구와 Object Storage/Runtime 보관기간을 정한다.
+PostgreSQL 자동 백업 주기와 Object Storage/Runtime 보관기간을 정한다.
 
 **WHY**
 
@@ -978,8 +980,8 @@ DB 장애와 영상 누적에 따른 데이터 손실·저장 비용을 통제�
 
 **HOW**
 
-- `pg_dump` 정기 백업
-- 실제 복구 rehearsal
+- 검증된 `pg_dump`를 systemd timer로 정기 실행
+- 정기 복구 rehearsal
 - Raw/Results bucket Lifecycle 정책
 - Runtime job 디렉터리 정리 기준
 
