@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import shutil
@@ -5,9 +6,15 @@ import subprocess
 from pathlib import Path
 
 from inference_celery_app import celery_app
+from job_repository import (
+    mark_job_failed,
+    mark_job_processing,
+    mark_job_success,
+)
 from object_storage_gateway import ObjectStorageGateway
 
 
+LOGGER = logging.getLogger(__name__)
 WORKSPACE_DIR = Path("/workspace")
 CASE_ID_PATTERN = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
@@ -111,66 +118,81 @@ def run_object_storage(
     case_id: str,
     input_object_name: str,
 ) -> dict:
-    validate_case_id(case_id)
+    job_id = str(self.request.id)
 
-    if not input_object_name:
-        raise ValueError(
-            "input_object_name must not be empty"
+    try:
+        validate_case_id(case_id)
+        validate_case_id(job_id)
+
+        if not input_object_name:
+            raise ValueError(
+                "input_object_name must not be empty"
+            )
+
+        mark_job_processing(job_id)
+
+        run_dir = WORKSPACE_DIR / "run" / job_id
+
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+
+        run_dir.mkdir(parents=True, exist_ok=False)
+        input_path = run_dir / "input.mp4"
+
+        storage = ObjectStorageGateway()
+
+        storage.download_input(
+            object_name=input_object_name,
+            destination=input_path,
         )
 
-    job_id = str(self.request.id)
-    validate_case_id(job_id)
+        result = execute_pipeline(
+            case_id=case_id,
+            job_id=job_id,
+            run_id=job_id,
+        )
 
-    run_dir = WORKSPACE_DIR / "run" / job_id
+        output_dir = run_dir / "outputs"
+        output_prefix = f"jobs/{job_id}"
 
-    if run_dir.exists():
-        shutil.rmtree(run_dir)
+        result_objects = {
+            "details": f"{output_prefix}/details.json",
+            "predictions": (
+                f"{output_prefix}/pose_predictions.json"
+            ),
+            "rendered_video": (
+                f"{output_prefix}/rendered.mp4"
+            ),
+        }
 
-    run_dir.mkdir(parents=True, exist_ok=False)
-    input_path = run_dir / "input.mp4"
+        storage.upload_result(
+            source=output_dir / "details.json",
+            object_name=result_objects["details"],
+            content_type="application/json",
+        )
+        storage.upload_result(
+            source=output_dir / "pose_predictions.json",
+            object_name=result_objects["predictions"],
+            content_type="application/json",
+        )
+        storage.upload_result(
+            source=output_dir / "rendered.mp4",
+            object_name=result_objects["rendered_video"],
+            content_type="video/mp4",
+        )
 
-    storage = ObjectStorageGateway()
+        mark_job_success(job_id, result_objects)
 
-    storage.download_input(
-        object_name=input_object_name,
-        destination=input_path,
-    )
+        result["input_object"] = input_object_name
+        result["result_objects"] = result_objects
+        return result
 
-    result = execute_pipeline(
-        case_id=case_id,
-        job_id=job_id,
-        run_id=job_id,
-    )
-
-    output_dir = run_dir / "outputs"
-    output_prefix = f"jobs/{job_id}"
-
-    result_objects = {
-        "details": f"{output_prefix}/details.json",
-        "predictions": (
-            f"{output_prefix}/pose_predictions.json"
-        ),
-        "rendered_video": (
-            f"{output_prefix}/rendered.mp4"
-        ),
-    }
-
-    storage.upload_result(
-        source=output_dir / "details.json",
-        object_name=result_objects["details"],
-        content_type="application/json",
-    )
-    storage.upload_result(
-        source=output_dir / "pose_predictions.json",
-        object_name=result_objects["predictions"],
-        content_type="application/json",
-    )
-    storage.upload_result(
-        source=output_dir / "rendered.mp4",
-        object_name=result_objects["rendered_video"],
-        content_type="video/mp4",
-    )
-
-    result["input_object"] = input_object_name
-    result["result_objects"] = result_objects
-    return result
+    except Exception as error:
+        try:
+            mark_job_failed(job_id, error)
+        except Exception:
+            LOGGER.exception(
+                "Failed to persist FAILED state for job %s",
+                job_id,
+            )
+        raise
