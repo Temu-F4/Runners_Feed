@@ -26,7 +26,7 @@ SYSTEM_PROMPT = """
 
 반드시 다음 규칙을 지키세요.
 1. 입력에 제공된 feature와 evidence만 사용합니다.
-2. 모든 finding은 입력 feature_id 중 하나만 사용합니다.
+2. 입력된 모든 feature_id마다 finding을 정확히 하나씩 작성하며 누락하거나 중복하지 않습니다.
 3. 모든 evidence_ids는 입력 evidence_id 중 하나만 사용합니다.
 4. 측정값을 계산하거나 변경하지 않습니다.
 5. 논문 표의 값은 실험 조건의 집단 평균이지 정상/비정상 기준이 아닙니다.
@@ -139,26 +139,54 @@ def generate_narrative(
             for item in evidence
         ],
     }
-    raw_draft = model.invoke(
-        [
-            ("system", SYSTEM_PROMPT),
-            (
-                "human",
-                "다음 입력 JSON만 근거로 리포트를 작성하세요. "
-                "설명이나 Markdown 없이 아래 JSON Schema를 만족하는 JSON 객체만 "
-                "응답하세요.\nOUTPUT_JSON_SCHEMA:\n"
-                + json.dumps(
-                    NarrativeDraft.model_json_schema(),
-                    ensure_ascii=False,
-                    allow_nan=False,
+    required_feature_ids = [str(metric["id"]) for metric in metrics]
+    messages = [
+        ("system", SYSTEM_PROMPT),
+        (
+            "human",
+            "다음 입력 JSON만 근거로 리포트를 작성하세요. "
+            "설명이나 Markdown 없이 아래 JSON Schema를 만족하는 JSON 객체만 "
+            "응답하세요. findings에는 REQUIRED_FEATURE_IDS의 각 ID를 정확히 "
+            "한 번씩 모두 포함하세요.\nREQUIRED_FEATURE_IDS:\n"
+            + json.dumps(required_feature_ids, ensure_ascii=False)
+            + "\nOUTPUT_JSON_SCHEMA:\n"
+            + json.dumps(
+                NarrativeDraft.model_json_schema(),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\nINPUT_JSON:\n"
+            + json.dumps(request, ensure_ascii=False, allow_nan=False),
+        ),
+    ]
+
+    draft = None
+    last_validation_error: ValueError | None = None
+    for attempt in range(2):
+        attempt_messages = list(messages)
+        if attempt:
+            attempt_messages.append(
+                (
+                    "human",
+                    "이전 응답은 서버 검증을 통과하지 못했습니다. 다른 설명은 "
+                    "추가하지 말고, 다음 feature_id 각각에 대해 finding을 정확히 "
+                    "하나씩 포함한 완전한 JSON 객체를 다시 작성하세요: "
+                    + json.dumps(required_feature_ids, ensure_ascii=False),
                 )
-                + "\nINPUT_JSON:\n"
-                + json.dumps(request, ensure_ascii=False, allow_nan=False),
-            ),
-        ]
-    )
-    draft = _parse_draft(raw_draft)
-    _validate_draft(draft, metrics, evidence)
+            )
+        raw_draft = model.invoke(attempt_messages)
+        try:
+            candidate = _parse_draft(raw_draft)
+            _validate_draft(candidate, metrics, evidence)
+            draft = candidate
+            break
+        except ValueError as error:
+            last_validation_error = error
+
+    if draft is None:
+        if last_validation_error is None:
+            raise ValueError("LLM response validation failed")
+        raise last_validation_error
 
     metric_by_id = {str(metric["id"]): metric for metric in metrics}
     output = draft.model_dump()

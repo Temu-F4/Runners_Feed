@@ -53,7 +53,51 @@ class FakeRawModel(FakeStructuredModel):
         return FakeRawMessage(json.dumps(content, ensure_ascii=False))
 
 
+class FakeRetryModel(FakeStructuredModel):
+    def __init__(self, findings: list[dict]):
+        super().__init__(findings)
+        self.call_count = 0
+
+    def invoke(self, messages):
+        self.call_count += 1
+        content = super().invoke(messages)
+        if self.call_count == 1:
+            content["findings"] = content["findings"][:1]
+        return FakeRawMessage(json.dumps(content, ensure_ascii=False))
+
+
 class NarrativeHarnessTest(unittest.TestCase):
+    def test_retries_once_when_cloud_omits_a_feature(self) -> None:
+        report = _measurement_report()
+        evidence = retrieve_evidence(report["metrics"])
+        model = FakeRetryModel(
+            [
+                {
+                    "feature_id": metric["id"],
+                    "interpretation": "실험 조건의 참고값과 비교할 수 있습니다.",
+                    "evidence_ids": [
+                        next(
+                            item["evidence_id"]
+                            for item in evidence
+                            if metric["id"] in item["feature_ids"]
+                        )
+                    ],
+                    "limitation": "Halpe26 2D proxy 측정입니다.",
+                }
+                for metric in report["metrics"]
+            ]
+        )
+
+        result = generate_narrative(
+            report,
+            evidence,
+            structured_model=model,
+        )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(result["findings"]), 2)
+        self.assertEqual(model.call_count, 2)
+
     def test_parses_cloud_json_text_before_harness_validation(self) -> None:
         report = _measurement_report()
         evidence = retrieve_evidence(report["metrics"])
