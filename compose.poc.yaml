@@ -27,7 +27,7 @@ services:
       - --concurrency=1
       - --queues=inference
     environment:
-      OCI_CONFIG_FILE: /root/.oci/config
+      OCI_CONFIG_FILE: /.oci/config
       OCI_CONFIG_PROFILE: DEFAULT
       OCI_REGION: ap-seoul-1
       OCI_RAW_BUCKET: bucket-t04-raw
@@ -36,7 +36,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       INFERENCE_TIMEOUT_SECONDS: "3600"
     volumes:
-      - /home/ubuntu/.oci:/root/.oci:ro
+      - /home/ubuntu/.oci:/.oci:ro
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
     networks:

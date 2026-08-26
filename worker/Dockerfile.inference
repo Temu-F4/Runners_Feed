@@ -32,8 +32,7 @@ COPY inference_tasks.py /app/inference_tasks.py
 COPY object_storage_gateway.py /app/object_storage_gateway.py
 
 RUN chmod +x /app/inference/run_pipeline.sh \
-    && chown -R app:app /app \
-    && chmod 755 /root
+    && chown -R app:app /app
 
 USER app
 ENTRYPOINT ["/app/inference/run_pipeline.sh"]

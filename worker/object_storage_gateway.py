@@ -9,7 +9,7 @@ class ObjectStorageGateway:
         config = oci.config.from_file(
             file_location=os.getenv(
                 "OCI_CONFIG_FILE",
-                "/root/.oci/config",
+                "/.oci/config",
             ),
             profile_name=os.getenv(
                 "OCI_CONFIG_PROFILE",
