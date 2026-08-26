@@ -13,10 +13,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-RUN groupadd --gid 1000 app \
+ARG INFERENCE_UID=1000
+ARG INFERENCE_GID=1000
+RUN groupadd --gid "${INFERENCE_GID}" app \
     && useradd \
-        --uid 1000 \
-        --gid 1000 \
+        --uid "${INFERENCE_UID}" \
+        --gid "${INFERENCE_GID}" \
         --create-home \
         --shell /usr/sbin/nologin \
         app

@@ -5,6 +5,9 @@ services:
     build:
       context: ./worker
       dockerfile: Dockerfile.inference
+      args:
+        INFERENCE_UID: ${INFERENCE_UID:-1000}
+        INFERENCE_GID: ${INFERENCE_GID:-1000}
     user: "${INFERENCE_UID:-1000}:${INFERENCE_GID:-1000}"
     environment:
       LLM_REPORT_ENABLED: ${LLM_REPORT_ENABLED:-false}
@@ -26,6 +29,9 @@ services:
     build:
       context: ./worker
       dockerfile: Dockerfile.inference
+      args:
+        INFERENCE_UID: ${INFERENCE_UID:-1000}
+        INFERENCE_GID: ${INFERENCE_GID:-1000}
     user: "${INFERENCE_UID:-1000}:${INFERENCE_GID:-1000}"
     entrypoint:
       - celery
