@@ -93,6 +93,18 @@ services:
         condition: service_healthy
     ports:
       - "80:80"
+    volumes:
+      - /home/ubuntu/runners-feed-certbot/www:/var/www/certbot:ro
+      - /home/ubuntu/runners-feed-certbot/conf:/etc/letsencrypt:ro
+    networks:
+      - backend
+  certbot:
+    image: certbot/certbot:v5.7.0
+    profiles:
+      - tls-tools
+    volumes:
+      - /home/ubuntu/runners-feed-certbot/www:/var/www/certbot
+      - /home/ubuntu/runners-feed-certbot/conf:/etc/letsencrypt
     networks:
       - backend
   frontend:
