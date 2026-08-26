@@ -1,4 +1,5 @@
 import os
+import hmac
 from contextlib import asynccontextmanager
 from typing import Literal
 from uuid import uuid4
@@ -6,7 +7,7 @@ from uuid import uuid4
 import oci
 import psycopg
 from celery import Celery
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from redis import Redis
@@ -43,6 +44,28 @@ app = FastAPI(
     title="Runners Feed API",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    if request.url.path == "/health" or request.method == "OPTIONS":
+        return await call_next(request)
+
+    expected_key = os.getenv("API_KEY")
+    if not expected_key:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "API authentication is not configured"},
+        )
+
+    provided_key = request.headers.get("X-API-Key", "")
+    if not hmac.compare_digest(provided_key, expected_key):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid API key"},
+        )
+
+    return await call_next(request)
 
 
 def _result_url_ttl_seconds() -> int:
