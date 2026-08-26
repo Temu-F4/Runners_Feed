@@ -89,8 +89,27 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      frontend:
+        condition: service_healthy
     ports:
       - "80:80"
+    networks:
+      - backend
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000').then(response => { if (!response.ok) process.exit(1) })"
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - backend
   worker:
