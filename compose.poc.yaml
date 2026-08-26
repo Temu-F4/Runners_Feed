@@ -1,10 +1,11 @@
 services:
   inference-poc:
     profiles:
-      - poc
+      - manual-poc
     build:
       context: ./worker
       dockerfile: Dockerfile.inference
+    user: "${INFERENCE_UID:-1000}:${INFERENCE_GID:-1000}"
     volumes:
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run

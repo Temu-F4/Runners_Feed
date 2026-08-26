@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -21,10 +22,15 @@ def validate_case_id(case_id: str) -> None:
 def execute_pipeline(
     case_id: str,
     job_id: str,
+    run_id: str | None = None,
 ) -> dict:
     validate_case_id(case_id)
 
-    run_dir = WORKSPACE_DIR / "run" / case_id
+    pipeline_run_id = run_id or case_id
+    validate_case_id(pipeline_run_id)
+
+    run_dir = WORKSPACE_DIR / "run" / pipeline_run_id
+
     video_files = sorted(run_dir.glob("*.mp4"))
 
     if len(video_files) != 1:
@@ -47,7 +53,7 @@ def execute_pipeline(
         completed = subprocess.run(
             [
                 "/app/inference/run_pipeline.sh",
-                case_id,
+                pipeline_run_id,
             ],
             check=True,
             capture_output=True,
@@ -87,6 +93,7 @@ def execute_pipeline(
 @celery_app.task(
     name="inference.run_video",
     bind=True,
+    acks_late=False,
 )
 def run_video(self, case_id: str) -> dict:
     return execute_pipeline(
@@ -111,13 +118,17 @@ def run_object_storage(
             "input_object_name must not be empty"
         )
 
-    run_dir = WORKSPACE_DIR / "run" / case_id
-    if run_dir.exists():
-        raise FileExistsError(
-            f"Case directory already exists: {run_dir}"
-        )
+    job_id = str(self.request.id)
+    validate_case_id(job_id)
 
+    run_dir = WORKSPACE_DIR / "run" / job_id
+
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+
+    run_dir.mkdir(parents=True, exist_ok=False)
     input_path = run_dir / "input.mp4"
+
     storage = ObjectStorageGateway()
 
     storage.download_input(
@@ -127,11 +138,12 @@ def run_object_storage(
 
     result = execute_pipeline(
         case_id=case_id,
-        job_id=self.request.id,
+        job_id=job_id,
+        run_id=job_id,
     )
 
     output_dir = run_dir / "outputs"
-    output_prefix = f"jobs/{case_id}"
+    output_prefix = f"jobs/{job_id}"
 
     result_objects = {
         "details": f"{output_prefix}/details.json",

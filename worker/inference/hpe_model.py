@@ -101,7 +101,10 @@ def main():
 
 
     image_paths = sorted(INPUT_ROOT.glob("*.png"))
-
+    if not image_paths:
+        raise ValueError(
+            f"입력 프레임을 찾지 못했습니다: {INPUT_ROOT}"
+        )
     for image_path in tqdm(image_paths, desc="HPE Model"):
         detections, _det_t, _pose_t = _infer_image(image_path)
 
