@@ -9,3 +9,4 @@ tqdm==4.70.0
 celery>=5.4,<6
 redis>=5,<7
 oci==2.184.2
+psycopg[binary]>=3.2,<4.0
