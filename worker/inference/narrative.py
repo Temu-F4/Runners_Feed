@@ -38,7 +38,7 @@ SYSTEM_PROMPT = """
 """.strip()
 
 
-def _build_structured_model():
+def _build_report_model():
     from langchain_ollama import ChatOllama
 
     api_key = os.environ["OLLAMA_API_KEY"]
@@ -51,11 +51,28 @@ def _build_structured_model():
             },
             "timeout": float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "90")),
         },
-        temperature=1.0,
-        top_p=0.95,
-        top_k=64,
+        temperature=0.0,
     )
-    return model.with_structured_output(NarrativeDraft, method="json_schema")
+    return model
+
+
+def _parse_draft(raw_draft: Any) -> NarrativeDraft:
+    if isinstance(raw_draft, NarrativeDraft):
+        return raw_draft
+    if isinstance(raw_draft, dict):
+        return NarrativeDraft.model_validate(raw_draft)
+
+    content = getattr(raw_draft, "content", None)
+    if not isinstance(content, str):
+        raise ValueError("LLM response did not contain text content")
+
+    stripped = content.strip()
+    if stripped.startswith("```") and stripped.endswith("```"):
+        first_newline = stripped.find("\n")
+        if first_newline == -1:
+            raise ValueError("LLM response contained an empty code block")
+        stripped = stripped[first_newline + 1:-3].strip()
+    return NarrativeDraft.model_validate_json(stripped)
 
 
 def _validate_draft(
@@ -96,7 +113,7 @@ def generate_narrative(
     if not evidence:
         raise ValueError("Retrieved evidence must not be empty")
 
-    model = structured_model or _build_structured_model()
+    model = structured_model or _build_report_model()
     request = {
         "measurements": [
             {
@@ -127,16 +144,20 @@ def generate_narrative(
             ("system", SYSTEM_PROMPT),
             (
                 "human",
-                "다음 JSON만 근거로 리포트를 작성하세요.\n"
+                "다음 입력 JSON만 근거로 리포트를 작성하세요. "
+                "설명이나 Markdown 없이 아래 JSON Schema를 만족하는 JSON 객체만 "
+                "응답하세요.\nOUTPUT_JSON_SCHEMA:\n"
+                + json.dumps(
+                    NarrativeDraft.model_json_schema(),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                )
+                + "\nINPUT_JSON:\n"
                 + json.dumps(request, ensure_ascii=False, allow_nan=False),
             ),
         ]
     )
-    draft = (
-        raw_draft
-        if isinstance(raw_draft, NarrativeDraft)
-        else NarrativeDraft.model_validate(raw_draft)
-    )
+    draft = _parse_draft(raw_draft)
     _validate_draft(draft, metrics, evidence)
 
     metric_by_id = {str(metric["id"]): metric for metric in metrics}

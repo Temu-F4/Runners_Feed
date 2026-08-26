@@ -1,3 +1,4 @@
+import json
 import os
 import unittest
 from unittest.mock import patch
@@ -41,7 +42,46 @@ class FakeStructuredModel:
         }
 
 
+class FakeRawMessage:
+    def __init__(self, content: str):
+        self.content = content
+
+
+class FakeRawModel(FakeStructuredModel):
+    def invoke(self, messages):
+        content = super().invoke(messages)
+        return FakeRawMessage(json.dumps(content, ensure_ascii=False))
+
+
 class NarrativeHarnessTest(unittest.TestCase):
+    def test_parses_cloud_json_text_before_harness_validation(self) -> None:
+        report = _measurement_report()
+        evidence = retrieve_evidence(report["metrics"])
+        result = generate_narrative(
+            report,
+            evidence,
+            structured_model=FakeRawModel(
+                [
+                    {
+                        "feature_id": metric["id"],
+                        "interpretation": "실험 조건의 참고값과 비교할 수 있습니다.",
+                        "evidence_ids": [
+                            next(
+                                item["evidence_id"]
+                                for item in evidence
+                                if metric["id"] in item["feature_ids"]
+                            )
+                        ],
+                        "limitation": "Halpe26 2D proxy 측정입니다.",
+                    }
+                    for metric in report["metrics"]
+                ]
+            ),
+        )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(result["findings"]), 2)
+
     def test_preserves_server_measurements_and_validates_evidence(self) -> None:
         report = _measurement_report()
         evidence = retrieve_evidence(report["metrics"])
