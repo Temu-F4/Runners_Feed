@@ -1,5 +1,6 @@
 import os
 from contextlib import asynccontextmanager
+from typing import Literal
 from uuid import uuid4
 
 import oci
@@ -53,6 +54,22 @@ def _result_url_ttl_seconds() -> int:
     return ttl_seconds
 
 
+def _upload_url_ttl_seconds() -> int:
+    ttl_seconds = int(os.getenv("UPLOAD_URL_TTL_SECONDS", "900"))
+    if not 60 <= ttl_seconds <= 3600:
+        raise ValueError(
+            "UPLOAD_URL_TTL_SECONDS must be between 60 and 3600"
+        )
+    return ttl_seconds
+
+
+def _max_upload_bytes() -> int:
+    max_bytes = int(os.getenv("MAX_UPLOAD_BYTES", "262144000"))
+    if max_bytes <= 0:
+        raise ValueError("MAX_UPLOAD_BYTES must be positive")
+    return max_bytes
+
+
 class CreateInferenceJobRequest(BaseModel):
     case_id: str = Field(
         min_length=1,
@@ -71,6 +88,82 @@ class CreateInferenceJobRequest(BaseModel):
         if not normalized.lower().endswith(".mp4"):
             raise ValueError("input_object_name must reference an MP4")
         return normalized
+
+
+class CreateUploadRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: Literal["video/mp4"] = "video/mp4"
+
+    @field_validator("filename")
+    @classmethod
+    def require_mp4_filename(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized.lower().endswith(".mp4"):
+            raise ValueError("filename must end with .mp4")
+        return normalized
+
+
+class CompleteUploadRequest(BaseModel):
+    object_name: str = Field(min_length=1, max_length=128)
+
+    @field_validator("object_name")
+    @classmethod
+    def require_generated_upload_name(cls, value: str) -> str:
+        normalized = value.strip()
+        prefix = "uploads/"
+        suffix = ".mp4"
+        if not normalized.startswith(prefix) or not normalized.endswith(suffix):
+            raise ValueError("object_name must be a generated upload path")
+
+        identifier = normalized[len(prefix) : -len(suffix)]
+        if len(identifier) != 32:
+            raise ValueError("object_name must be a generated upload path")
+        try:
+            int(identifier, 16)
+        except ValueError as error:
+            raise ValueError(
+                "object_name must be a generated upload path"
+            ) from error
+        return normalized
+
+
+def _inspect_input_object(object_name: str) -> dict[str, object]:
+    try:
+        metadata = ObjectStorageGateway().inspect_input_object(object_name)
+    except oci.exceptions.ServiceError as error:
+        if error.status == 404:
+            raise HTTPException(
+                status_code=404,
+                detail="Uploaded video was not found",
+            ) from error
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to inspect uploaded video",
+        ) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to inspect uploaded video",
+        ) from error
+
+    size_bytes = int(metadata["size_bytes"])
+    if size_bytes <= 0:
+        raise HTTPException(status_code=400, detail="Uploaded video is empty")
+    if size_bytes > _max_upload_bytes():
+        raise HTTPException(
+            status_code=413,
+            detail="Uploaded video exceeds the size limit",
+        )
+    if (
+        object_name.startswith("uploads/")
+        and metadata["content_type"] != "video/mp4"
+    ):
+        raise HTTPException(
+            status_code=415,
+            detail="Uploaded object must have content type video/mp4",
+        )
+
+    return metadata
 
 
 def _serialize_job(job: dict) -> dict:
@@ -146,8 +239,46 @@ def dependency_health():
     )
 
 
+@app.post("/uploads", status_code=201)
+def create_upload(_: CreateUploadRequest):
+    object_name = f"uploads/{uuid4().hex}.mp4"
+
+    try:
+        upload_url, expires_at = (
+            ObjectStorageGateway().create_input_write_url(
+                object_name=object_name,
+                ttl_seconds=_upload_url_ttl_seconds(),
+            )
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to create upload URL",
+        ) from error
+
+    return {
+        "object_name": object_name,
+        "upload_url": upload_url,
+        "method": "PUT",
+        "required_headers": {"Content-Type": "video/mp4"},
+        "expires_at": expires_at,
+        "max_size_bytes": _max_upload_bytes(),
+    }
+
+
+@app.post("/uploads/complete")
+def complete_upload(request: CompleteUploadRequest):
+    metadata = _inspect_input_object(request.object_name)
+    return {
+        "status": "ready",
+        "object_name": request.object_name,
+        **metadata,
+    }
+
+
 @app.post("/jobs", status_code=202)
 def create_inference_job(request: CreateInferenceJobRequest):
+    _inspect_input_object(request.input_object_name)
     job_id = str(uuid4())
 
     create_job(
