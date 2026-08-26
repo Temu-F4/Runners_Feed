@@ -16,32 +16,40 @@
 - inference 전용 Celery queue와 worker
 - OCI Object Storage 원본 다운로드 및 결과 업로드
 - PostgreSQL 작업 상태 저장
+- 직접 업로드 URL과 업로드 완료 검증 API
 - API를 통한 작업 생성 및 상태·결과 조회
+- 만료시간이 있는 결과 영상 URL
+- Next.js 업로드·진행 상태·결과 재생 화면
+- Nginx reverse proxy와 server-side API key
+- Let’s Encrypt IP HTTPS와 자동 갱신 timer
 - inference worker non-root 실행
-- GitHub main 병합 및 OCI main 배포
+- 공개 HTTPS 운영 E2E 검증
 
 ### 기준 Git commit
 
 ```text
-744a936 merge: persist inference job lifecycle
+dba88cb fix: avoid duplicate certificate renewal delay
 ```
+
+이 commit은 현재 OCI에 검증 배포되어 있으며 `feat/ip-https` Pull Request의
+`main` 병합이 남아 있다. 병합 후 이 항목을 main merge commit으로 갱신한다.
 
 ### 마지막 전체 검증 Job
 
 ```text
-Job ID: 583de735-fb74-48e5-b974-e2f69534a7b6
-Input: poc/test1.mp4
+Job ID: 9267fa8d-e4b4-47c4-9862-4dc442dc748e
+Input: uploads/4f5447ac6c734a1ba64ef3c9db380fdd.mp4
 Status: SUCCESS
 Frames: 500
-Elapsed: 약 94초
+Elapsed: 약 91.06초
 ```
 
 결과 Object Storage 경로:
 
 ```text
-jobs/583de735-fb74-48e5-b974-e2f69534a7b6/details.json
-jobs/583de735-fb74-48e5-b974-e2f69534a7b6/pose_predictions.json
-jobs/583de735-fb74-48e5-b974-e2f69534a7b6/rendered.mp4
+jobs/9267fa8d-e4b4-47c4-9862-4dc442dc748e/details.json
+jobs/9267fa8d-e4b4-47c4-9862-4dc442dc748e/pose_predictions.json
+jobs/9267fa8d-e4b4-47c4-9862-4dc442dc748e/rendered.mp4
 ```
 
 ## 2. 각 환경의 역할
@@ -165,8 +173,15 @@ bucket-t04-results
 ## 3. 전체 시스템 흐름
 
 ```text
-Client
+Browser
+  │ HTTPS :443
+  ▼
+Nginx
+  ├─ / → Next.js
+  └─ /api/* → FastAPI
   │
+  │ POST /uploads → Object Storage 직접 PUT
+  │ POST /uploads/complete
   │ POST /jobs
   ▼
 FastAPI
@@ -184,8 +199,9 @@ FastAPI
         └─ PostgreSQL SUCCESS 또는 FAILED
              │
              ▼
-Client
-  └─ GET /jobs/{job_id}
+Browser
+  ├─ GET /api/jobs/{job_id}
+  └─ POST /api/jobs/{job_id}/result-url → 결과 영상 재생
 ```
 
 ## 4. 지금까지 한 작업: WHAT / WHY / HOW / RESULT
@@ -415,7 +431,7 @@ updated_at
 
 **RESULT**
 
-API로 작업 생성부터 완료까지 상태와 시간을 조회할 수 있다.
+공개 HTTPS API와 Next.js 화면에서 작업 생성부터 완료까지 상태와 시간을 조회할 수 있다.
 
 ### 4.8 작업 API
 
@@ -434,7 +450,8 @@ POST /jobs
 GET  /jobs/{job_id}
 ```
 
-현재 API는 OCI 내부 `127.0.0.1:8000`에서만 접근 가능하다.
+FastAPI 자체는 OCI 내부 `127.0.0.1:8000`에만 bind하고,
+외부 요청은 HTTPS Nginx `/api/*`를 통해서만 접근한다.
 
 **RESULT**
 
@@ -453,16 +470,22 @@ api               FastAPI
 worker            기존 일반 테스트 Celery worker
 inference-worker  RTMPose 전용 Celery worker
 inference-poc     수동 Docker 모델 테스트 전용
+frontend          Next.js 사용자 화면
+web               Nginx HTTPS reverse proxy
+certbot           인증서 발급·갱신 도구용 profile
 ```
 
 `inference-poc`는 삭제하지 않았다. 자동 실행되지 않도록 `manual-poc` profile로 분리했다.
 
 ## 6. API 사용 방법
 
+공개 API는 Nginx가 서버 내부에서 API key를 추가한다.
+브라우저와 터미널에 API key를 입력하거나 출력하지 않는다.
+
 ### Health
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl https://140.238.0.197/api/health
 ```
 
 정상 출력:
@@ -474,7 +497,7 @@ curl http://127.0.0.1:8000/health
 ### PostgreSQL·Redis Health
 
 ```bash
-curl http://127.0.0.1:8000/health/dependencies
+curl https://140.238.0.197/api/health/dependencies
 ```
 
 정상 출력:
@@ -492,7 +515,7 @@ curl http://127.0.0.1:8000/health/dependencies
 ### Object Storage Health
 
 ```bash
-curl http://127.0.0.1:8000/health/storage
+curl https://140.238.0.197/api/health/storage
 ```
 
 ### 샘플 작업 생성
@@ -500,7 +523,7 @@ curl http://127.0.0.1:8000/health/storage
 **WHERE**: OCI 서버
 
 ```bash
-curl -X POST http://127.0.0.1:8000/jobs \
+curl -X POST https://140.238.0.197/api/jobs \
   -H "Content-Type: application/json" \
   -d '{
     "case_id": "demo-sample",
@@ -513,7 +536,7 @@ curl -X POST http://127.0.0.1:8000/jobs \
 ### 작업 상태 조회
 
 ```bash
-curl http://127.0.0.1:8000/jobs/<JOB_ID>
+curl https://140.238.0.197/api/jobs/<JOB_ID>
 ```
 
 완료 시 응답 예시:
@@ -594,6 +617,8 @@ redis             healthy
 api               healthy
 worker            Up
 inference-worker  Up
+frontend          healthy
+web               Up
 ```
 
 `inference-poc`는 평상시 실행되지 않는 것이 정상이다.
@@ -803,7 +828,7 @@ Private key를 Public GitHub, 메일, 메신저, iCloud 공유 폴더에 올리�
 
 ## 13. 문제 진단
 
-### API가 응답하지 않음
+### 공개 웹 또는 API가 응답하지 않음
 
 ```bash
 docker compose \
@@ -817,6 +842,11 @@ docker compose \
   -f compose.poc.yaml \
   --profile poc \
   logs --tail=100 api
+
+docker compose \
+  -f compose.yaml \
+  -f compose.poc.yaml \
+  logs --tail=100 web frontend
 ```
 
 ### Worker가 작업을 받지 않음
@@ -856,7 +886,7 @@ test -r /home/ubuntu/.oci/runners_feed_team4_api_key.pem && echo KEY=PASS
 ### PostgreSQL 상태 확인
 
 ```bash
-curl http://127.0.0.1:8000/health/dependencies
+curl https://140.238.0.197/api/health/dependencies
 ```
 
 ### Docker service 이름을 터미널에 입력하지 않기
@@ -890,24 +920,23 @@ inference-worker
 
 처리 시간은 측정했지만 peak memory는 아직 측정하지 않았다.
 
-### 외부 접속 미구현
+### IP 인증서와 Public IP
 
-API는 현재 다음 주소에만 bind되어 있다.
+현재 인증서는 도메인이 아니라 `140.238.0.197`에 발급되어 있다.
+OCI VM 중지·시작 후 Public IP가 바뀌면 새 IP로 인증서를 다시 발급해야 한다.
 
-```text
-127.0.0.1:8000
+IP 인증서는 short-lived이므로 다음 timer가 항상 enabled/active여야 한다.
+
+```bash
+systemctl is-enabled runners-feed-cert-renew.timer
+systemctl is-active runners-feed-cert-renew.timer
+systemctl list-timers runners-feed-cert-renew.timer --no-pager
 ```
 
-외부 웹·프론트에서는 아직 직접 접근할 수 없다.
+### 인증·사용자 권한
 
-### 결과 URL 미구현
-
-API는 Object Storage 객체 이름을 반환하지만 브라우저에서 바로 열 수 있는 서명 URL은 반환하지 않는다.
-
-### 업로드 API 미구현
-
-샘플 객체는 미리 Raw Bucket에 올려져 있다.
-사용자가 영상을 올릴 수 있는 Pre-Authenticated Request 또는 Pre-Signed Upload URL API는 아직 없다.
+Nginx가 공통 API key를 추가하는 MVP 보호는 적용되어 있지만 사용자 로그인,
+사용자별 job 소유권, rate limit은 아직 없다.
 
 ### 정식 DB migration 미구현
 
@@ -920,68 +949,41 @@ API는 Object Storage 객체 이름을 반환하지만 브라우저에서 바로
 
 ## 15. 앞으로 할 작업: WHAT / WHY / HOW
 
-### 우선순위 1: 결과 다운로드 URL API
+### 우선순위 1: HTTPS branch main 병합과 OCI main 복귀
 
 **WHAT**
 
-`GET /jobs/{job_id}`가 결과 객체 이름과 함께 일정 시간 유효한 다운로드 URL을 반환한다.
+검증된 `feat/ip-https`를 Pull Request로 main에 병합하고 OCI checkout을 main으로 복귀한다.
 
 **WHY**
 
-현재 프론트엔드는 `jobs/.../rendered.mp4`라는 객체 이름만 받아서는 영상을 재생할 수 없다.
+현재 운영은 검증 commit을 사용하지만 GitHub main과 OCI HEAD가 다르다.
 
 **HOW**
 
-- OCI Object Storage Pre-Authenticated Request 또는 backend download endpoint 사용
-- Job이 `SUCCESS`일 때만 URL 생성
-- URL 만료시간 설정
-- 다른 Job의 결과를 조회하지 못하도록 사용자 권한 검사
+- GitHub Pull Request 생성·병합
+- OCI에서 최신 main fetch
+- `git switch main`과 fast-forward
+- HTTPS/API/E2E health 재확인
 
-### 우선순위 2: 영상 업로드 API
+### 우선순위 2: 운영 문서와 백업
 
 **WHAT**
 
-프론트가 Raw Bucket에 영상을 직접 업로드할 수 있는 제한된 업로드 URL을 발급한다.
+PostgreSQL 백업·복구와 Object Storage/Runtime 보관기간을 정한다.
 
 **WHY**
 
-큰 영상을 FastAPI 서버가 직접 받아 전달하면 API 메모리·대역폭 부하가 커진다.
+DB 장애와 영상 누적에 따른 데이터 손실·저장 비용을 통제해야 한다.
 
 **HOW**
 
-```text
-POST /uploads
-→ 업로드 URL과 object_name 반환
-→ 프론트가 Object Storage에 직접 업로드
-→ POST /jobs로 분석 시작
-```
+- `pg_dump` 정기 백업
+- 실제 복구 rehearsal
+- Raw/Results bucket Lifecycle 정책
+- Runtime job 디렉터리 정리 기준
 
-검사 항목:
-
-- 허용 확장자와 Content-Type
-- 최대 파일 크기
-- 사용자별 object prefix
-- 업로드 완료 여부
-
-### 우선순위 3: Nginx·도메인·HTTPS
-
-**WHAT**
-
-외부에서 API를 안전하게 호출할 수 있도록 443 포트를 연다.
-
-**WHY**
-
-현재 `127.0.0.1:8000`은 VM 내부에서만 접근 가능하다.
-
-**HOW**
-
-- Nginx reverse proxy
-- 도메인 DNS 연결
-- Let's Encrypt TLS 인증서
-- OCI Security List/NSG에서 80·443만 허용
-- Uvicorn 8000 포트는 계속 외부에 직접 공개하지 않음
-
-### 우선순위 4: 인증과 권한
+### 우선순위 3: 인증과 권한
 
 **WHAT**
 
@@ -999,7 +1001,7 @@ POST /uploads
 - rate limit
 - 키 회전 절차
 
-### 우선순위 5: 테스트와 GitHub Actions
+### 우선순위 4: 테스트와 GitHub Actions
 
 **WHAT**
 
@@ -1018,7 +1020,7 @@ PR마다 API·DB·Worker 검사를 자동 실행한다.
 - private key·secret scan
 - 실제 모델 추론은 큰 모델 없이 작은 fixture 또는 별도 수동 gate로 분리
 
-### 우선순위 6: 모델 후처리 보완
+### 우선순위 5: 모델 후처리 보완
 
 **WHAT**
 
@@ -1035,7 +1037,7 @@ PR마다 API·DB·Worker 검사를 자동 실행한다.
 - 출력 프레임 수와 원본 프레임 수 일치 검사
 - 다중 인물·미검출 fixture 테스트
 
-### 우선순위 7: 운영 안정성
+### 우선순위 6: 운영 안정성
 
 **WHAT**
 
