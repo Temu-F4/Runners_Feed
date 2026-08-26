@@ -43,7 +43,7 @@ def _build_structured_model():
 
     api_key = os.environ["OLLAMA_API_KEY"]
     model = ChatOllama(
-        model=os.getenv("OLLAMA_REPORT_MODEL", "gemma4:31b-cloud"),
+        model=os.getenv("OLLAMA_REPORT_MODEL", "gemma4:31b"),
         base_url=os.getenv("OLLAMA_BASE_URL", "https://ollama.com"),
         client_kwargs={
             "headers": {
@@ -152,7 +152,7 @@ def generate_narrative(
     ]
     return {
         "status": "success",
-        "model": os.getenv("OLLAMA_REPORT_MODEL", "gemma4:31b-cloud"),
+        "model": os.getenv("OLLAMA_REPORT_MODEL", "gemma4:31b"),
         **output,
     }
 
