@@ -1,6 +1,8 @@
 import configparser
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import oci
 
@@ -50,60 +52,33 @@ class ObjectStorageGateway:
             load_oci_config()
         )
         self.namespace = self.client.get_namespace().data
-        self.raw_bucket = os.environ["OCI_RAW_BUCKET"]
-        self.results_bucket = os.environ[
-            "OCI_RESULTS_BUCKET"
-        ]
+        self.results_bucket = os.environ["OCI_RESULTS_BUCKET"]
 
-    def download_input(
+    def create_result_read_url(
         self,
         object_name: str,
-        destination: Path,
-    ) -> None:
-        destination.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-        temporary_path = destination.with_suffix(
-            destination.suffix + ".part"
-        )
-
-        response = self.client.get_object(
+        ttl_seconds: int,
+    ) -> tuple[str, datetime]:
+        self.client.head_object(
             namespace_name=self.namespace,
-            bucket_name=self.raw_bucket,
+            bucket_name=self.results_bucket,
             object_name=object_name,
         )
 
-        try:
-            with temporary_path.open("wb") as output:
-                for chunk in response.data.raw.stream(
-                    1024 * 1024,
-                    decode_content=False,
-                ):
-                    output.write(chunk)
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=ttl_seconds
+        )
+        details = oci.object_storage.models.CreatePreauthenticatedRequestDetails(
+            name=f"runners-feed-result-{uuid4().hex}",
+            access_type="ObjectRead",
+            time_expires=expires_at,
+            object_name=object_name,
+        )
+        request = self.client.create_preauthenticated_request(
+            namespace_name=self.namespace,
+            bucket_name=self.results_bucket,
+            create_preauthenticated_request_details=details,
+        ).data
 
-            temporary_path.replace(destination)
-
-        except Exception:
-            temporary_path.unlink(missing_ok=True)
-            raise
-
-    def upload_result(
-        self,
-        source: Path,
-        object_name: str,
-        content_type: str,
-    ) -> None:
-        if not source.is_file():
-            raise FileNotFoundError(
-                f"Result artifact does not exist: {source}"
-            )
-
-        with source.open("rb") as body:
-            self.client.put_object(
-                namespace_name=self.namespace,
-                bucket_name=self.results_bucket,
-                object_name=object_name,
-                put_object_body=body,
-                content_type=content_type,
-            )
+        endpoint = self.client.base_client.endpoint.rstrip("/")
+        return f"{endpoint}{request.access_uri}", expires_at
