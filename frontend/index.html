@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="러닝 영상을 업로드하고 자세 분석 결과를 확인합니다." />
+    <title>Runners Feed · Running Form Analysis</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">RUNNERS FEED · MOTION LAB</p>
+        <h1>달리는 순간을<br /><span>데이터로 읽습니다.</span></h1>
+        <p class="intro">
+          MP4 영상을 올리면 자세 추정 파이프라인이 프레임을 분석하고,
+          관절 포인트가 표시된 결과 영상을 만듭니다.
+        </p>
+      </header>
+
+      <section class="workspace" aria-labelledby="upload-title">
+        <div class="panel upload-panel">
+          <div class="panel-heading">
+            <p class="step-label">01 · INPUT</p>
+            <h2 id="upload-title">분석할 영상</h2>
+          </div>
+
+          <label class="drop-zone" for="video-file">
+            <input id="video-file" type="file" accept="video/mp4,.mp4" />
+            <span class="drop-icon" aria-hidden="true">↗</span>
+            <strong id="file-label">MP4 파일을 선택하세요</strong>
+            <span>최대 250 MiB · 원본은 비공개 저장</span>
+          </label>
+
+          <label class="field" for="case-id">
+            <span>분석 이름</span>
+            <input
+              id="case-id"
+              type="text"
+              maxlength="64"
+              placeholder="morning-run"
+              autocomplete="off"
+            />
+          </label>
+
+          <button id="analyze-button" class="primary-button" type="button">
+            분석 시작
+            <span aria-hidden="true">→</span>
+          </button>
+          <p id="form-error" class="error-message" role="alert"></p>
+        </div>
+
+        <div class="panel process-panel">
+          <div class="panel-heading">
+            <p class="step-label">02 · PROCESS</p>
+            <h2>분석 진행</h2>
+          </div>
+
+          <ol class="timeline" id="timeline">
+            <li data-stage="upload"><span>1</span><div><strong>영상 업로드</strong><small>Object Storage</small></div></li>
+            <li data-stage="queue"><span>2</span><div><strong>작업 등록</strong><small>Celery Queue</small></div></li>
+            <li data-stage="analysis"><span>3</span><div><strong>자세 분석</strong><small>RTMPose Halpe26</small></div></li>
+            <li data-stage="result"><span>4</span><div><strong>결과 생성</strong><small>Rendered MP4</small></div></li>
+          </ol>
+
+          <div class="progress-block">
+            <div class="progress-copy">
+              <span id="status-text" aria-live="polite">영상을 기다리고 있습니다</span>
+              <span id="progress-value">0%</span>
+            </div>
+            <progress id="progress" max="100" value="0">0%</progress>
+          </div>
+
+          <dl class="job-meta">
+            <div><dt>Job ID</dt><dd id="job-id">—</dd></div>
+            <div><dt>Status</dt><dd id="job-status">IDLE</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section id="result-section" class="result-section" hidden aria-labelledby="result-title">
+        <div class="result-copy">
+          <p class="step-label">03 · RESULT</p>
+          <h2 id="result-title">분석이 완료됐습니다.</h2>
+          <p>관절 포인트가 합성된 영상을 재생하거나 전체 화면으로 확인하세요.</p>
+        </div>
+        <div class="video-frame">
+          <video id="result-video" controls playsinline preload="metadata"></video>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

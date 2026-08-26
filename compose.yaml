@@ -44,6 +44,7 @@ services:
       context: ./api
     restart: unless-stopped
     environment:
+      API_KEY: ${API_KEY:?API_KEY is required}
       OCI_CONFIG_FILE: /.oci/config
       OCI_CONFIG_PROFILE: DEFAULT
       OCI_REGION: ap-seoul-1
@@ -75,6 +76,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - backend
+  web:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    restart: unless-stopped
+    environment:
+      API_KEY: ${API_KEY:?API_KEY is required}
+      NGINX_ENVSUBST_FILTER: API_KEY
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
     networks:
       - backend
   worker:
