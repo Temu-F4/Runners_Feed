@@ -26,6 +26,7 @@ services:
   inference-worker:
     profiles:
       - poc
+    restart: unless-stopped
     build:
       context: ./worker
       dockerfile: Dockerfile.inference
