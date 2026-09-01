@@ -453,6 +453,10 @@ api               FastAPI
 worker            기존 일반 테스트 Celery worker
 inference-worker  RTMPose 전용 Celery worker
 inference-poc     수동 Docker 모델 테스트 전용
+prometheus        서버·컨테이너 메트릭 수집 및 15일 보관
+grafana           Prometheus 메트릭 대시보드
+cadvisor          Docker 컨테이너 CPU·메모리·네트워크 메트릭
+node-exporter     OCI VM CPU·메모리·디스크·load 메트릭
 ```
 
 `inference-poc`는 삭제하지 않았다. 자동 실행되지 않도록 `manual-poc` profile로 분리했다.
@@ -568,6 +572,16 @@ git merge --ff-only refs/remotes/origin/main
 
 ### 7.4 Docker 시작
 
+첫 모니터링 배포 전 OCI의 `.env`에 다음 값을 설정한다.
+
+```dotenv
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=<LONG_RANDOM_SECRET>
+GRAFANA_ROOT_URL=https://140.238.0.197/grafana/
+```
+
+비밀번호는 Git이나 문서에 기록하지 않는다.
+
 ```bash
 docker compose \
   -f compose.yaml \
@@ -594,9 +608,65 @@ redis             healthy
 api               healthy
 worker            Up
 inference-worker  Up
+prometheus        healthy
+grafana           Up
+cadvisor          Up
+node-exporter     Up
 ```
 
 `inference-poc`는 평상시 실행되지 않는 것이 정상이다.
+
+### 7.6 모니터링 확인
+
+Grafana는 별도 공개 포트 없이 기존 HTTPS 경로로 접속한다.
+
+```text
+https://140.238.0.197/grafana/
+```
+
+Prometheus 수집 대상 확인:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.poc.yaml \
+  --profile poc \
+  exec -T prometheus \
+  wget -qO- http://localhost:9090/api/v1/targets
+```
+
+다음 세 job의 상태가 모두 `up`이어야 한다.
+
+```text
+prometheus
+cadvisor
+node-exporter
+```
+
+모니터링 로그 확인:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.poc.yaml \
+  --profile poc \
+  logs --tail=100 prometheus grafana cadvisor node-exporter
+```
+
+Grafana 관리자 비밀번호 재설정:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.poc.yaml \
+  --profile poc \
+  exec grafana \
+  grafana cli --homepath /usr/share/grafana \
+  admin reset-admin-password '<NEW_PASSWORD>'
+```
+
+Prometheus와 Grafana 데이터는 각각 `prometheus_data`, `grafana_data` named volume에 저장된다.
+일반적인 재시작이나 재배포에서는 이 volume을 삭제하지 않는다.
 
 ## 8. 수동 POC 실행 방법
 
@@ -859,6 +929,27 @@ test -r /home/ubuntu/.oci/runners_feed_team4_api_key.pem && echo KEY=PASS
 curl http://127.0.0.1:8000/health/dependencies
 ```
 
+### 모니터링 데이터가 보이지 않음
+
+서비스와 수집 대상 상태를 순서대로 확인한다.
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.poc.yaml \
+  --profile poc \
+  ps
+
+docker compose \
+  -f compose.yaml \
+  -f compose.poc.yaml \
+  --profile poc \
+  logs --tail=100 prometheus grafana cadvisor node-exporter
+```
+
+Grafana 로그인 화면은 열리지만 패널이 비어 있으면 Prometheus target API에서
+`cadvisor`와 `node-exporter`가 `up`인지 먼저 확인한다.
+
 ### Docker service 이름을 터미널에 입력하지 않기
 
 다음은 명령어가 아니라 서비스 이름이다.
@@ -914,9 +1005,10 @@ API는 Object Storage 객체 이름을 반환하지만 브라우저에서 바로
 현재 API 시작 시 `CREATE TABLE IF NOT EXISTS`로 MVP 테이블을 만든다.
 운영 단계에서는 Alembic 같은 migration 도구가 필요하다.
 
-### 고급 모니터링·백업 미구현
+### 알림·백업 미구현
 
-중앙 로그, 알림, PostgreSQL 백업, Object Storage Lifecycle 정책은 아직 없다.
+기본 CPU·메모리·디스크 모니터링은 구현되어 있다.
+중앙 로그, Alertmanager 알림, PostgreSQL 백업, Object Storage Lifecycle 정책은 아직 없다.
 
 ## 15. 앞으로 할 작업: WHAT / WHY / HOW
 
@@ -1049,7 +1141,7 @@ PR마다 API·DB·Worker 검사를 자동 실행한다.
 
 - Docker·API·Worker 중앙 로그
 - FAILED Job 알림
-- CPU·메모리·디스크 측정
+- CPU·메모리·디스크 임계치 알림
 - PostgreSQL 정기 백업과 복구 테스트
 - Raw·Results Bucket Lifecycle 정책
 - Runtime 임시 폴더 정리 정책
