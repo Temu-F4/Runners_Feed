@@ -173,6 +173,7 @@ services:
     environment:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://140.238.0.197/grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: "1s"
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
       GF_SECURITY_COOKIE_SECURE: "true"
@@ -197,7 +198,7 @@ services:
     privileged: true
     command:
       - --docker_only=true
-      - --housekeeping_interval=15s
+      - --housekeeping_interval=1s
     devices:
       - /dev/kmsg:/dev/kmsg
     volumes:

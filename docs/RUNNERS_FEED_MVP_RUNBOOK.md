@@ -620,6 +620,11 @@ node-exporter     Up
 
 Grafana는 별도 공개 포트 없이 기존 HTTPS 경로로 접속한다.
 
+Prometheus, cAdvisor, Grafana datasource와 dashboard는 모두 1초 간격으로
+수집·조회·갱신한다. 이는 기존 15초 설정보다 약 15배 많은 시계열 sample을
+생성하므로 CPU·디스크 사용량을 함께 관찰한다. Prometheus는 15일 또는 5GB 중
+먼저 도달하는 보존 제한을 사용하므로 실제 보존 기간이 15일보다 짧아질 수 있다.
+
 ```text
 https://140.238.0.197/grafana/
 ```

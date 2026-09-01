@@ -765,7 +765,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": "15s",
+  "refresh": "1s",
   "schemaVersion": 41,
   "tags": [
     "runners-feed",
