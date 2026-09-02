@@ -612,9 +612,11 @@ api               healthy
 worker            Up
 inference-worker  Up
 prometheus        healthy
+alertmanager      Up
 grafana           Up
 cadvisor          Up
 node-exporter     Up
+host-metrics-collector Up
 ```
 
 `inference-poc`는 평상시 실행되지 않는 것이 정상이다.
@@ -757,6 +759,89 @@ docker compose \
 
 Prometheus와 Grafana 데이터는 각각 `prometheus_data`, `grafana_data` named volume에 저장된다.
 일반적인 재시작이나 재배포에서는 이 volume을 삭제하지 않는다.
+
+#### 2026-09-02 OCI Overview 확장 및 호스트 알람
+
+`Runners Feed / OCI Overview` dashboard는 다음 순서로 구성한다.
+
+1. 최상단 Overview: OCI VM CPU, 메모리, 루트 디스크 사용률 gauge
+2. 상태: Node Exporter UP, cAdvisor UP, VM uptime, firing 알람 수
+3. Node Exporter: CPU·메모리 추이, 마운트별 디스크 사용률, 호스트 network receive/transmit
+4. 호스트 상세: 큰 디렉터리, 10MiB 이상 대용량 파일, RSS 상위 프로세스와 실행 파일 경로
+5. cAdvisor: 서비스별 CPU rate, `usage_bytes`와 `working_set_bytes`, network receive/transmit
+6. Prometheus Alerts: pending/firing 알람 목록
+
+컨테이너 CPU는 1분 rate를 사용하며 1개 CPU core를 계속 사용하면 100%다. 여러
+core를 사용하면 100%를 넘을 수 있다. Grafana legend의 `api`, `web`,
+`inference-worker` 등은 Docker Compose service 이름이다.
+
+`container_memory_usage_bytes`는 page cache를 포함한 cgroup 전체 사용량이고,
+`container_memory_working_set_bytes`는 비활성 file cache를 제외해 실제 활성
+메모리에 더 가까운 값이다. 두 값을 같은 panel에 함께 표시한다.
+
+Node Exporter 자체는 디렉터리·파일별 디스크 사용량이나 프로세스별 메모리를
+제공하지 않는다. `host-metrics-collector`가 호스트를 read-only로 읽고 Node
+Exporter textfile collector용 custom metric을 생성한다.
+
+호스트의 여러 사용자 프로세스와 Docker volume 크기를 읽어야 하므로 collector는
+컨테이너 내부 UID 0으로 실행한다. 대신 host mount는 read-only이고 컨테이너 root
+filesystem도 read-only이며 network를 완전히 끄고 `no-new-privileges`를 적용한다.
+
+```text
+runners_feed_host_directory_size_bytes
+runners_feed_host_large_file_size_bytes
+runners_feed_host_process_resident_memory_bytes
+```
+
+- 프로세스 RSS 상위 20개: 15초 간격
+- 디렉터리와 대용량 파일 상위 20개: 5분 간격
+- 디렉터리 조사 범위: `/home/ubuntu`, `/var/lib/docker`, `/var/log`, `/tmp`
+- 대용량 파일 조사 범위: `/home/ubuntu`, `/var/log`, `/var/lib/docker/volumes`
+- 대용량 파일 기준: 10MiB 이상
+
+전체 파일시스템을 매초 `du`/`find`하면 VM I/O에 부하를 주므로 이 상세 수집은
+Prometheus의 1초 scrape 간격과 분리했다. 파일 자체가 프로세스 RAM을 점유하는
+것은 아니므로 memory panel에는 PID, process 이름과 `/proc/<pid>/exe` 실행 파일
+경로를 표시한다.
+
+Prometheus는 다음 규칙을 15초마다 평가한다.
+
+| Alert | 조건 | 지속 시간 | Severity |
+|---|---|---:|---|
+| `NodeExporterDown` | Node Exporter scrape 실패 | 1분 | critical |
+| `CAdvisorDown` | cAdvisor scrape 실패 | 1분 | critical |
+| `HostCpuUsageHigh` | CPU 80% 이상 | 5분 | warning |
+| `HostMemoryUsageHigh` | 메모리 80% 이상 | 5분 | warning |
+| `HostDiskUsageWarning` | 디스크 80% 이상 90% 미만 | 5분 | warning |
+| `HostDiskUsageCritical` | 디스크 90% 이상 | 5분 | critical |
+
+Prometheus가 생성한 알람은 Alertmanager로 전달되어 grouping·silence 가능한 상태가
+된다. 현재 receiver 이름은 `dashboard-only`이며 Grafana와 Alertmanager에 알람
+상태를 보관하지만 외부 메시지는 보내지 않는다. Discord, Slack, Telegram, email
+중 실제 수신 채널과 credential이 정해지면 receiver를 추가해야 한다. 비밀 webhook과
+비밀번호는 Git에 commit하지 않는다.
+
+알람 규칙 확인:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.poc.yaml \
+  --profile poc \
+  exec -T prometheus \
+  wget -qO- http://localhost:9090/api/v1/rules
+```
+
+custom metric 확인:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.poc.yaml \
+  --profile poc \
+  exec -T prometheus \
+  wget -qO- 'http://localhost:9090/api/v1/query?query=runners_feed_host_process_resident_memory_bytes'
+```
 
 ## 8. 수동 POC 실행 방법
 
@@ -1095,10 +1180,11 @@ API는 Object Storage 객체 이름을 반환하지만 브라우저에서 바로
 현재 API 시작 시 `CREATE TABLE IF NOT EXISTS`로 MVP 테이블을 만든다.
 운영 단계에서는 Alembic 같은 migration 도구가 필요하다.
 
-### 알림·백업 미구현
+### 외부 알림 채널·백업 미구현
 
-기본 CPU·메모리·디스크 모니터링은 구현되어 있다.
-중앙 로그, Alertmanager 알림, PostgreSQL 백업, Object Storage Lifecycle 정책은 아직 없다.
+CPU·메모리·디스크와 exporter down 알람 규칙 및 Alertmanager 전달은 구현되어 있다.
+다만 실제 Discord·Slack·Telegram·email receiver는 아직 연결하지 않았다. 중앙 로그,
+PostgreSQL 백업, Object Storage Lifecycle 정책도 아직 없다.
 
 ## 15. 앞으로 할 작업: WHAT / WHY / HOW
 
@@ -1231,7 +1317,7 @@ PR마다 API·DB·Worker 검사를 자동 실행한다.
 
 - Docker·API·Worker 중앙 로그
 - FAILED Job 알림
-- CPU·메모리·디스크 임계치 알림
+- Alertmanager 외부 receiver 연결과 시험 알림
 - PostgreSQL 정기 백업과 복구 테스트
 - Raw·Results Bucket Lifecycle 정책
 - Runtime 임시 폴더 정리 정책

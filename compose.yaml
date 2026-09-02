@@ -141,6 +141,20 @@ services:
     networks:
       - backend
 
+  alertmanager:
+    image: prom/alertmanager:v0.33.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    expose:
+      - "9093"
+    networks:
+      - monitoring
+
   prometheus:
     image: prom/prometheus:v3.14.0
     restart: unless-stopped
@@ -151,6 +165,7 @@ services:
       - --storage.tsdb.retention.size=5GB
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     expose:
       - "9090"
@@ -254,6 +269,7 @@ services:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
       - --path.rootfs=/rootfs
+      - --collector.textfile.directory=/textfile-collector
       - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
     read_only: true
     security_opt:
@@ -262,16 +278,43 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro,rslave
+      - node_textfile_data:/textfile-collector:ro
     expose:
       - "9100"
     networks:
       - monitoring
+
+  host-metrics-collector:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - /collector/collect.sh
+    environment:
+      PROCESS_INTERVAL_SECONDS: "15"
+      STORAGE_INTERVAL_SECONDS: "300"
+      TOP_PROCESS_COUNT: "20"
+      TOP_STORAGE_COUNT: "20"
+      LARGE_FILE_MIN_BYTES: "10485760"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /:/host:ro,rslave
+      - ./monitoring/host-metrics-collector/collect.sh:/collector/collect.sh:ro
+      - node_textfile_data:/textfile-collector
+    tmpfs:
+      - /tmp
+    network_mode: none
 
 volumes:
   postgres_data:
   redis_data:
   prometheus_data:
   grafana_data:
+  alertmanager_data:
+  node_textfile_data:
 
 networks:
   backend:

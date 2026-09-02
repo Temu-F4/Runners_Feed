@@ -1,0 +1,79 @@
+groups:
+  - name: runners-feed-host-alerts
+    interval: 15s
+    rules:
+      - alert: NodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: node-exporter
+        annotations:
+          summary: Node Exporter is down
+          description: Prometheus has not been able to scrape Node Exporter for more than 1 minute.
+
+      - alert: CAdvisorDown
+        expr: up{job="cadvisor"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: cadvisor
+        annotations:
+          summary: cAdvisor is down
+          description: Prometheus has not been able to scrape cAdvisor for more than 1 minute.
+
+      - alert: HostCpuUsageHigh
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{job="node-exporter",mode="idle"}[5m])) * 100) >= 80
+        for: 5m
+        labels:
+          severity: warning
+          service: oci-vm
+        annotations:
+          summary: Host CPU usage is at least 80%
+          description: CPU usage on {{ $labels.instance }} has remained at or above 80% for 5 minutes (current {{ $value | printf "%.1f" }}%).
+
+      - alert: HostMemoryUsageHigh
+        expr: 100 * (1 - (node_memory_MemAvailable_bytes{job="node-exporter"} / node_memory_MemTotal_bytes{job="node-exporter"})) >= 80
+        for: 5m
+        labels:
+          severity: warning
+          service: oci-vm
+        annotations:
+          summary: Host memory usage is at least 80%
+          description: Memory usage on {{ $labels.instance }} has remained at or above 80% for 5 minutes (current {{ $value | printf "%.1f" }}%).
+
+      - alert: HostDiskUsageWarning
+        expr: |
+          100 * (1 - (
+            node_filesystem_avail_bytes{job="node-exporter",fstype!~"tmpfs|overlay|squashfs",mountpoint!~"/run($|/.*)"}
+            /
+            node_filesystem_size_bytes{job="node-exporter",fstype!~"tmpfs|overlay|squashfs",mountpoint!~"/run($|/.*)"}
+          )) >= 80
+          and
+          100 * (1 - (
+            node_filesystem_avail_bytes{job="node-exporter",fstype!~"tmpfs|overlay|squashfs",mountpoint!~"/run($|/.*)"}
+            /
+            node_filesystem_size_bytes{job="node-exporter",fstype!~"tmpfs|overlay|squashfs",mountpoint!~"/run($|/.*)"}
+          )) < 90
+        for: 5m
+        labels:
+          severity: warning
+          service: oci-vm
+        annotations:
+          summary: Host disk usage is at least 80%
+          description: Disk usage on {{ $labels.mountpoint }} has remained between 80% and 90% for 5 minutes (current {{ $value | printf "%.1f" }}%).
+
+      - alert: HostDiskUsageCritical
+        expr: |
+          100 * (1 - (
+            node_filesystem_avail_bytes{job="node-exporter",fstype!~"tmpfs|overlay|squashfs",mountpoint!~"/run($|/.*)"}
+            /
+            node_filesystem_size_bytes{job="node-exporter",fstype!~"tmpfs|overlay|squashfs",mountpoint!~"/run($|/.*)"}
+          )) >= 90
+        for: 5m
+        labels:
+          severity: critical
+          service: oci-vm
+        annotations:
+          summary: Host disk usage is at least 90%
+          description: Disk usage on {{ $labels.mountpoint }} has remained at or above 90% for 5 minutes (current {{ $value | printf "%.1f" }}%).
