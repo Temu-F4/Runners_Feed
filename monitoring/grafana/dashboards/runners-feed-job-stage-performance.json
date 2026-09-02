@@ -84,13 +84,42 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "options": {
+                "-1": {
+                  "color": "gray",
+                  "index": 0,
+                  "text": "Job을 선택하세요"
+                },
+                "0": {
+                  "color": "yellow",
+                  "index": 1,
+                  "text": "계측 도입 전 데이터"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 2,
+                  "text": "9단계 계측 데이터"
+                }
+              },
+              "type": "value"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "gray",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 1
               }
             ]
           }
@@ -128,7 +157,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT CASE WHEN EXISTS (SELECT 1 FROM inference_job_stages WHERE job_id = '${job_id}'::uuid) THEN '9단계 계측 데이터' ELSE '계측 도입 전 데이터' END AS measurement_status",
+          "rawSql": "SELECT CASE WHEN NULLIF('${job_id}', '') IS NULL THEN -1 WHEN EXISTS (SELECT 1 FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid) THEN 1 ELSE 0 END AS measurement_status",
           "refId": "A",
           "sql": {
             "columns": [],
