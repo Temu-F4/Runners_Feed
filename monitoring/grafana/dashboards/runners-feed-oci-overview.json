@@ -13,213 +13,6 @@
         "type": "prometheus",
         "uid": "runners-feed-prometheus"
       },
-      "description": "OCI VM 전체 CPU 사용률입니다. 1분 rate를 사용합니다.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 70
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": true,
-        "showThresholdMarkers": true,
-        "sizing": "auto"
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "100 - (avg(rate(node_cpu_seconds_total{job=\"node-exporter\",mode=\"idle\"}[1m])) * 100)",
-          "instant": true,
-          "legendFormat": "CPU",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Overview / CPU",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "runners-feed-prometheus"
-      },
-      "description": "MemAvailable 기준 OCI VM 메모리 사용률입니다.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 70
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 8,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": true,
-        "showThresholdMarkers": true,
-        "sizing": "auto"
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{job=\"node-exporter\"} / node_memory_MemTotal_bytes{job=\"node-exporter\"}))",
-          "instant": true,
-          "legendFormat": "Memory",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Overview / Memory",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "runners-feed-prometheus"
-      },
-      "description": "루트 파일시스템 사용률입니다. 80% 경고, 90% 위험 기준입니다.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 80
-              },
-              {
-                "color": "red",
-                "value": 90
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 16,
-        "y": 0
-      },
-      "id": 3,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": true,
-        "showThresholdMarkers": true,
-        "sizing": "auto"
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "100 * (1 - (node_filesystem_avail_bytes{job=\"node-exporter\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{job=\"node-exporter\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"}))",
-          "instant": true,
-          "legendFormat": "/",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Overview / Root Disk",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "runners-feed-prometheus"
-      },
       "description": "1이면 정상 수집, 0이면 DOWN입니다.",
       "fieldConfig": {
         "defaults": {
@@ -261,16 +54,16 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 4,
         "x": 0,
-        "y": 5
+        "y": 0
       },
       "id": 4,
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "horizontal",
+        "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -340,16 +133,16 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 5
+        "w": 4,
+        "x": 4,
+        "y": 0
       },
       "id": 5,
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "horizontal",
+        "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -378,37 +171,47 @@
         "type": "prometheus",
         "uid": "runners-feed-prometheus"
       },
-      "description": "마지막 VM 부팅 이후 경과 시간입니다.",
+      "description": "OCI VM 전체 CPU 사용률입니다. 1분 rate를 사용합니다.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
+          "max": 100,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           },
-          "unit": "s"
+          "unit": "percent"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 5
+        "w": 4,
+        "x": 8,
+        "y": 0
       },
-      "id": 6,
+      "id": 1,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
+        "justifyMode": "center",
+        "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -422,14 +225,152 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "time() - node_boot_time_seconds{job=\"node-exporter\"}",
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{job=\"node-exporter\",mode=\"idle\"}[1m])) * 100)",
           "instant": true,
-          "legendFormat": "Uptime",
+          "legendFormat": "CPU",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "VM Uptime",
+      "title": "CPU",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "runners-feed-prometheus"
+      },
+      "description": "MemAvailable 기준 OCI VM 메모리 사용률입니다.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{job=\"node-exporter\"} / node_memory_MemTotal_bytes{job=\"node-exporter\"}))",
+          "instant": true,
+          "legendFormat": "Memory",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Memory",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "runners-feed-prometheus"
+      },
+      "description": "루트 파일시스템 사용률입니다. 80% 경고, 90% 위험 기준입니다.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "100 * (1 - (node_filesystem_avail_bytes{job=\"node-exporter\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{job=\"node-exporter\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"}))",
+          "instant": true,
+          "legendFormat": "/",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Root Disk",
       "type": "stat"
     },
     {
@@ -462,16 +403,16 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 5
+        "w": 4,
+        "x": 20,
+        "y": 0
       },
       "id": 7,
       "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -501,11 +442,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 4
       },
       "id": 100,
       "panels": [],
-      "title": "Node Exporter / OCI VM",
+      "title": "Node / OCI VM",
       "type": "row"
     },
     {
@@ -517,7 +458,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "palette-classic-by-name"
           },
           "custom": {
             "axisCenteredZero": false,
@@ -526,7 +467,7 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 12,
+            "fillOpacity": 7,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -557,9 +498,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 14,
         "x": 0,
-        "y": 10
+        "y": 5
       },
       "id": 8,
       "options": {
@@ -635,14 +576,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 10
+        "h": 5,
+        "w": 10,
+        "x": 14,
+        "y": 5
       },
       "id": 9,
       "options": {
-        "displayMode": "gradient",
+        "displayMode": "basic",
         "legend": {
           "calcs": [],
           "displayMode": "list",
@@ -676,8 +617,67 @@
           "refId": "A"
         }
       ],
-      "title": "Filesystem Usage by Mount",
+      "title": "Filesystem Usage",
       "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "runners-feed-prometheus"
+      },
+      "description": "마지막 VM 부팅 이후 경과 시간입니다.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 10,
+        "x": 14,
+        "y": 10
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "time() - node_boot_time_seconds{job=\"node-exporter\"}",
+          "instant": true,
+          "legendFormat": "Uptime",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "VM Uptime",
+      "type": "stat"
     },
     {
       "datasource": {
@@ -697,7 +697,7 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 12,
+            "fillOpacity": 5,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -725,18 +725,17 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 13
       },
       "id": 10,
       "options": {
         "legend": {
           "calcs": [
             "lastNotNull",
-            "mean",
-            "max"
+            "mean"
           ],
           "displayMode": "table",
           "placement": "bottom",
@@ -770,6 +769,20 @@
       "type": "timeseries"
     },
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 103,
+      "panels": [],
+      "targets": [],
+      "title": "Storage & Processes",
+      "type": "row"
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "runners-feed-prometheus"
@@ -778,7 +791,8 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "continuous-GrYlRd"
+            "fixedColor": "blue",
+            "mode": "fixed"
           },
           "thresholds": {
             "mode": "absolute",
@@ -794,14 +808,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 11,
+        "h": 8,
         "w": 8,
         "x": 0,
-        "y": 26
+        "y": 21
       },
       "id": 11,
       "options": {
-        "displayMode": "gradient",
+        "displayMode": "basic",
         "legend": {
           "calcs": [],
           "displayMode": "list",
@@ -828,14 +842,14 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "topk(20, runners_feed_host_directory_size_bytes)",
+          "expr": "topk(5, runners_feed_host_directory_size_bytes)",
           "instant": true,
           "legendFormat": "{{path}}",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Largest Host Directories",
+      "title": "Largest Directories · Top 5",
       "type": "bargauge"
     },
     {
@@ -847,7 +861,8 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "continuous-GrYlRd"
+            "fixedColor": "blue",
+            "mode": "fixed"
           },
           "thresholds": {
             "mode": "absolute",
@@ -863,14 +878,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 11,
+        "h": 8,
         "w": 8,
         "x": 8,
-        "y": 26
+        "y": 21
       },
       "id": 12,
       "options": {
-        "displayMode": "gradient",
+        "displayMode": "basic",
         "legend": {
           "calcs": [],
           "displayMode": "list",
@@ -897,14 +912,14 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "topk(20, runners_feed_host_large_file_size_bytes)",
+          "expr": "topk(5, runners_feed_host_large_file_size_bytes)",
           "instant": true,
           "legendFormat": "{{path}}",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Largest Host Files (>= 10 MiB)",
+      "title": "Largest Files (≥ 10 MiB) · Top 5",
       "type": "bargauge"
     },
     {
@@ -916,7 +931,8 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "continuous-GrYlRd"
+            "fixedColor": "blue",
+            "mode": "fixed"
           },
           "thresholds": {
             "mode": "absolute",
@@ -932,14 +948,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 11,
+        "h": 8,
         "w": 8,
         "x": 16,
-        "y": 26
+        "y": 21
       },
       "id": 13,
       "options": {
-        "displayMode": "gradient",
+        "displayMode": "basic",
         "legend": {
           "calcs": [],
           "displayMode": "list",
@@ -966,14 +982,14 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "topk(20, runners_feed_host_process_resident_memory_bytes)",
+          "expr": "topk(5, runners_feed_host_process_resident_memory_bytes)",
           "instant": true,
           "legendFormat": "{{process}} pid={{pid}} {{executable}}",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Top Process Memory (RSS)",
+      "title": "Top Process Memory (RSS) · Top 5",
       "type": "bargauge"
     },
     {
@@ -982,11 +998,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 29
       },
       "id": 101,
       "panels": [],
-      "title": "cAdvisor / Docker Containers",
+      "title": "Containers / cAdvisor",
       "type": "row"
     },
     {
@@ -1037,14 +1053,14 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 38
+        "y": 30
       },
       "id": 14,
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "horizontal",
+        "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1065,7 +1081,7 @@
           "refId": "A"
         }
       ],
-      "title": "cAdvisor UP",
+      "title": "cAdvisor Status",
       "type": "stat"
     },
     {
@@ -1096,7 +1112,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 38
+        "y": 30
       },
       "id": 15,
       "options": {
@@ -1124,7 +1140,7 @@
           "refId": "A"
         }
       ],
-      "title": "Compose Services",
+      "title": "Services",
       "type": "stat"
     },
     {
@@ -1155,7 +1171,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 38
+        "y": 30
       },
       "id": 16,
       "options": {
@@ -1183,7 +1199,7 @@
           "refId": "A"
         }
       ],
-      "title": "Container CPU Total",
+      "title": "Container CPU",
       "type": "stat"
     },
     {
@@ -1214,7 +1230,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 38
+        "y": 30
       },
       "id": 17,
       "options": {
@@ -1242,7 +1258,7 @@
           "refId": "A"
         }
       ],
-      "title": "Container Working Set",
+      "title": "Working Set",
       "type": "stat"
     },
     {
@@ -1254,79 +1270,72 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "fixedColor": "blue",
+            "mode": "fixed"
           },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+          "decimals": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              }
+            ]
           },
-          "unit": "percent",
-          "min": 0
+          "unit": "percent"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 9,
-        "w": 24,
+        "w": 8,
         "x": 0,
-        "y": 42
+        "y": 34
       },
       "id": 18,
       "options": {
+        "displayMode": "basic",
         "legend": {
-          "calcs": [
-            "lastNotNull",
-            "mean",
-            "max"
-          ],
-          "displayMode": "table",
+          "calcs": [],
+          "displayMode": "list",
           "placement": "bottom",
-          "showLegend": true
+          "showLegend": false
         },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "desc"
-        }
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "left",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "text": {},
+        "valueMode": "color"
       },
       "targets": [
         {
           "editorMode": "code",
           "expr": "sum by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{job=\"cadvisor\",container_label_com_docker_compose_project=\"runners-feed\",container_label_com_docker_compose_service!=\"\"}[1m])) * 100",
-          "instant": false,
+          "instant": true,
           "legendFormat": "{{container_label_com_docker_compose_service}}",
-          "range": true,
+          "range": false,
           "refId": "A"
         }
       ],
       "title": "Container CPU Rate by Service (1 core = 100%)",
-      "type": "timeseries"
+      "type": "bargauge"
     },
     {
       "datasource": {
@@ -1337,87 +1346,75 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "palette-classic-by-name"
           },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+          "decimals": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
           },
-          "unit": "bytes",
-          "min": 0
+          "unit": "bytes"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 51
+        "w": 8,
+        "x": 8,
+        "y": 34
       },
       "id": 19,
       "options": {
+        "displayMode": "basic",
         "legend": {
-          "calcs": [
-            "lastNotNull",
-            "mean",
-            "max"
-          ],
-          "displayMode": "table",
+          "calcs": [],
+          "displayMode": "list",
           "placement": "bottom",
-          "showLegend": true
+          "showLegend": false
         },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "desc"
-        }
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "left",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "text": {},
+        "valueMode": "color"
       },
       "targets": [
         {
           "editorMode": "code",
           "expr": "sum by (container_label_com_docker_compose_service) (container_memory_usage_bytes{job=\"cadvisor\",container_label_com_docker_compose_project=\"runners-feed\",container_label_com_docker_compose_service!=\"\"})",
-          "instant": false,
+          "instant": true,
           "legendFormat": "{{container_label_com_docker_compose_service}} usage",
-          "range": true,
+          "range": false,
           "refId": "A"
         },
         {
           "editorMode": "code",
           "expr": "sum by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{job=\"cadvisor\",container_label_com_docker_compose_project=\"runners-feed\",container_label_com_docker_compose_service!=\"\"})",
-          "instant": false,
+          "instant": true,
           "legendFormat": "{{container_label_com_docker_compose_service}} working set",
-          "range": true,
+          "range": false,
           "refId": "B"
         }
       ],
-      "title": "Container Memory: usage_bytes vs working_set_bytes",
-      "type": "timeseries"
+      "title": "Container Memory · Usage vs Working Set",
+      "type": "bargauge"
     },
     {
       "datasource": {
@@ -1437,7 +1434,7 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 12,
+            "fillOpacity": 5,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -1463,21 +1460,51 @@
           "unit": "Bps",
           "min": 0
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/receive/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/transmit/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 60
+        "w": 8,
+        "x": 16,
+        "y": 34
       },
       "id": 20,
       "options": {
         "legend": {
           "calcs": [
             "lastNotNull",
-            "mean",
-            "max"
+            "mean"
           ],
           "displayMode": "table",
           "placement": "bottom",
@@ -1516,11 +1543,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 69
+        "y": 43
       },
       "id": 102,
       "panels": [],
-      "title": "Prometheus Alerts",
+      "title": "Alert Rules",
       "type": "row"
     },
     {
@@ -1552,10 +1579,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 9,
+        "h": 7,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 44
       },
       "id": 21,
       "options": {
@@ -1580,7 +1607,7 @@
           "refId": "A"
         }
       ],
-      "title": "Pending / Firing Alerts",
+      "title": "Active Alerts · Node / cAdvisor / CPU / Memory / Disk",
       "transformations": [
         {
           "id": "labelsToFields",
@@ -1618,7 +1645,7 @@
       "type": "table"
     }
   ],
-  "refresh": "1s",
+  "refresh": "5s",
   "schemaVersion": 41,
   "tags": [
     "runners-feed",
@@ -1637,6 +1664,6 @@
   "timezone": "browser",
   "title": "Runners Feed / OCI Overview",
   "uid": "runners-feed-oci-overview",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }

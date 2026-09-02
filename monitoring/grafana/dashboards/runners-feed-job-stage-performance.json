@@ -14,44 +14,67 @@
         "uid": "runners-feed-postgres"
       },
       "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "/.*seconds$/"
-            },
-            "properties": [
+        "defaults": {
+          "color": {
+            "fixedColor": "green",
+            "mode": "fixed"
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "SUCCESS": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "●  SUCCESS"
+                },
+                "RUNNING": {
+                  "color": "blue",
+                  "index": 1,
+                  "text": "●  RUNNING"
+                },
+                "FAILED": {
+                  "color": "red",
+                  "index": 2,
+                  "text": "●  FAILED"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "decimals",
-                "value": 3
+                "color": "green",
+                "value": null
               }
             ]
           }
-        ]
+        },
+        "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 18,
+        "h": 4,
+        "w": 5,
         "x": 0,
         "y": 0
       },
-      "id": 1,
+      "id": 7,
       "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
           ],
-          "show": false
+          "fields": "",
+          "values": false
         },
-        "showHeader": true
+        "textMode": "auto",
+        "wideLayout": true
       },
       "targets": [
         {
@@ -62,7 +85,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT left(job_id::text, 8) AS \"Job ID\", case_id AS \"Case\", status AS \"Status\", created_at AS \"Created\", started_at AS \"Started\", completed_at AS \"Completed\", round(extract(epoch FROM started_at - created_at)::numeric, 3)::double precision AS queue_seconds, round(extract(epoch FROM completed_at - started_at)::numeric, 3)::double precision AS processing_seconds FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+          "rawSql": "SELECT status AS \"상태\" FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -71,8 +94,214 @@
           }
         }
       ],
-      "title": "선택한 Job 요약",
-      "type": "table"
+      "title": "상태",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 0
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT extract(epoch FROM coalesce(completed_at, now()) - started_at) AS \"총 처리시간\" FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "총 처리시간",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "decimals": 3,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 10,
+        "y": 0
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT extract(epoch FROM started_at - created_at) AS \"대기시간\" FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "대기시간",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "orange",
+            "mode": "fixed"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 14,
+        "y": 0
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'report_generate' THEN '리포트 생성' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' END || ' · ' || round(coalesce(duration_seconds, 0)::numeric, 1)::text || ' s' AS \"병목\" FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY coalesce(duration_seconds, 0) DESC LIMIT 1",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "가장 느린 단계",
+      "type": "stat"
     },
     {
       "datasource": {
@@ -87,20 +316,20 @@
           "mappings": [
             {
               "options": {
-                "-1": {
-                  "color": "gray",
-                  "index": 0,
-                  "text": "Job을 선택하세요"
-                },
                 "0": {
                   "color": "yellow",
                   "index": 1,
-                  "text": "계측 도입 전 데이터"
+                  "text": "0 / 9"
                 },
                 "1": {
                   "color": "green",
                   "index": 2,
-                  "text": "9단계 계측 데이터"
+                  "text": "9 / 9"
+                },
+                "-1": {
+                  "color": "gray",
+                  "index": 0,
+                  "text": "선택 필요"
                 }
               },
               "type": "value"
@@ -127,14 +356,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 18,
+        "h": 4,
+        "w": 4,
+        "x": 20,
         "y": 0
       },
       "id": 2,
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
@@ -166,7 +395,7 @@
           }
         }
       ],
-      "title": "단계 데이터 상태",
+      "title": "계측 단계",
       "type": "stat"
     },
     {
@@ -177,23 +406,36 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
-          "decimals": 3,
+          "decimals": 1,
           "min": 0,
-          "unit": "s"
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              }
+            ]
+          }
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 12,
+        "h": 11,
         "w": 14,
         "x": 0,
-        "y": 5
+        "y": 4
       },
       "id": 3,
       "options": {
-        "barRadius": 0,
+        "barRadius": 0.15,
         "barWidth": 0.8,
         "fullHighlight": false,
         "groupWidth": 0.7,
@@ -232,7 +474,7 @@
           }
         }
       ],
-      "title": "선택한 Job의 9단계 처리시간 (막대 1개 = 단계 1개)",
+      "title": "단계별 처리시간",
       "type": "barchart"
     },
     {
@@ -242,16 +484,20 @@
       },
       "fieldConfig": {
         "defaults": {
-          "decimals": 3,
-          "unit": "s"
+          "decimals": 1,
+          "unit": "s",
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          }
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
+        "h": 11,
         "w": 10,
         "x": 14,
-        "y": 5
+        "y": 4
       },
       "id": 4,
       "options": {
@@ -287,7 +533,7 @@
           }
         }
       ],
-      "title": "Job 시간 요약",
+      "title": "처리시간 구성",
       "type": "stat"
     },
     {
@@ -296,44 +542,187 @@
         "uid": "runners-feed-postgres"
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 17,
+        "x": 0,
+        "y": 15
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT created_at AS \"time\", extract(epoch FROM completed_at - started_at) AS \"처리시간\" FROM inference_jobs WHERE $__timeFilter(created_at) AND completed_at IS NOT NULL ORDER BY created_at",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "최근 작업 처리시간",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
         "overrides": [
           {
             "matcher": {
               "id": "byName",
-              "options": "Duration"
+              "options": "성공률"
             },
             "properties": [
               {
                 "id": "unit",
-                "value": "s"
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "작업 수"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
               },
               {
                 "id": "decimals",
-                "value": 3
+                "value": 0
               }
             ]
           }
         ]
       },
       "gridPos": {
-        "h": 6,
-        "w": 10,
-        "x": 14,
-        "y": 11
+        "h": 8,
+        "w": 7,
+        "x": 17,
+        "y": 15
       },
-      "id": 5,
+      "id": 12,
       "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
           ],
-          "show": false
+          "fields": "",
+          "values": false
         },
-        "showHeader": true
+        "textMode": "auto",
+        "wideLayout": true
       },
       "targets": [
         {
@@ -344,7 +733,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT stage_order AS \"#\", stage_key AS \"Stage\", status AS \"Status\", started_at AS \"Started\", completed_at AS \"Completed\", CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE duration_seconds END AS \"Duration\", error_code AS \"Error\" FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY stage_order",
+          "rawSql": "SELECT round((100.0 * count(*) FILTER (WHERE status = 'SUCCESS') / nullif(count(*), 0))::numeric, 1)::double precision AS \"성공률\", count(*)::double precision AS \"작업 수\", percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM completed_at - started_at)) AS \"중앙값\", max(extract(epoch FROM completed_at - started_at)) AS \"최대\" FROM inference_jobs WHERE $__timeFilter(created_at) AND completed_at IS NOT NULL",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -353,8 +742,8 @@
           }
         }
       ],
-      "title": "단계별 상태와 시각",
-      "type": "table"
+      "title": "최근 실행 요약",
+      "type": "stat"
     },
     {
       "datasource": {
@@ -376,7 +765,68 @@
               },
               {
                 "id": "decimals",
-                "value": 3
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "SUCCESS": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "● SUCCESS"
+                      },
+                      "FAILED": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "● FAILED"
+                      },
+                      "RUNNING": {
+                        "color": "blue",
+                        "index": 2,
+                        "text": "● RUNNING"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Processing"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "blue",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 60
+                    },
+                    {
+                      "color": "red",
+                      "value": 120
+                    }
+                  ]
+                }
               }
             ]
           }
@@ -386,7 +836,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 23
       },
       "id": 6,
       "options": {
@@ -419,11 +869,158 @@
           }
         }
       ],
-      "title": "최근 Job (행 1개 = 영상 분석 실행 1회)",
+      "title": "최근 작업",
       "type": "table"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "id": 100,
+      "panels": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "/.*seconds$/"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 3
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 33
+          },
+          "id": 1,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "runners-feed-postgres"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT left(job_id::text, 8) AS \"Job ID\", case_id AS \"Case\", status AS \"Status\", created_at AS \"Created\", started_at AS \"Started\", completed_at AS \"Completed\", round(extract(epoch FROM started_at - created_at)::numeric, 3)::double precision AS queue_seconds, round(extract(epoch FROM completed_at - started_at)::numeric, 3)::double precision AS processing_seconds FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+              "refId": "A",
+              "sql": {
+                "columns": [],
+                "groupBy": [],
+                "limit": 50
+              }
+            }
+          ],
+          "title": "선택한 Job 상세",
+          "type": "table"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Duration"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 3
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 38
+          },
+          "id": 5,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "runners-feed-postgres"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT stage_order AS \"#\", stage_key AS \"Stage\", status AS \"Status\", started_at AS \"Started\", completed_at AS \"Completed\", CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE duration_seconds END AS \"Duration\", error_code AS \"Error\" FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY stage_order",
+              "refId": "A",
+              "sql": {
+                "columns": [],
+                "groupBy": [],
+                "limit": 50
+              }
+            }
+          ],
+          "title": "단계별 원본 데이터 및 타임스탬프",
+          "type": "table"
+        }
+      ],
+      "targets": [],
+      "title": "원본 데이터 및 타임스탬프",
+      "type": "row"
     }
   ],
-  "refresh": "1s",
+  "refresh": "5s",
   "schemaVersion": 41,
   "tags": [
     "runners-feed",
@@ -462,6 +1059,6 @@
   "timezone": "browser",
   "title": "Runners Feed / Job Stage Performance",
   "uid": "runners-feed-job-stage-performance",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
