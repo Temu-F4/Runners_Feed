@@ -5,6 +5,27 @@ import psycopg
 from psycopg.rows import dict_row
 
 
+CREATE_APP_USERS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS app_users (
+    user_id UUID PRIMARY KEY,
+    user_type VARCHAR(16) NOT NULL
+        CHECK (user_type IN ('guest', 'account')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+"""
+
+CREATE_GUEST_SESSIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS guest_sessions (
+    token_hash CHAR(64) PRIMARY KEY,
+    user_id UUID NOT NULL
+        REFERENCES app_users(user_id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+"""
+
 CREATE_JOBS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS inference_jobs (
     job_id UUID PRIMARY KEY,
@@ -35,6 +56,26 @@ ALTER TABLE inference_jobs
 ADD COLUMN IF NOT EXISTS result_report_object TEXT
 """
 
+ADD_JOB_USER_COLUMN_SQL = """
+ALTER TABLE inference_jobs
+ADD COLUMN IF NOT EXISTS user_id UUID
+    REFERENCES app_users(user_id) ON DELETE SET NULL
+"""
+
+ADD_JOB_HEIGHT_COLUMN_SQL = """
+ALTER TABLE inference_jobs
+ADD COLUMN IF NOT EXISTS height_snapshot_m DOUBLE PRECISION
+    CHECK (
+        height_snapshot_m IS NULL
+        OR height_snapshot_m BETWEEN 0.5 AND 2.5
+    )
+"""
+
+CREATE_JOBS_USER_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS inference_jobs_user_created_idx
+ON inference_jobs (user_id, created_at DESC)
+"""
+
 
 def _database_url() -> str:
     return os.environ["DATABASE_URL"]
@@ -43,9 +84,14 @@ def _database_url() -> str:
 def initialize_database() -> None:
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
+            cursor.execute(CREATE_APP_USERS_TABLE_SQL)
+            cursor.execute(CREATE_GUEST_SESSIONS_TABLE_SQL)
             cursor.execute(CREATE_JOBS_TABLE_SQL)
             cursor.execute(ADD_REPORT_COLUMN_SQL)
+            cursor.execute(ADD_JOB_USER_COLUMN_SQL)
+            cursor.execute(ADD_JOB_HEIGHT_COLUMN_SQL)
             cursor.execute(CREATE_JOBS_STATUS_INDEX_SQL)
+            cursor.execute(CREATE_JOBS_USER_INDEX_SQL)
 
 
 def create_job(
