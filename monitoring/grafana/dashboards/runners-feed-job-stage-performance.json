@@ -24,17 +24,17 @@
             {
               "type": "value",
               "options": {
-                "SUCCESS": {
+                "1": {
                   "color": "green",
                   "index": 0,
                   "text": "●  SUCCESS"
                 },
-                "RUNNING": {
+                "2": {
                   "color": "blue",
                   "index": 1,
                   "text": "●  RUNNING"
                 },
-                "FAILED": {
+                "0": {
                   "color": "red",
                   "index": 2,
                   "text": "●  FAILED"
@@ -85,7 +85,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT status AS \"상태\" FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+          "rawSql": "SELECT CASE status WHEN 'SUCCESS' THEN 1 WHEN 'RUNNING' THEN 2 WHEN 'FAILED' THEN 0 ELSE -1 END AS \"상태\" FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -291,7 +291,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'report_generate' THEN '리포트 생성' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' END || ' · ' || round(coalesce(duration_seconds, 0)::numeric, 1)::text || ' s' AS \"병목\" FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY coalesce(duration_seconds, 0) DESC LIMIT 1",
+          "rawSql": "SELECT CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'report_generate' THEN '리포트 생성' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' END AS \"단계\", coalesce(duration_seconds, 0) AS \"소요시간\" FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY coalesce(duration_seconds, 0) DESC LIMIT 1",
           "refId": "A",
           "sql": {
             "columns": [],
