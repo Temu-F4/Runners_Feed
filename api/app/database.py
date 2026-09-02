@@ -1,6 +1,8 @@
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID, uuid4
 
 import psycopg
 from psycopg.rows import dict_row
@@ -18,6 +20,18 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 def _database_url() -> str:
     return os.environ["DATABASE_URL"]
+
+
+def _validate_token_hash(token_hash: str) -> None:
+    if len(token_hash) != 64:
+        raise ValueError("Guest token hash must be 64 hexadecimal characters")
+
+    try:
+        int(token_hash, 16)
+    except ValueError as error:
+        raise ValueError(
+            "Guest token hash must be 64 hexadecimal characters"
+        ) from error
 
 
 def initialize_database() -> None:
@@ -52,6 +66,61 @@ def initialize_database() -> None:
                     "INSERT INTO schema_migrations (version) VALUES (%s)",
                     (version,),
                 )
+
+
+def create_guest_session(
+    *,
+    token_hash: str,
+    expires_at: datetime,
+) -> UUID:
+    _validate_token_hash(token_hash)
+    if expires_at.tzinfo is None:
+        raise ValueError("Guest session expiry must include a timezone")
+
+    user_id = uuid4()
+
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO app_users (user_id, user_type)
+                VALUES (%s, 'guest')
+                """,
+                (user_id,),
+            )
+            cursor.execute(
+                """
+                INSERT INTO guest_sessions (
+                    token_hash,
+                    user_id,
+                    expires_at
+                )
+                VALUES (%s, %s, %s)
+                """,
+                (token_hash, user_id, expires_at),
+            )
+
+    return user_id
+
+
+def find_active_guest_user(token_hash: str) -> UUID | None:
+    _validate_token_hash(token_hash)
+
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE guest_sessions
+                SET last_seen_at = NOW()
+                WHERE token_hash = %s
+                  AND expires_at > NOW()
+                RETURNING user_id
+                """,
+                (token_hash,),
+            )
+            row = cursor.fetchone()
+
+    return row[0] if row is not None else None
 
 
 def create_job(
