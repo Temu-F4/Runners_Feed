@@ -843,6 +843,17 @@ docker compose \
   wget -qO- 'http://localhost:9090/api/v1/query?query=runners_feed_host_process_resident_memory_bytes'
 ```
 
+운영 배포 검증:
+
+- 배포 commit: `e248a8f733a868864e756e2e5c57268f9c70dfdd`
+- Prometheus config: 1 rule file, 6 rules, validation PASS
+- Alertmanager config와 readiness: PASS
+- Prometheus targets: prometheus, cAdvisor, Node Exporter 모두 `up`
+- Alertmanager 연결: active, dropped 0
+- custom host metric 3종: 실제 series 반환
+- Grafana runtime dashboard: 신규 24개 panel/row 반영 확인
+- 배포 시점 alert rule health: 6개 모두 `ok`, firing 0
+
 ## 8. 수동 POC 실행 방법
 
 **WHAT**
