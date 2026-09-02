@@ -578,9 +578,12 @@ git merge --ff-only refs/remotes/origin/main
 GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=<LONG_RANDOM_SECRET>
 GRAFANA_ROOT_URL=https://140.238.0.197/grafana/
+GRAFANA_POSTGRES_PASSWORD=<SEPARATE_READ_ONLY_SECRET>
 ```
 
-비밀번호는 Git이나 문서에 기록하지 않는다.
+두 비밀번호는 서로 다른 무작위 값으로 생성하고 Git이나 문서에 기록하지 않는다.
+`GRAFANA_POSTGRES_PASSWORD`는 Job 단계 대시보드가 사용하는 PostgreSQL
+읽기 전용 계정의 비밀번호다.
 
 ```bash
 docker compose \
@@ -615,6 +618,8 @@ node-exporter     Up
 ```
 
 `inference-poc`는 평상시 실행되지 않는 것이 정상이다.
+`grafana-db-init`는 기존 PostgreSQL volume에도 `grafana_reader` 계정과 SELECT
+권한을 적용하는 one-shot 서비스이므로 `Exited (0)`가 정상이다.
 
 ### 7.6 모니터링 확인
 
@@ -628,6 +633,46 @@ Prometheus, cAdvisor, Grafana datasource와 dashboard는 모두 1초 간격으�
 ```text
 https://140.238.0.197/grafana/
 ```
+
+`Runners Feed / Job Stage Performance` dashboard에서 Job을
+`Case | KST 실행 시각 | Job ID 앞 8자리`로 선택한다. 선택한 Job 하나에는 다음
+9개의 가로 막대가 표시된다. 막대 하나는 Job이 아니라 해당 Job 내부의 단계 하나다.
+
+```text
+1. 입력 다운로드
+2. 프레임 추출
+3. 자세 추론 (RTMDet + RTMPose)
+4. 리포트 생성
+5. 프레임 렌더링
+6. 영상 합성
+7. 최종 인코딩 (FFmpeg)
+8. 결과 업로드
+9. 작업 폴더 정리
+```
+
+단계는 `PENDING`, `RUNNING`, `SUCCESS`, `FAILED`, `WARNING`, `SKIPPED`로
+기록된다. 필수 단계가 실패하면 이후 단계는 `SKIPPED`가 된다. 결과 업로드 후의
+작업 폴더 정리는 best-effort이므로 정리 실패는 `WARNING`으로 표시하되 Job의
+`SUCCESS` 상태를 변경하지 않는다. 계측 도입 전 Job은 총 처리시간만 표시한다.
+
+단계 데이터 확인:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.poc.yaml \
+  --profile poc \
+  exec -T postgres sh -c \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+  "SELECT job_id, stage_order, stage_key, status, duration_seconds
+   FROM inference_job_stages
+   ORDER BY updated_at DESC, stage_order
+   LIMIT 18;"'
+```
+
+Grafana는 `grafana_reader` 계정으로 `inference_jobs`와
+`inference_job_stages`만 읽는다. Grafana와 PostgreSQL은 `backend` 내부
+network로 통신하며 PostgreSQL 5432 포트는 외부에 공개하지 않는다.
 
 Prometheus 수집 대상 확인:
 

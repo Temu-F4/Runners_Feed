@@ -1,0 +1,20 @@
+apiVersion: 1
+
+prune: true
+
+datasources:
+  - name: Runners Feed PostgreSQL
+    uid: runners-feed-postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: $GRAFANA_POSTGRES_USER
+    isDefault: false
+    editable: false
+    secureJsonData:
+      password: $GRAFANA_POSTGRES_PASSWORD
+    jsonData:
+      database: $GRAFANA_POSTGRES_DB
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false

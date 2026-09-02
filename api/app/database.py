@@ -35,6 +35,36 @@ ALTER TABLE inference_jobs
 ADD COLUMN IF NOT EXISTS result_report_object TEXT
 """
 
+CREATE_JOB_STAGES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS inference_job_stages (
+    job_id UUID NOT NULL
+        REFERENCES inference_jobs(job_id) ON DELETE CASCADE,
+    stage_key VARCHAR(32) NOT NULL,
+    stage_order SMALLINT NOT NULL CHECK (stage_order > 0),
+    status VARCHAR(16) NOT NULL
+        CHECK (status IN (
+            'PENDING',
+            'RUNNING',
+            'SUCCESS',
+            'FAILED',
+            'WARNING',
+            'SKIPPED'
+        )),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    duration_seconds DOUBLE PRECISION
+        CHECK (duration_seconds >= 0),
+    error_code TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (job_id, stage_key)
+)
+"""
+
+CREATE_JOB_STAGES_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS inference_job_stages_job_order_idx
+ON inference_job_stages (job_id, stage_order)
+"""
+
 
 def _database_url() -> str:
     return os.environ["DATABASE_URL"]
@@ -46,6 +76,8 @@ def initialize_database() -> None:
             cursor.execute(CREATE_JOBS_TABLE_SQL)
             cursor.execute(ADD_REPORT_COLUMN_SQL)
             cursor.execute(CREATE_JOBS_STATUS_INDEX_SQL)
+            cursor.execute(CREATE_JOB_STAGES_TABLE_SQL)
+            cursor.execute(CREATE_JOB_STAGES_INDEX_SQL)
 
 
 def create_job(

@@ -2,15 +2,16 @@ import logging
 import os
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 from inference_celery_app import celery_app
+from inference.pipeline_runner import run_pipeline
 from job_repository import (
     mark_job_failed,
     mark_job_processing,
     mark_job_success,
 )
+from job_stages import JobStageRecorder
 from object_storage_gateway import ObjectStorageGateway
 from run_cleanup import remove_successful_run
 
@@ -31,6 +32,7 @@ def execute_pipeline(
     case_id: str,
     job_id: str,
     run_id: str | None = None,
+    stage_recorder: JobStageRecorder | None = None,
 ) -> dict:
     validate_case_id(case_id)
 
@@ -39,43 +41,25 @@ def execute_pipeline(
 
     run_dir = WORKSPACE_DIR / "run" / pipeline_run_id
 
-    video_files = sorted(run_dir.glob("*.mp4"))
-
-    if len(video_files) != 1:
-        raise ValueError(
-            f"Expected exactly one MP4 in {run_dir}, "
-            f"found {len(video_files)}"
-        )
-
     output_dir = run_dir / "outputs"
-    if output_dir.exists():
-        raise FileExistsError(
-            f"Output already exists: {output_dir}"
-        )
 
     timeout_seconds = int(
         os.getenv("INFERENCE_TIMEOUT_SECONDS", "3600")
     )
 
-    try:
-        completed = subprocess.run(
-            [
-                "/app/inference/run_pipeline.sh",
-                pipeline_run_id,
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
+    if stage_recorder is None:
+        pipeline = run_pipeline(
+            pipeline_run_id,
+            workspace_dir=WORKSPACE_DIR,
+            timeout_seconds=timeout_seconds,
         )
-
-    except subprocess.CalledProcessError as error:
-        error_log = (
-            error.stderr or error.stdout or ""
-        )[-4000:]
-        raise RuntimeError(
-            f"RTMPose pipeline failed:\n{error_log}"
-        ) from error
+    else:
+        pipeline = run_pipeline(
+            pipeline_run_id,
+            workspace_dir=WORKSPACE_DIR,
+            timeout_seconds=timeout_seconds,
+            stage_context=stage_recorder.track,
+        )
 
     return {
         "job_id": job_id,
@@ -96,7 +80,7 @@ def execute_pipeline(
             ),
         },
         "log_tail": (
-            completed.stdout + completed.stderr
+            pipeline.log_output
         )[-4000:],
     }
 
@@ -123,6 +107,7 @@ def run_object_storage(
     input_object_name: str,
 ) -> dict:
     job_id = str(self.request.id)
+    stage_recorder: JobStageRecorder | None = None
 
     try:
         validate_case_id(case_id)
@@ -134,6 +119,8 @@ def run_object_storage(
             )
 
         mark_job_processing(job_id)
+        stage_recorder = JobStageRecorder(job_id)
+        stage_recorder.initialize()
 
         run_dir = WORKSPACE_DIR / "run" / job_id
 
@@ -143,17 +130,18 @@ def run_object_storage(
         run_dir.mkdir(parents=True, exist_ok=False)
         input_path = run_dir / "input.mp4"
 
-        storage = ObjectStorageGateway()
-
-        storage.download_input(
-            object_name=input_object_name,
-            destination=input_path,
-        )
+        with stage_recorder.track("input_download"):
+            storage = ObjectStorageGateway()
+            storage.download_input(
+                object_name=input_object_name,
+                destination=input_path,
+            )
 
         result = execute_pipeline(
             case_id=case_id,
             job_id=job_id,
             run_id=job_id,
+            stage_recorder=stage_recorder,
         )
 
         output_dir = run_dir / "outputs"
@@ -170,34 +158,41 @@ def run_object_storage(
             ),
         }
 
-        storage.upload_result(
-            source=output_dir / "details.json",
-            object_name=result_objects["details"],
-            content_type="application/json",
-        )
-        storage.upload_result(
-            source=output_dir / "pose_predictions.json",
-            object_name=result_objects["predictions"],
-            content_type="application/json",
-        )
-        storage.upload_result(
-            source=output_dir / "report.json",
-            object_name=result_objects["report"],
-            content_type="application/json",
-        )
-        storage.upload_result(
-            source=output_dir / "rendered.mp4",
-            object_name=result_objects["rendered_video"],
-            content_type="video/mp4",
-        )
+        with stage_recorder.track("result_upload"):
+            storage.upload_result(
+                source=output_dir / "details.json",
+                object_name=result_objects["details"],
+                content_type="application/json",
+            )
+            storage.upload_result(
+                source=output_dir / "pose_predictions.json",
+                object_name=result_objects["predictions"],
+                content_type="application/json",
+            )
+            storage.upload_result(
+                source=output_dir / "report.json",
+                object_name=result_objects["report"],
+                content_type="application/json",
+            )
+            storage.upload_result(
+                source=output_dir / "rendered.mp4",
+                object_name=result_objects["rendered_video"],
+                content_type="video/mp4",
+            )
 
         mark_job_success(job_id, result_objects)
 
         try:
-            result["local_run_deleted"] = remove_successful_run(
-                run_dir,
-                run_root=WORKSPACE_DIR / "run",
-            )
+            with stage_recorder.track(
+                "workspace_cleanup",
+                failure_status="WARNING",
+            ):
+                result["local_run_deleted"] = (
+                    remove_successful_run(
+                        run_dir,
+                        run_root=WORKSPACE_DIR / "run",
+                    )
+                )
         except Exception:
             result["local_run_deleted"] = False
             LOGGER.warning(
@@ -211,6 +206,14 @@ def run_object_storage(
         return result
 
     except Exception as error:
+        if stage_recorder is not None:
+            try:
+                stage_recorder.skip_pending()
+            except Exception:
+                LOGGER.exception(
+                    "Failed to skip remaining stages for job %s",
+                    job_id,
+                )
         try:
             mark_job_failed(job_id, error)
         except Exception:

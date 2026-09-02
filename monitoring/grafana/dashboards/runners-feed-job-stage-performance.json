@@ -1,0 +1,438 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/.*seconds$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 18,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT left(job_id::text, 8) AS \"Job ID\", case_id AS \"Case\", status AS \"Status\", created_at AS \"Created\", started_at AS \"Started\", completed_at AS \"Completed\", round(extract(epoch FROM started_at - created_at)::numeric, 3)::double precision AS queue_seconds, round(extract(epoch FROM completed_at - started_at)::numeric, 3)::double precision AS processing_seconds FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "선택한 Job 요약",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN EXISTS (SELECT 1 FROM inference_job_stages WHERE job_id = '${job_id}'::uuid) THEN '9단계 계측 데이터' ELSE '계측 도입 전 데이터' END AS measurement_status",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "단계 데이터 상태",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 3,
+          "min": 0,
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 14,
+        "x": 0,
+        "y": 5
+      },
+      "id": 3,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "horizontal",
+        "showValue": "always",
+        "stacking": "none",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE stage_key WHEN 'input_download' THEN '1. 입력 다운로드' WHEN 'frame_extract' THEN '2. 프레임 추출' WHEN 'pose_inference' THEN '3. 자세 추론' WHEN 'report_generate' THEN '4. 리포트 생성' WHEN 'frame_render' THEN '5. 프레임 렌더링' WHEN 'video_compose' THEN '6. 영상 합성' WHEN 'video_encode' THEN '7. 최종 인코딩' WHEN 'result_upload' THEN '8. 결과 업로드' WHEN 'workspace_cleanup' THEN '9. 작업 폴더 정리' END AS stage, CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE coalesce(duration_seconds, 0) END AS duration_seconds FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY stage_order",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "선택한 Job의 9단계 처리시간 (막대 1개 = 단계 1개)",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 10,
+        "x": 14,
+        "y": 5
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH selected AS (SELECT * FROM inference_jobs WHERE job_id = '${job_id}'::uuid), bounds AS (SELECT min(started_at) AS first_stage_at, max(coalesce(completed_at, now())) FILTER (WHERE status NOT IN ('PENDING', 'SKIPPED')) AS last_stage_at, sum(coalesce(duration_seconds, 0)) AS measured_seconds FROM inference_job_stages WHERE job_id = '${job_id}'::uuid) SELECT extract(epoch FROM selected.started_at - selected.created_at) AS queue_seconds, extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at) AS processing_seconds, coalesce(extract(epoch FROM bounds.last_stage_at - bounds.first_stage_at), extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at)) AS worker_active_seconds, bounds.measured_seconds FROM selected CROSS JOIN bounds",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Job 시간 요약",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 10,
+        "x": 14,
+        "y": 11
+      },
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT stage_order AS \"#\", stage_key AS \"Stage\", status AS \"Status\", started_at AS \"Started\", completed_at AS \"Completed\", CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE duration_seconds END AS \"Duration\", error_code AS \"Error\" FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY stage_order",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "단계별 상태와 시각",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Processing"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 6,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT created_at AS \"Created\", left(job_id::text, 8) AS \"Job ID\", case_id AS \"Case\", status AS \"Status\", round(extract(epoch FROM completed_at - started_at)::numeric, 3)::double precision AS \"Processing\", CASE WHEN EXISTS (SELECT 1 FROM inference_job_stages stages WHERE stages.job_id = jobs.job_id) THEN '9단계' ELSE '총시간만' END AS \"Measurement\" FROM inference_jobs jobs WHERE $__timeFilter(created_at) ORDER BY created_at DESC LIMIT 50",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "최근 Job (행 1개 = 영상 분석 실행 1회)",
+      "type": "table"
+    }
+  ],
+  "refresh": "1s",
+  "schemaVersion": 41,
+  "tags": [
+    "runners-feed",
+    "jobs",
+    "postgresql"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "runners-feed-postgres"
+        },
+        "definition": "SELECT case_id || ' | ' || to_char(created_at AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI:SS') || ' | ' || left(job_id::text, 8) AS __text, job_id::text AS __value FROM inference_jobs ORDER BY created_at DESC LIMIT 100",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Job (Case | KST 실행 시각 | Job ID)",
+        "multi": false,
+        "name": "job_id",
+        "options": [],
+        "query": "SELECT case_id || ' | ' || to_char(created_at AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI:SS') || ' | ' || left(job_id::text, 8) AS __text, job_id::text AS __value FROM inference_jobs ORDER BY created_at DESC LIMIT 100",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Runners Feed / Job Stage Performance",
+  "uid": "runners-feed-job-stage-performance",
+  "version": 1,
+  "weekStart": ""
+}

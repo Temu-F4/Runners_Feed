@@ -167,6 +167,35 @@ services:
     networks:
       - monitoring
 
+  grafana-db-init:
+    image: pgvector/pgvector:pg16
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      GRAFANA_POSTGRES_PASSWORD: ${GRAFANA_POSTGRES_PASSWORD:?GRAFANA_POSTGRES_PASSWORD is required}
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - >-
+        psql
+        --set=ON_ERROR_STOP=1
+        --set=db_name="$${PGDATABASE}"
+        --set=grafana_password="$${GRAFANA_POSTGRES_PASSWORD}"
+        --file=/sql/init-reader.sql
+    volumes:
+      - ./monitoring/grafana/sql/init-reader.sql:/sql/init-reader.sql:ro
+    networks:
+      - backend
+
   grafana:
     image: grafana/grafana:13.1.4
     restart: unless-stopped
@@ -180,7 +209,12 @@ services:
       GF_SECURITY_COOKIE_SAMESITE: strict
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GRAFANA_POSTGRES_USER: grafana_reader
+      GRAFANA_POSTGRES_PASSWORD: ${GRAFANA_POSTGRES_PASSWORD:?GRAFANA_POSTGRES_PASSWORD is required}
+      GRAFANA_POSTGRES_DB: ${POSTGRES_DB}
     depends_on:
+      grafana-db-init:
+        condition: service_completed_successfully
       prometheus:
         condition: service_healthy
     volumes:
@@ -190,6 +224,7 @@ services:
     expose:
       - "3000"
     networks:
+      - backend
       - monitoring
 
   cadvisor:
