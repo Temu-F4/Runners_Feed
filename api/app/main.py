@@ -2,7 +2,7 @@ import os
 import hmac
 from contextlib import asynccontextmanager
 from typing import Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import oci
 import psycopg
@@ -235,6 +235,7 @@ def _serialize_job(job: dict) -> dict:
         "job_id": str(job["job_id"]),
         "case_id": job["case_id"],
         "input_object_name": job["input_object_name"],
+        "height_snapshot_m": job["height_snapshot_m"],
         "status": job["status"],
         "created_at": job["created_at"],
         "started_at": job["started_at"],
@@ -254,6 +255,18 @@ def _serialize_job(job: dict) -> dict:
         response["error"] = job["error_code"] or "inference_failed"
 
     return response
+
+
+def _get_owned_job_or_404(job_id: str, user_id: UUID) -> dict:
+    try:
+        job = get_persisted_job(job_id=job_id, user_id=user_id)
+    except psycopg.errors.InvalidTextRepresentation as error:
+        raise HTTPException(status_code=404, detail="Job not found") from error
+
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return job
 
 
 @app.get("/health")
@@ -342,23 +355,28 @@ def complete_upload(request: CompleteUploadRequest):
 
 
 @app.post("/jobs", status_code=202)
-def create_inference_job(request: CreateInferenceJobRequest):
-    _inspect_input_object(request.input_object_name)
+def create_inference_job(
+    payload: CreateInferenceJobRequest,
+    request: Request,
+):
+    _inspect_input_object(payload.input_object_name)
     job_id = str(uuid4())
 
     create_job(
         job_id=job_id,
-        case_id=request.case_id,
-        input_object_name=request.input_object_name,
+        case_id=payload.case_id,
+        input_object_name=payload.input_object_name,
+        user_id=request.state.user_id,
+        height_snapshot_m=payload.user_height_m,
     )
 
     try:
         celery_client.send_task(
             "inference.run_object_storage",
             args=[
-                request.case_id,
-                request.input_object_name,
-                request.user_height_m,
+                payload.case_id,
+                payload.input_object_name,
+                payload.user_height_m,
             ],
             task_id=job_id,
             queue="inference",
@@ -370,7 +388,10 @@ def create_inference_job(request: CreateInferenceJobRequest):
             detail="Failed to dispatch inference job",
         ) from error
 
-    job = get_persisted_job(job_id)
+    job = get_persisted_job(
+        job_id=job_id,
+        user_id=request.state.user_id,
+    )
     if job is None:
         raise HTTPException(status_code=500, detail="Job was not persisted")
 
@@ -388,27 +409,14 @@ def create_test_job():
 
 
 @app.get("/jobs/{job_id}")
-def get_job(job_id: str):
-    try:
-        job = get_persisted_job(job_id)
-    except psycopg.errors.InvalidTextRepresentation as error:
-        raise HTTPException(status_code=404, detail="Job not found") from error
-
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-
+def get_job(job_id: str, request: Request):
+    job = _get_owned_job_or_404(job_id, request.state.user_id)
     return _serialize_job(job)
 
 
 @app.post("/jobs/{job_id}/result-url")
-def create_result_url(job_id: str):
-    try:
-        job = get_persisted_job(job_id)
-    except psycopg.errors.InvalidTextRepresentation as error:
-        raise HTTPException(status_code=404, detail="Job not found") from error
-
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+def create_result_url(job_id: str, request: Request):
+    job = _get_owned_job_or_404(job_id, request.state.user_id)
     if job["status"] != "SUCCESS":
         raise HTTPException(
             status_code=409,
@@ -441,14 +449,8 @@ def create_result_url(job_id: str):
 
 
 @app.get("/jobs/{job_id}/report")
-def get_job_report(job_id: str):
-    try:
-        job = get_persisted_job(job_id)
-    except psycopg.errors.InvalidTextRepresentation as error:
-        raise HTTPException(status_code=404, detail="Job not found") from error
-
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+def get_job_report(job_id: str, request: Request):
+    job = _get_owned_job_or_404(job_id, request.state.user_id)
     if job["status"] != "SUCCESS":
         raise HTTPException(
             status_code=409,

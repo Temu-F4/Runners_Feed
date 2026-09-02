@@ -123,9 +123,12 @@ def find_active_guest_user(token_hash: str) -> UUID | None:
 
 
 def create_job(
+    *,
     job_id: str,
     case_id: str,
     input_object_name: str,
+    user_id: UUID,
+    height_snapshot_m: float,
 ) -> None:
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
@@ -135,11 +138,19 @@ def create_job(
                     job_id,
                     case_id,
                     input_object_name,
+                    user_id,
+                    height_snapshot_m,
                     status
                 )
-                VALUES (%s, %s, %s, 'QUEUED')
+                VALUES (%s, %s, %s, %s, %s, 'QUEUED')
                 """,
-                (job_id, case_id, input_object_name),
+                (
+                    job_id,
+                    case_id,
+                    input_object_name,
+                    user_id,
+                    height_snapshot_m,
+                ),
             )
 
 
@@ -160,7 +171,11 @@ def mark_job_dispatch_failed(job_id: str) -> None:
             )
 
 
-def get_job(job_id: str) -> dict[str, Any] | None:
+def get_job(
+    *,
+    job_id: str,
+    user_id: UUID,
+) -> dict[str, Any] | None:
     with psycopg.connect(
         _database_url(),
         row_factory=dict_row,
@@ -171,6 +186,7 @@ def get_job(job_id: str) -> dict[str, Any] | None:
                 SELECT job_id,
                        case_id,
                        input_object_name,
+                       height_snapshot_m,
                        status,
                        result_details_object,
                        result_predictions_object,
@@ -183,7 +199,8 @@ def get_job(job_id: str) -> dict[str, Any] | None:
                        updated_at
                 FROM inference_jobs
                 WHERE job_id = %s
+                  AND user_id = %s
                 """,
-                (job_id,),
+                (job_id, user_id),
             )
             return cursor.fetchone()
