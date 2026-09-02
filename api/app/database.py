@@ -1,79 +1,18 @@
 import os
+from pathlib import Path
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
 
 
-CREATE_APP_USERS_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS app_users (
-    user_id UUID PRIMARY KEY,
-    user_type VARCHAR(16) NOT NULL
-        CHECK (user_type IN ('guest', 'account')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
+
+CREATE_SCHEMA_MIGRATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version VARCHAR(255) PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
-"""
-
-CREATE_GUEST_SESSIONS_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS guest_sessions (
-    token_hash CHAR(64) PRIMARY KEY,
-    user_id UUID NOT NULL
-        REFERENCES app_users(user_id) ON DELETE CASCADE,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)
-"""
-
-CREATE_JOBS_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS inference_jobs (
-    job_id UUID PRIMARY KEY,
-    case_id VARCHAR(64) NOT NULL,
-    input_object_name TEXT NOT NULL,
-    status VARCHAR(16) NOT NULL
-        CHECK (status IN ('QUEUED', 'PROCESSING', 'SUCCESS', 'FAILED')),
-    result_details_object TEXT,
-    result_predictions_object TEXT,
-    result_report_object TEXT,
-    result_video_object TEXT,
-    error_code TEXT,
-    error_message TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    started_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)
-"""
-
-CREATE_JOBS_STATUS_INDEX_SQL = """
-CREATE INDEX IF NOT EXISTS inference_jobs_status_created_idx
-ON inference_jobs (status, created_at DESC)
-"""
-
-ADD_REPORT_COLUMN_SQL = """
-ALTER TABLE inference_jobs
-ADD COLUMN IF NOT EXISTS result_report_object TEXT
-"""
-
-ADD_JOB_USER_COLUMN_SQL = """
-ALTER TABLE inference_jobs
-ADD COLUMN IF NOT EXISTS user_id UUID
-    REFERENCES app_users(user_id) ON DELETE SET NULL
-"""
-
-ADD_JOB_HEIGHT_COLUMN_SQL = """
-ALTER TABLE inference_jobs
-ADD COLUMN IF NOT EXISTS height_snapshot_m DOUBLE PRECISION
-    CHECK (
-        height_snapshot_m IS NULL
-        OR height_snapshot_m BETWEEN 0.5 AND 2.5
-    )
-"""
-
-CREATE_JOBS_USER_INDEX_SQL = """
-CREATE INDEX IF NOT EXISTS inference_jobs_user_created_idx
-ON inference_jobs (user_id, created_at DESC)
 """
 
 
@@ -84,14 +23,35 @@ def _database_url() -> str:
 def initialize_database() -> None:
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(CREATE_APP_USERS_TABLE_SQL)
-            cursor.execute(CREATE_GUEST_SESSIONS_TABLE_SQL)
-            cursor.execute(CREATE_JOBS_TABLE_SQL)
-            cursor.execute(ADD_REPORT_COLUMN_SQL)
-            cursor.execute(ADD_JOB_USER_COLUMN_SQL)
-            cursor.execute(ADD_JOB_HEIGHT_COLUMN_SQL)
-            cursor.execute(CREATE_JOBS_STATUS_INDEX_SQL)
-            cursor.execute(CREATE_JOBS_USER_INDEX_SQL)
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                ("runners_feed_schema_migrations",),
+            )
+            cursor.execute(CREATE_SCHEMA_MIGRATIONS_SQL)
+            cursor.execute("SELECT version FROM schema_migrations")
+            applied_versions = {
+                row[0]
+                for row in cursor.fetchall()
+            }
+
+            migration_paths = sorted(MIGRATIONS_DIR.glob("*.sql"))
+            if not migration_paths:
+                raise RuntimeError(
+                    f"No database migrations found in {MIGRATIONS_DIR}"
+                )
+
+            for migration_path in migration_paths:
+                version = migration_path.name
+                if version in applied_versions:
+                    continue
+
+                cursor.execute(
+                    migration_path.read_text(encoding="utf-8")
+                )
+                cursor.execute(
+                    "INSERT INTO schema_migrations (version) VALUES (%s)",
+                    (version,),
+                )
 
 
 def create_job(
