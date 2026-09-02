@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.guest_identity import (
     GUEST_COOKIE_NAME,
     hash_guest_token,
     issue_guest_identity,
+    set_guest_cookie,
 )
 
 
@@ -54,3 +55,21 @@ class GuestIdentityTests(TestCase):
     def test_rejects_issue_time_without_timezone(self) -> None:
         with self.assertRaises(ValueError):
             issue_guest_identity(now=datetime(2026, 9, 3))
+
+    def test_sets_secure_host_cookie(self) -> None:
+        now = datetime(2026, 9, 3, tzinfo=timezone.utc)
+        identity = issue_guest_identity(now=now)
+        response = MagicMock()
+
+        set_guest_cookie(response, identity)
+
+        response.set_cookie.assert_called_once_with(
+            key="__Host-rf_guest",
+            value=identity.token,
+            max_age=30 * 24 * 60 * 60,
+            expires=now + timedelta(days=30),
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )

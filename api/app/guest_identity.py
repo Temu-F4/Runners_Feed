@@ -58,3 +58,16 @@ def issue_guest_identity(
         expires_at=issued_at + timedelta(days=ttl_days),
         max_age_seconds=max_age_seconds,
     )
+
+
+def set_guest_cookie(response, identity: IssuedGuestIdentity) -> None:
+    response.set_cookie(
+        key=GUEST_COOKIE_NAME,
+        value=identity.token,
+        max_age=identity.max_age_seconds,
+        expires=identity.expires_at,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )

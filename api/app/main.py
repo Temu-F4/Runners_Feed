@@ -11,12 +11,21 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from redis import Redis
+from starlette.concurrency import run_in_threadpool
 
 from app.database import (
+    create_guest_session,
     create_job,
+    find_active_guest_user,
     get_job as get_persisted_job,
     initialize_database,
     mark_job_dispatch_failed,
+)
+from app.guest_identity import (
+    GUEST_COOKIE_NAME,
+    hash_guest_token,
+    issue_guest_identity,
+    set_guest_cookie,
 )
 from app.object_storage import ObjectStorageGateway, load_oci_config
 
@@ -65,7 +74,38 @@ async def require_api_key(request: Request, call_next):
             content={"detail": "Invalid API key"},
         )
 
-    return await call_next(request)
+    # Dependency health checks remain API-key protected, but do not create a
+    # guest account for infrastructure probes.
+    if request.url.path.startswith("/health"):
+        return await call_next(request)
+
+    guest_token = request.cookies.get(GUEST_COOKIE_NAME)
+    user_id = None
+    if guest_token:
+        try:
+            token_hash = hash_guest_token(guest_token)
+            user_id = await run_in_threadpool(
+                find_active_guest_user,
+                token_hash,
+            )
+        except ValueError:
+            # Replace malformed or oversized cookies with a valid identity.
+            user_id = None
+
+    issued_identity = None
+    if user_id is None:
+        issued_identity = issue_guest_identity()
+        user_id = await run_in_threadpool(
+            create_guest_session,
+            issued_identity.token_hash,
+            issued_identity.expires_at,
+        )
+
+    request.state.user_id = user_id
+    response = await call_next(request)
+    if issued_identity is not None:
+        set_guest_cookie(response, issued_identity)
+    return response
 
 
 def _result_url_ttl_seconds() -> int:

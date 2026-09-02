@@ -110,11 +110,10 @@ def find_active_guest_user(token_hash: str) -> UUID | None:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                UPDATE guest_sessions
-                SET last_seen_at = NOW()
+                SELECT user_id
+                FROM guest_sessions
                 WHERE token_hash = %s
                   AND expires_at > NOW()
-                RETURNING user_id
                 """,
                 (token_hash,),
             )
