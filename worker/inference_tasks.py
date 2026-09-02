@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -121,6 +122,7 @@ def run_object_storage(
     self,
     case_id: str,
     input_object_name: str,
+    user_height_m: float,
 ) -> dict:
     job_id = str(self.request.id)
 
@@ -133,6 +135,11 @@ def run_object_storage(
                 "input_object_name must not be empty"
             )
 
+        if not 0.5 <= user_height_m <= 2.5:
+            raise ValueError(
+                "user_height_m must be between 0.5 and 2.5"
+            )
+
         mark_job_processing(job_id)
 
         run_dir = WORKSPACE_DIR / "run" / job_id
@@ -142,6 +149,20 @@ def run_object_storage(
 
         run_dir.mkdir(parents=True, exist_ok=False)
         input_path = run_dir / "input.mp4"
+
+        user_info_path = run_dir / "user_info.json"
+        user_info_path.write_text(
+            json.dumps(
+                {
+                    "user": {
+                        "height": user_height_m,
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
         storage = ObjectStorageGateway()
 

@@ -129,6 +129,7 @@ const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeou
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [caseId, setCaseId] = useState("");
+  const [userHeightCm, setUserHeightCm] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState("영상을 기다리고 있습니다");
@@ -173,6 +174,10 @@ export default function Home() {
     if (!file) return setError("먼저 MP4 영상을 선택해 주세요.");
     if (!file.name.toLowerCase().endsWith(".mp4")) return setError("MP4 파일만 업로드할 수 있습니다.");
     if (file.size > maxUploadBytes) return setError("파일 크기는 250 MiB 이하여야 합니다.");
+    const parsedHeightCm = Number(userHeightCm);
+    if (!Number.isFinite(parsedHeightCm) || parsedHeightCm < 50 || parsedHeightCm > 250) {
+      return setError("키는 50cm 이상 250cm 이하로 입력해 주세요.");
+    }
 
     setRunning(true);
     try {
@@ -189,7 +194,11 @@ export default function Home() {
       updateProgress(42, "분석 작업을 등록하고 있습니다", "queue");
       const job = await api<JobResponse>("/jobs", {
         method: "POST",
-        body: JSON.stringify({ case_id: createCaseId(caseId || file.name), input_object_name: upload.object_name }),
+        body: JSON.stringify({
+          case_id: createCaseId(caseId || file.name),
+          input_object_name: upload.object_name,
+          user_height_m: parsedHeightCm / 100,
+        }),
       });
       setJobId(job.job_id);
       setJobStatus(job.status);
@@ -237,6 +246,21 @@ export default function Home() {
           <label className="field" htmlFor="case-id">
             <span>분석 이름</span>
             <input id="case-id" value={caseId} onChange={(event) => setCaseId(event.target.value)} maxLength={64} placeholder="morning-run" autoComplete="off" />
+          </label>
+          <label className="field" htmlFor="user-height-cm">
+            <span>키 (cm)</span>
+            <input
+              id="user-height-cm"
+              type="number"
+              min="50"
+              max="250"
+              step="0.1"
+              inputMode="decimal"
+              value={userHeightCm}
+              onChange={(event) => setUserHeightCm(event.target.value)}
+              placeholder="175"
+              autoComplete="off"
+            />
           </label>
           <button className="primary-button" type="button" onClick={analyze} disabled={running}>분석 시작 <span aria-hidden="true">→</span></button>
           <p className="error-message" role="alert">{error}</p>

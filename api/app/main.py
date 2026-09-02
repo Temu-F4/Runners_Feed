@@ -103,6 +103,7 @@ class CreateInferenceJobRequest(BaseModel):
         min_length=1,
         max_length=1024,
     )
+    user_height_m: float = Field(ge=0.5, le=2.5)
 
     @field_validator("input_object_name")
     @classmethod
@@ -314,7 +315,11 @@ def create_inference_job(request: CreateInferenceJobRequest):
     try:
         celery_client.send_task(
             "inference.run_object_storage",
-            args=[request.case_id, request.input_object_name],
+            args=[
+                request.case_id,
+                request.input_object_name,
+                request.user_height_m,
+            ],
             task_id=job_id,
             queue="inference",
         )
