@@ -762,6 +762,9 @@ Prometheus와 Grafana 데이터는 각각 `prometheus_data`, `grafana_data` name
 
 #### 2026-09-02 OCI Overview 확장 및 호스트 알람
 
+각 panel의 의미와 정상·주의 기준, `No data` 해석 및 상황별 확인 방법은
+[`OCI Overview 대시보드 사용 설명서`](./OCI_OVERVIEW_DASHBOARD_GUIDE.md)를 참고한다.
+
 `Runners Feed / OCI Overview` dashboard는 다음 순서로 구성한다.
 
 1. 최상단 Overview: OCI VM CPU, 메모리, 루트 디스크 사용률 gauge
