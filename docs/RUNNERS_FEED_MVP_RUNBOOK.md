@@ -674,6 +674,33 @@ Grafana는 `grafana_reader` 계정으로 `inference_jobs`와
 `inference_job_stages`만 읽는다. Grafana와 PostgreSQL은 `backend` 내부
 network로 통신하며 PostgreSQL 5432 포트는 외부에 공개하지 않는다.
 
+#### 2026-09-02 Job 단계 계측 배포 검증
+
+- 배포 commit: `6e40635603d7e76752309fb49fd6fe36fdfddd91`
+- 테스트 Job: `2d86a326-cb09-4b4e-98ed-d5673d82df5f`
+- 테스트 Case: `stage_metrics_20260902_025152`
+- Job 상태: `SUCCESS`
+- DB 단계 행: 9개, 모두 `SUCCESS`
+- Job 처리시간: `195.736초` (결과 업로드까지)
+- Worker 실행시간: `196.227초` (Celery 기준, 정리 포함)
+
+```text
+입력 다운로드       0.265초
+프레임 추출        41.317초
+자세 추론          36.632초
+리포트 생성        28.459초
+프레임 렌더링      51.278초
+영상 합성          19.258초
+최종 인코딩        18.017초
+결과 업로드         0.330초
+작업 폴더 정리      0.453초
+```
+
+실행 중 DB polling에서도 `pose_inference → report_generate → frame_render →
+video_compose → video_encode` 전환을 확인했다. 다운로드와 프레임 추출은 첫
+polling 전에 완료됐고 결과 업로드와 정리는 5초 polling 사이에 완료됐지만,
+각 단계의 시작·종료 시각과 duration이 DB에 누락 없이 저장됐다.
+
 Prometheus 수집 대상 확인:
 
 ```bash
