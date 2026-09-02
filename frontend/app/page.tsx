@@ -100,6 +100,7 @@ function createCaseId(value: string) {
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api${path}`, {
     ...options,
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json", ...options.headers },
   });
   const payload = await response.json().catch(() => ({}));
