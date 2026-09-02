@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import oci
 import psycopg
 from celery import Celery
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from redis import Redis
@@ -19,6 +19,7 @@ from app.database import (
     find_active_guest_user,
     get_job as get_persisted_job,
     initialize_database,
+    list_jobs as list_persisted_jobs,
     mark_job_dispatch_failed,
 )
 from app.guest_identity import (
@@ -406,6 +407,18 @@ def create_test_job():
         "job_id": task.id,
         "status": "queued",
     }
+
+
+@app.get("/jobs")
+def list_jobs(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    jobs = list_persisted_jobs(
+        user_id=request.state.user_id,
+        limit=limit,
+    )
+    return {"jobs": [_serialize_job(job) for job in jobs]}
 
 
 @app.get("/jobs/{job_id}")

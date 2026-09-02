@@ -17,6 +17,7 @@ from app.database import (
     create_job,
     find_active_guest_user,
     get_job,
+    list_jobs,
 )
 
 
@@ -120,3 +121,33 @@ class GuestSessionDatabaseTests(TestCase):
             parameters,
             ("8e9f1ecb-7181-46ee-a8d4-243f5af650da", user_id),
         )
+
+    @patch("app.database.psycopg.connect")
+    def test_list_jobs_returns_only_owner_rows_in_recent_order(
+        self,
+        connect,
+    ) -> None:
+        user_id = uuid4()
+        expected_jobs = [{"job_id": uuid4(), "status": "SUCCESS"}]
+        connection = connect.return_value.__enter__.return_value
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = expected_jobs
+
+        result = list_jobs(user_id=user_id, limit=20)
+
+        self.assertEqual(result, expected_jobs)
+        query, parameters = cursor.execute.call_args.args
+        self.assertIn("WHERE user_id = %s", query)
+        self.assertIn("ORDER BY created_at DESC", query)
+        self.assertIn("LIMIT %s", query)
+        self.assertEqual(parameters, (user_id, 20))
+
+    @patch("app.database.psycopg.connect")
+    def test_list_jobs_rejects_invalid_limit_before_database_access(
+        self,
+        connect,
+    ) -> None:
+        with self.assertRaises(ValueError):
+            list_jobs(user_id=uuid4(), limit=51)
+
+        connect.assert_not_called()

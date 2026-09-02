@@ -204,3 +204,42 @@ def get_job(
                 (job_id, user_id),
             )
             return cursor.fetchone()
+
+
+def list_jobs(
+    *,
+    user_id: UUID,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if not 1 <= limit <= 50:
+        raise ValueError("Job list limit must be between 1 and 50")
+
+    with psycopg.connect(
+        _database_url(),
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT job_id,
+                       case_id,
+                       input_object_name,
+                       height_snapshot_m,
+                       status,
+                       result_details_object,
+                       result_predictions_object,
+                       result_report_object,
+                       result_video_object,
+                       error_code,
+                       created_at,
+                       started_at,
+                       completed_at,
+                       updated_at
+                FROM inference_jobs
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (user_id, limit),
+            )
+            return list(cursor.fetchall())
