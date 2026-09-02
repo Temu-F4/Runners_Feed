@@ -134,7 +134,7 @@ def _max_upload_bytes() -> int:
     return max_bytes
 
 
-class CreateInferenceJobRequest(BaseModel):
+class CreateCoachJobRequest(BaseModel):
     case_id: str = Field(
         min_length=1,
         max_length=64,
@@ -253,7 +253,7 @@ def _serialize_job(job: dict) -> dict:
         }
 
     if job["status"] == "FAILED":
-        response["error"] = job["error_code"] or "inference_failed"
+        response["error"] = job["error_code"] or "coach_failed"
 
     return response
 
@@ -356,8 +356,8 @@ def complete_upload(request: CompleteUploadRequest):
 
 
 @app.post("/jobs", status_code=202)
-def create_inference_job(
-    payload: CreateInferenceJobRequest,
+def create_coach_job(
+    payload: CreateCoachJobRequest,
     request: Request,
 ):
     _inspect_input_object(payload.input_object_name)
@@ -373,20 +373,20 @@ def create_inference_job(
 
     try:
         celery_client.send_task(
-            "inference.run_object_storage",
+            "coach.run_object_storage",
             args=[
                 payload.case_id,
                 payload.input_object_name,
                 payload.user_height_m,
             ],
             task_id=job_id,
-            queue="inference",
+            queue="coach",
         )
     except Exception as error:
         mark_job_dispatch_failed(job_id)
         raise HTTPException(
             status_code=503,
-            detail="Failed to dispatch inference job",
+            detail="Failed to dispatch coach job",
         ) from error
 
     job = get_persisted_job(
@@ -397,16 +397,6 @@ def create_inference_job(
         raise HTTPException(status_code=500, detail="Job was not persisted")
 
     return _serialize_job(job)
-
-
-@app.post("/jobs/test", status_code=202)
-def create_test_job():
-    task = celery_client.send_task("tasks.healthcheck")
-
-    return {
-        "job_id": task.id,
-        "status": "queued",
-    }
 
 
 @app.get("/jobs")

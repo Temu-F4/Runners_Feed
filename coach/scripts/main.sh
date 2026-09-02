@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# ./coach/scripts/main.sh test1 --extract --device mps
+# ./coach/scripts/main.sh test1 --agent false --extract --device cpu
 set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+    echo "사용법: $0 RUN_ID [--agent true|false] [--extract] [--device cpu|cuda|mps]" >&2
+    exit 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 RUN_FOLDER="$1"
 shift
 
-RUN_AGENT=true
+RUN_AGENT="${COACH_AGENT_ENABLED:-true}"
 
 if [[ "${1:-}" == "--agent" ]]; then
     RUN_AGENT="${2:-true}"

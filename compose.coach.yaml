@@ -1,0 +1,64 @@
+services:
+  coach-manual:
+    profiles:
+      - manual-coach
+    build:
+      context: .
+      dockerfile: worker/Dockerfile.coach
+      args:
+        COACH_UID: ${COACH_UID:-1000}
+        COACH_GID: ${COACH_GID:-1000}
+    user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
+    environment:
+      COACH_DEVICE: ${COACH_DEVICE:-cpu}
+      COACH_AGENT_ENABLED: ${COACH_AGENT_ENABLED:-auto}
+      COACH_TIMEOUT_SECONDS: ${COACH_TIMEOUT_SECONDS:-3600}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
+    networks:
+      - backend
+  coach-worker:
+    profiles:
+      - coach
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: worker/Dockerfile.coach
+      args:
+        COACH_UID: ${COACH_UID:-1000}
+        COACH_GID: ${COACH_GID:-1000}
+    user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
+    entrypoint:
+      - celery
+      - -A
+      - coach_celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=1
+      - --queues=coach
+    environment:
+      OCI_CONFIG_FILE: /.oci/config
+      OCI_CONFIG_PROFILE: DEFAULT
+      OCI_REGION: ap-seoul-1
+      OCI_RAW_BUCKET: bucket-t04-raw
+      OCI_RESULTS_BUCKET: bucket-t04-results
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      COACH_DEVICE: ${COACH_DEVICE:-cpu}
+      COACH_AGENT_ENABLED: ${COACH_AGENT_ENABLED:-auto}
+      COACH_TIMEOUT_SECONDS: ${COACH_TIMEOUT_SECONDS:-3600}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /home/ubuntu/.oci:/.oci:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
+    networks:
+      - backend

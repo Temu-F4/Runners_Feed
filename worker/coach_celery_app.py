@@ -4,16 +4,10 @@ from celery import Celery
 
 
 celery_app = Celery(
-    "runners_feed_inference",
-    broker=os.getenv(
-        "CELERY_BROKER_URL",
-        "redis://redis:6379/1",
-    ),
-    backend=os.getenv(
-        "CELERY_RESULT_BACKEND",
-        "redis://redis:6379/2",
-    ),
-    include=["inference_tasks"],
+    "runners_feed_coach",
+    broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/1"),
+    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/2"),
+    include=["coach_tasks"],
 )
 
 celery_app.conf.update(
@@ -28,11 +22,8 @@ celery_app.conf.update(
     task_time_limit=3600,
     task_soft_time_limit=3500,
     task_routes={
-        "inference.run_video": {
-            "queue": "inference",
-        },
-        "inference.run_object_storage": {
-            "queue": "inference",
+        "coach.run_object_storage": {
+            "queue": "coach",
         },
     },
 )

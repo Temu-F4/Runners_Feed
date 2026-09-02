@@ -1,0 +1,52 @@
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app:/app/coach \
+    WORKSPACE_ROOT=/workspace \
+    PYTHON_BIN=python
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libgl1 \
+        libglib2.0-0 \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ARG COACH_UID=1000
+ARG COACH_GID=1000
+RUN groupadd --gid "${COACH_GID}" app \
+    && useradd \
+        --uid "${COACH_UID}" \
+        --gid "${COACH_GID}" \
+        --create-home \
+        --shell /usr/sbin/nologin \
+        app
+
+COPY worker/requirements.coach.txt /app/requirements.coach.txt
+RUN python -m pip install --upgrade pip \
+    && pip install -r /app/requirements.coach.txt
+
+COPY coach /app/coach
+COPY worker/coach_adapter /app/coach_adapter
+COPY worker/coach_celery_app.py /app/coach_celery_app.py
+COPY worker/coach_tasks.py /app/coach_tasks.py
+COPY worker/job_repository.py /app/job_repository.py
+COPY worker/object_storage_gateway.py /app/object_storage_gateway.py
+COPY worker/run_cleanup.py /app/run_cleanup.py
+COPY worker/run_coach_pipeline.sh /app/run_coach_pipeline.sh
+
+RUN chmod +x \
+        /app/run_coach_pipeline.sh \
+        /app/coach/scripts/main.sh \
+        /app/coach/scripts/hpe/hpe.sh \
+        /app/coach/scripts/features/features.sh \
+        /app/coach/scripts/Agent/agent.sh \
+    && chown -R app:app /app
+
+USER app
+ENTRYPOINT ["/app/run_coach_pipeline.sh"]
+CMD ["test1"]

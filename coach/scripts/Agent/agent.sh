@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 echo "Agent 진입"
 
@@ -19,4 +19,4 @@ RUN_FOLDER="$1"
 "$PYTHON_BIN" \
   "$FEATURES_DIR/Running_coach.py" \
   "$WORKSPACE_ROOT" \
-  "$RUN_FOLDER" \
+  "$RUN_FOLDER"

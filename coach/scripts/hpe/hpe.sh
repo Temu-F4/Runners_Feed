@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 echo "HPE 진입"
 
@@ -80,6 +80,7 @@ printf '\n이미지 합성\n'
   "$RUN_DIR/outputs/_rendered.mp4"
 
 ffmpeg \
+  -y \
   -hide_banner \
   -loglevel error \
   -stats \

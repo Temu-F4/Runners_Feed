@@ -8,7 +8,6 @@ cd "${PROJECT_DIR}"
 
 docker compose \
   -f compose.yaml \
-  -f compose.poc.yaml \
   --profile tls-tools \
   run --rm certbot \
   renew \
@@ -19,6 +18,5 @@ docker compose \
 
 docker compose \
   -f compose.yaml \
-  -f compose.poc.yaml \
   exec -T web \
   nginx -s reload

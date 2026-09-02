@@ -54,6 +54,7 @@ services:
       RESULT_URL_TTL_SECONDS: ${RESULT_URL_TTL_SECONDS:-900}
       UPLOAD_URL_TTL_SECONDS: ${UPLOAD_URL_TTL_SECONDS:-900}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-262144000}
+      GUEST_SESSION_TTL_DAYS: ${GUEST_SESSION_TTL_DAYS:-30}
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -126,20 +127,6 @@ services:
       retries: 5
     networks:
       - backend
-  worker:
-    build:
-      context: ./worker
-      dockerfile: Dockerfile.celery
-    restart: unless-stopped
-    environment:
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - backend
-
 volumes:
   postgres_data:
   redis_data:

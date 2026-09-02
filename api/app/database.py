@@ -162,7 +162,7 @@ def mark_job_dispatch_failed(job_id: str) -> None:
                 UPDATE inference_jobs
                 SET status = 'FAILED',
                     error_code = 'dispatch_failed',
-                    error_message = 'Failed to dispatch inference task',
+                    error_message = 'Failed to dispatch coach task',
                     completed_at = NOW(),
                     updated_at = NOW()
                 WHERE job_id = %s

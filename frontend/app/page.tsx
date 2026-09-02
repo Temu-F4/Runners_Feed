@@ -449,8 +449,9 @@ export default function Home() {
                 <h3>{report.narrative.overall_summary}</h3>
               </div>
 
-              <div className="findings-list">
-                {report.narrative.findings.map((finding) => (
+              {report.narrative.findings.length > 0 && (
+                <div className="findings-list">
+                  {report.narrative.findings.map((finding) => (
                   <article className="finding-card" key={finding.feature_id}>
                     <div>
                       <p>{finding.label}</p>
@@ -459,17 +460,24 @@ export default function Home() {
                     <div>
                       <p>{finding.interpretation}</p>
                       <small>{finding.limitation}</small>
-                      <small>근거: {finding.evidence_ids.join(", ")}</small>
+                      {finding.evidence_ids.length > 0 && (
+                        <small>근거: {finding.evidence_ids.join(", ")}</small>
+                      )}
                     </div>
                   </article>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
 
               <div className="coaching-block">
-                <h3>이번 영상에서 시도해 볼 점</h3>
-                <ol>
-                  {report.narrative.coaching_points.map((point) => <li key={point}>{point}</li>)}
-                </ol>
+                {report.narrative.coaching_points.length > 0 && (
+                  <>
+                    <h3>이번 영상에서 시도해 볼 점</h3>
+                    <ol>
+                      {report.narrative.coaching_points.map((point) => <li key={point}>{point}</li>)}
+                    </ol>
+                  </>
+                )}
                 <p>{report.narrative.disclaimer}</p>
               </div>
             </div>

@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from inference_celery_app import celery_app
+from coach_celery_app import celery_app
 from job_repository import (
     mark_job_failed,
     mark_job_processing,
@@ -18,9 +18,7 @@ from run_cleanup import remove_successful_run
 
 LOGGER = logging.getLogger(__name__)
 WORKSPACE_DIR = Path("/workspace")
-CASE_ID_PATTERN = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
-)
+CASE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 
 def validate_case_id(case_id: str) -> None:
@@ -31,93 +29,65 @@ def validate_case_id(case_id: str) -> None:
 def execute_pipeline(
     case_id: str,
     job_id: str,
-    run_id: str | None = None,
+    run_id: str,
 ) -> dict:
     validate_case_id(case_id)
+    validate_case_id(run_id)
 
-    pipeline_run_id = run_id or case_id
-    validate_case_id(pipeline_run_id)
-
-    run_dir = WORKSPACE_DIR / "run" / pipeline_run_id
-
+    run_dir = WORKSPACE_DIR / "run" / run_id
     video_files = sorted(run_dir.glob("*.mp4"))
-
     if len(video_files) != 1:
         raise ValueError(
-            f"Expected exactly one MP4 in {run_dir}, "
-            f"found {len(video_files)}"
+            f"Expected exactly one MP4 in {run_dir}, found {len(video_files)}"
         )
 
     output_dir = run_dir / "outputs"
     if output_dir.exists():
-        raise FileExistsError(
-            f"Output already exists: {output_dir}"
-        )
+        raise FileExistsError(f"Output already exists: {output_dir}")
 
-    timeout_seconds = int(
-        os.getenv("INFERENCE_TIMEOUT_SECONDS", "3600")
-    )
-
+    timeout_seconds = int(os.getenv("COACH_TIMEOUT_SECONDS", "3600"))
     try:
         completed = subprocess.run(
-            [
-                "/app/inference/run_pipeline.sh",
-                pipeline_run_id,
-            ],
+            ["/app/run_coach_pipeline.sh", run_id],
             check=True,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
         )
-
     except subprocess.CalledProcessError as error:
-        error_log = (
-            error.stderr or error.stdout or ""
-        )[-4000:]
-        raise RuntimeError(
-            f"RTMPose pipeline failed:\n{error_log}"
-        ) from error
+        error_log = (error.stderr or error.stdout or "")[-4000:]
+        raise RuntimeError(f"Coach pipeline failed:\n{error_log}") from error
+
+    required_artifacts = {
+        "details": output_dir / "details.json",
+        "predictions": output_dir / "pose_predictions.json",
+        "report": output_dir / "report.json",
+        "rendered_video": output_dir / "rendered.mp4",
+    }
+    missing = [
+        str(path)
+        for path in required_artifacts.values()
+        if not path.is_file()
+    ]
+    if missing:
+        raise FileNotFoundError(
+            "Coach pipeline did not create required artifacts: "
+            + ", ".join(missing)
+        )
 
     return {
         "job_id": job_id,
         "case_id": case_id,
         "status": "success",
         "artifacts": {
-            "details": str(
-                output_dir / "details.json"
-            ),
-            "predictions": str(
-                output_dir / "pose_predictions.json"
-            ),
-            "report": str(
-                output_dir / "report.json"
-            ),
-            "rendered_video": str(
-                output_dir / "rendered.mp4"
-            ),
+            name: str(path)
+            for name, path in required_artifacts.items()
         },
-        "log_tail": (
-            completed.stdout + completed.stderr
-        )[-4000:],
+        "log_tail": (completed.stdout + completed.stderr)[-4000:],
     }
 
 
-@celery_app.task(
-    name="inference.run_video",
-    bind=True,
-    acks_late=False,
-)
-def run_video(self, case_id: str) -> dict:
-    return execute_pipeline(
-        case_id=case_id,
-        job_id=self.request.id,
-    )
-
-
-@celery_app.task(
-    name="inference.run_object_storage",
-    bind=True,
-)
+@celery_app.task(name="coach.run_object_storage", bind=True)
 def run_object_storage(
     self,
     case_id: str,
@@ -129,35 +99,20 @@ def run_object_storage(
     try:
         validate_case_id(case_id)
         validate_case_id(job_id)
-
         if not input_object_name:
-            raise ValueError(
-                "input_object_name must not be empty"
-            )
-
+            raise ValueError("input_object_name must not be empty")
         if not 0.5 <= user_height_m <= 2.5:
-            raise ValueError(
-                "user_height_m must be between 0.5 and 2.5"
-            )
+            raise ValueError("user_height_m must be between 0.5 and 2.5")
 
         mark_job_processing(job_id)
-
         run_dir = WORKSPACE_DIR / "run" / job_id
-
         if run_dir.exists():
             shutil.rmtree(run_dir)
-
         run_dir.mkdir(parents=True, exist_ok=False)
-        input_path = run_dir / "input.mp4"
 
-        user_info_path = run_dir / "user_info.json"
-        user_info_path.write_text(
+        (run_dir / "user_info.json").write_text(
             json.dumps(
-                {
-                    "user": {
-                        "height": user_height_m,
-                    }
-                },
+                {"user": {"height": user_height_m}},
                 ensure_ascii=False,
                 indent=2,
             ),
@@ -165,10 +120,9 @@ def run_object_storage(
         )
 
         storage = ObjectStorageGateway()
-
         storage.download_input(
             object_name=input_object_name,
-            destination=input_path,
+            destination=run_dir / "input.mp4",
         )
 
         result = execute_pipeline(
@@ -176,19 +130,13 @@ def run_object_storage(
             job_id=job_id,
             run_id=job_id,
         )
-
         output_dir = run_dir / "outputs"
         output_prefix = f"jobs/{job_id}"
-
         result_objects = {
             "details": f"{output_prefix}/details.json",
-            "predictions": (
-                f"{output_prefix}/pose_predictions.json"
-            ),
+            "predictions": f"{output_prefix}/pose_predictions.json",
             "report": f"{output_prefix}/report.json",
-            "rendered_video": (
-                f"{output_prefix}/rendered.mp4"
-            ),
+            "rendered_video": f"{output_prefix}/rendered.mp4",
         }
 
         storage.upload_result(
@@ -213,7 +161,6 @@ def run_object_storage(
         )
 
         mark_job_success(job_id, result_objects)
-
         try:
             result["local_run_deleted"] = remove_successful_run(
                 run_dir,
@@ -230,7 +177,6 @@ def run_object_storage(
         result["input_object"] = input_object_name
         result["result_objects"] = result_objects
         return result
-
     except Exception as error:
         try:
             mark_job_failed(job_id, error)
