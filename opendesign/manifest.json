@@ -1,0 +1,41 @@
+{
+  "generated": "2026-09-02T15:58:45Z",
+  "sections": [
+    {
+      "id": "mockups",
+      "label": "Mockups",
+      "groups": []
+    },
+    {
+      "id": "design-systems",
+      "label": "Design Systems",
+      "groups": [
+        {
+          "slug": "runners-feed-product",
+          "files": [
+            {
+              "label": "README.md",
+              "path": "design-systems/runners-feed-product/README.md"
+            },
+            {
+              "label": "SKILL.md",
+              "path": "design-systems/runners-feed-product/SKILL.md"
+            },
+            {
+              "label": "voice-and-tone.md",
+              "path": "design-systems/runners-feed-product/brand/voice-and-tone.md"
+            },
+            {
+              "label": "style-notes.md",
+              "path": "design-systems/runners-feed-product/brand/style-notes.md"
+            },
+            {
+              "label": "colors_and_type.css",
+              "path": "design-systems/runners-feed-product/tokens/colors_and_type.css"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

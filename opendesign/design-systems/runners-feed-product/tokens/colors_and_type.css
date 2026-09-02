@@ -1,0 +1,44 @@
+:root {
+  /* Raw color tokens */
+  --rf-black-1: #090b0a;
+  --rf-black-2: #151816;
+  --rf-black-3: #1d211e;
+  --rf-gray-1: #343a35;
+  --rf-gray-2: #697069;
+  --rf-gray-3: #939991;
+  --rf-white-1: #f3f4ef;
+  --rf-lime-1: #c9ff38;
+  --rf-lime-ink: #0b1700;
+  --rf-red-1: #ff7e6d;
+
+  /* Raw type tokens */
+  --rf-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --rf-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --rf-weight-regular: 400;
+  --rf-weight-bold: 800;
+  --rf-weight-black: 900;
+  --rf-size-caption: 0.75rem;
+  --rf-size-body-small: 0.82rem;
+  --rf-size-body: 1rem;
+  --rf-size-lead: 1.05rem;
+  --rf-size-h2: clamp(1.65rem, 3vw, 2.4rem);
+  --rf-size-h1: clamp(3rem, 8vw, 6.8rem);
+
+  /* Semantic tokens */
+  --page-background: var(--rf-black-1);
+  --surface-primary: var(--rf-black-2);
+  --surface-secondary: var(--rf-black-3);
+  --border-subtle: var(--rf-gray-1);
+  --text-primary: var(--rf-white-1);
+  --text-muted: var(--rf-gray-3);
+  --text-disabled: var(--rf-gray-2);
+  --accent-primary: var(--rf-lime-1);
+  --accent-ink: var(--rf-lime-ink);
+  --status-danger: var(--rf-red-1);
+  --font-body: var(--rf-font-sans);
+  --font-data: var(--rf-font-mono);
+  --h1: var(--rf-size-h1);
+  --h2: var(--rf-size-h2);
+  --body: var(--rf-size-body);
+  --caption: var(--rf-size-caption);
+}

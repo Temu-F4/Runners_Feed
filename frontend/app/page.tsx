@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 
 type Stage = "idle" | "upload" | "queue" | "analysis" | "result";
 type JobStatus = "IDLE" | "QUEUED" | "PROCESSING" | "SUCCESS" | "FAILED" | "ERROR";
@@ -12,8 +12,16 @@ interface UploadResponse {
 
 interface JobResponse {
   job_id: string;
+  case_id: string;
+  height_snapshot_m: number;
   status: JobStatus;
+  created_at: string;
+  completed_at: string | null;
   error?: string;
+}
+
+interface JobListResponse {
+  jobs: JobResponse[];
 }
 
 interface ReportMetric {
@@ -88,6 +96,14 @@ interface AnalysisReport {
 
 const maxUploadBytes = 262144000;
 const stages: Exclude<Stage, "idle">[] = ["upload", "queue", "analysis", "result"];
+const statusLabels: Record<JobStatus, string> = {
+  IDLE: "대기",
+  QUEUED: "대기 중",
+  PROCESSING: "분석 중",
+  SUCCESS: "완료",
+  FAILED: "실패",
+  ERROR: "오류",
+};
 
 function createCaseId(value: string) {
   const stem = value.replace(/\.mp4$/i, "");
@@ -95,6 +111,16 @@ function createCaseId(value: string) {
     .replace(/[^A-Za-z0-9_-]+/g, "-")
     .replace(/^[^A-Za-z0-9]+|[-]+$/g, "");
   return (normalized || `run-${Date.now()}`).slice(0, 64);
+}
+
+function formatJobDate(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -140,7 +166,27 @@ export default function Home() {
   const [resultUrl, setResultUrl] = useState("");
   const [report, setReport] = useState<AnalysisReport | null>(null);
   const [running, setRunning] = useState(false);
+  const [history, setHistory] = useState<JobResponse[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
   const resultRef = useRef<HTMLElement>(null);
+
+  async function loadHistory() {
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const response = await api<JobListResponse>("/jobs");
+      setHistory(response.jobs);
+    } catch (caught) {
+      setHistoryError(caught instanceof Error ? caught.message : "분석 기록을 불러오지 못했습니다.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadHistory();
+  }, []);
 
   function updateProgress(value: number, message: string, nextStage: Stage) {
     setProgress(value);
@@ -166,6 +212,44 @@ export default function Home() {
       await wait(2500);
     }
     throw new Error("분석 제한 시간을 초과했습니다.");
+  }
+
+  async function loadCompletedResult(id: string) {
+    updateProgress(92, "결과 영상을 준비하고 있습니다", "result");
+    const result = await api<{ rendered_video_url: string }>(`/jobs/${id}/result-url`, {
+      method: "POST",
+      body: "{}",
+    });
+    setResultUrl(result.rendered_video_url);
+    try {
+      setReport(await api<AnalysisReport>(`/jobs/${id}/report`));
+    } catch {
+      setReport(null);
+    }
+    setJobStatus("SUCCESS");
+    updateProgress(100, "분석이 완료됐습니다", "result");
+    window.setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+  }
+
+  async function reopenJob(job: JobResponse) {
+    setError("");
+    setResultUrl("");
+    setReport(null);
+    setJobId(job.job_id);
+    setJobStatus(job.status);
+    setRunning(true);
+
+    try {
+      if (job.status !== "SUCCESS") await pollJob(job.job_id);
+      await loadCompletedResult(job.job_id);
+      await loadHistory();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "분석 결과를 불러오지 못했습니다.");
+      setStatusText("작업을 완료하지 못했습니다");
+      setJobStatus("ERROR");
+    } finally {
+      setRunning(false);
+    }
   }
 
   async function analyze() {
@@ -205,17 +289,8 @@ export default function Home() {
       setJobStatus(job.status);
       await pollJob(job.job_id);
 
-      updateProgress(92, "결과 영상을 준비하고 있습니다", "result");
-      const result = await api<{ rendered_video_url: string }>(`/jobs/${job.job_id}/result-url`, { method: "POST", body: "{}" });
-      setResultUrl(result.rendered_video_url);
-      try {
-        setReport(await api<AnalysisReport>(`/jobs/${job.job_id}/report`));
-      } catch {
-        setReport(null);
-      }
-      setJobStatus("SUCCESS");
-      updateProgress(100, "분석이 완료됐습니다", "result");
-      window.setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+      await loadCompletedResult(job.job_id);
+      await loadHistory();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "알 수 없는 오류가 발생했습니다.");
       setStatusText("작업을 완료하지 못했습니다");
@@ -285,6 +360,52 @@ export default function Home() {
             <div><dt>Status</dt><dd>{jobStatus}</dd></div>
           </dl>
         </div>
+      </section>
+
+      <section className="history-section" aria-labelledby="history-title">
+        <div className="history-heading">
+          <div>
+            <p className="step-label">HISTORY</p>
+            <h2 id="history-title">이 브라우저의 분석 기록</h2>
+          </div>
+          <button type="button" onClick={() => void loadHistory()} disabled={historyLoading}>
+            {historyLoading ? "불러오는 중" : "새로고침"}
+          </button>
+        </div>
+
+        {historyError && <p className="history-message" role="alert">{historyError}</p>}
+        {!historyLoading && !historyError && history.length === 0 && (
+          <p className="history-message">아직 저장된 분석 기록이 없습니다.</p>
+        )}
+
+        {history.length > 0 && (
+          <ol className="history-list">
+            {history.map((job) => {
+              const canOpen = ["QUEUED", "PROCESSING", "SUCCESS"].includes(job.status);
+              return (
+                <li key={job.job_id}>
+                  <div className="history-primary">
+                    <strong>{job.case_id}</strong>
+                    <span>{formatJobDate(job.created_at)}</span>
+                  </div>
+                  <div className="history-detail">
+                    <span>{Math.round(job.height_snapshot_m * 100)}cm</span>
+                    <span className={`history-status status-${job.status.toLowerCase()}`}>
+                      {statusLabels[job.status]}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void reopenJob(job)}
+                    disabled={running || !canOpen}
+                  >
+                    {job.status === "SUCCESS" ? "결과 보기" : canOpen ? "이어 보기" : "열 수 없음"}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        )}
       </section>
 
       {resultUrl && (
