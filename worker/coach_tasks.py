@@ -229,6 +229,7 @@ def execute_pipeline(
         "details": output_dir / "details.json",
         "predictions": output_dir / "pose_predictions.json",
         "report": output_dir / "report.json",
+        "skeleton": output_dir / "skeleton.json.gz",
         "rendered_video": output_dir / "rendered.mp4",
     }
     missing = [
@@ -309,6 +310,7 @@ def run_object_storage(
             "details": f"{output_prefix}/details.json",
             "predictions": f"{output_prefix}/pose_predictions.json",
             "report": f"{output_prefix}/report.json",
+            "skeleton": f"{output_prefix}/skeleton.json.gz",
             "rendered_video": f"{output_prefix}/rendered.mp4",
         }
 
@@ -327,6 +329,11 @@ def run_object_storage(
                 source=output_dir / "report.json",
                 object_name=result_objects["report"],
                 content_type="application/json",
+            )
+            storage.upload_result(
+                source=output_dir / "skeleton.json.gz",
+                object_name=result_objects["skeleton"],
+                content_type="application/gzip",
             )
             storage.upload_result(
                 source=output_dir / "rendered.mp4",

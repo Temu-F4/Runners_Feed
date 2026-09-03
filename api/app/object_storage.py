@@ -1,4 +1,5 @@
 import configparser
+import gzip
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -124,6 +125,17 @@ class ObjectStorageGateway:
         payload = json.loads(response.data.content.decode("utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("Result JSON must contain an object")
+        return payload
+
+    def load_result_gzip_json(self, object_name: str) -> dict:
+        response = self.client.get_object(
+            namespace_name=self.namespace,
+            bucket_name=self.results_bucket,
+            object_name=object_name,
+        )
+        payload = json.loads(gzip.decompress(response.data.content))
+        if not isinstance(payload, dict):
+            raise ValueError("Compressed result JSON must contain an object")
         return payload
 
     def inspect_input_object(self, object_name: str) -> dict[str, object]:

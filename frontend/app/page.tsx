@@ -94,6 +94,90 @@ interface AnalysisReport {
   notice: string;
 }
 
+interface SkeletonReplayData {
+  schema_version: "skeleton-1.0";
+  pose_model: "halpe26";
+  coordinate_space: "normalized";
+  fps: number;
+  duration_ms: number;
+  frames: Array<{
+    t_ms: number;
+    keypoints: Array<[number, number, number]>;
+  }>;
+}
+
+const skeletonEdges = [
+  [0, 1], [0, 2], [1, 3], [2, 4],
+  [5, 6], [5, 7], [7, 9], [6, 8], [8, 10],
+  [5, 11], [6, 12], [11, 12],
+  [11, 13], [13, 15], [12, 14], [14, 16],
+] as const;
+
+function SkeletonReplay({ data }: { data: SkeletonReplayData }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || data.frames.length === 0) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const targetCanvas = canvas;
+    const drawingContext = context;
+
+    let animationFrame = 0;
+    const startedAt = performance.now();
+    const replayDuration = Math.max(
+      data.duration_ms,
+      data.frames[data.frames.length - 1].t_ms,
+      1000,
+    );
+
+    function draw(now: number) {
+      const elapsed = (now - startedAt) % replayDuration;
+      let frame = data.frames[0];
+      for (const candidate of data.frames) {
+        if (candidate.t_ms > elapsed) break;
+        frame = candidate;
+      }
+
+      drawingContext.fillStyle = "#07110f";
+      drawingContext.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+      drawingContext.strokeStyle = "#b9ff56";
+      drawingContext.fillStyle = "#efffcf";
+      drawingContext.lineWidth = 4;
+      drawingContext.lineCap = "round";
+
+      for (const [start, end] of skeletonEdges) {
+        const first = frame.keypoints[start];
+        const second = frame.keypoints[end];
+        if (!first || !second || first[2] < 0.25 || second[2] < 0.25) continue;
+        drawingContext.beginPath();
+        drawingContext.moveTo(first[0] * targetCanvas.width, first[1] * targetCanvas.height);
+        drawingContext.lineTo(second[0] * targetCanvas.width, second[1] * targetCanvas.height);
+        drawingContext.stroke();
+      }
+
+      for (const [x, y, score] of frame.keypoints) {
+        if (score < 0.25) continue;
+        drawingContext.beginPath();
+        drawingContext.arc(x * targetCanvas.width, y * targetCanvas.height, 5, 0, Math.PI * 2);
+        drawingContext.fill();
+      }
+      animationFrame = requestAnimationFrame(draw);
+    }
+
+    animationFrame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [data]);
+
+  return (
+    <div className="skeleton-frame">
+      <canvas ref={canvasRef} width="960" height="540" aria-label="러닝 자세 스켈레톤 재생" />
+      <p>원본 영상 없이 관절 좌표만 재생합니다.</p>
+    </div>
+  );
+}
+
 const maxUploadBytes = 262144000;
 const stages: Exclude<Stage, "idle">[] = ["upload", "queue", "analysis", "result"];
 const statusLabels: Record<JobStatus, string> = {
@@ -165,6 +249,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [resultUrl, setResultUrl] = useState("");
   const [report, setReport] = useState<AnalysisReport | null>(null);
+  const [skeleton, setSkeleton] = useState<SkeletonReplayData | null>(null);
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<JobResponse[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -215,16 +300,25 @@ export default function Home() {
   }
 
   async function loadCompletedResult(id: string) {
-    updateProgress(92, "결과 영상을 준비하고 있습니다", "result");
-    const result = await api<{ rendered_video_url: string }>(`/jobs/${id}/result-url`, {
-      method: "POST",
-      body: "{}",
-    });
-    setResultUrl(result.rendered_video_url);
+    updateProgress(92, "분석 결과를 준비하고 있습니다", "result");
+    try {
+      const result = await api<{ rendered_video_url: string }>(`/jobs/${id}/result-url`, {
+        method: "POST",
+        body: "{}",
+      });
+      setResultUrl(result.rendered_video_url);
+    } catch {
+      setResultUrl("");
+    }
     try {
       setReport(await api<AnalysisReport>(`/jobs/${id}/report`));
     } catch {
       setReport(null);
+    }
+    try {
+      setSkeleton(await api<SkeletonReplayData>(`/jobs/${id}/skeleton`));
+    } catch {
+      setSkeleton(null);
     }
     setJobStatus("SUCCESS");
     updateProgress(100, "분석이 완료됐습니다", "result");
@@ -235,6 +329,7 @@ export default function Home() {
     setError("");
     setResultUrl("");
     setReport(null);
+    setSkeleton(null);
     setJobId(job.job_id);
     setJobStatus(job.status);
     setRunning(true);
@@ -256,6 +351,7 @@ export default function Home() {
     setError("");
     setResultUrl("");
     setReport(null);
+    setSkeleton(null);
     if (!file) return setError("먼저 MP4 영상을 선택해 주세요.");
     if (!file.name.toLowerCase().endsWith(".mp4")) return setError("MP4 파일만 업로드할 수 있습니다.");
     if (file.size > maxUploadBytes) return setError("파일 크기는 250 MiB 이하여야 합니다.");
@@ -408,10 +504,14 @@ export default function Home() {
         )}
       </section>
 
-      {resultUrl && (
+      {(resultUrl || skeleton) && (
         <section ref={resultRef} className="result-section" aria-labelledby="result-title">
-          <div className="result-copy"><p className="step-label">03 · RESULT</p><h2 id="result-title">분석이 완료됐습니다.</h2><p>관절 포인트가 합성된 영상을 재생하거나 전체 화면으로 확인하세요.</p></div>
-          <div className="video-frame"><video src={resultUrl} controls playsInline preload="metadata" /></div>
+          <div className="result-copy"><p className="step-label">03 · RESULT</p><h2 id="result-title">분석이 완료됐습니다.</h2><p>{resultUrl ? "관절 포인트가 합성된 영상을 확인하세요." : "결과 영상의 보관기간이 지나 관절 움직임만 표시합니다."}</p></div>
+          {resultUrl ? (
+            <div className="video-frame"><video src={resultUrl} controls playsInline preload="metadata" /></div>
+          ) : skeleton ? (
+            <SkeletonReplay data={skeleton} />
+          ) : null}
         </section>
       )}
 

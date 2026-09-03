@@ -250,6 +250,7 @@ def _serialize_job(job: dict) -> dict:
             "details": job["result_details_object"],
             "predictions": job["result_predictions_object"],
             "report": job["result_report_object"],
+            "skeleton": job["result_skeleton_object"],
             "rendered_video": job["result_video_object"],
         }
 
@@ -474,6 +475,41 @@ def get_job_report(job_id: str, request: Request):
         raise HTTPException(
             status_code=503,
             detail="Failed to load analysis report",
+        ) from error
+
+
+@app.get("/jobs/{job_id}/skeleton")
+def get_job_skeleton(job_id: str, request: Request):
+    job = _get_owned_job_or_404(job_id, request.state.user_id)
+    if job["status"] != "SUCCESS":
+        raise HTTPException(
+            status_code=409,
+            detail="Skeleton is not available until the job succeeds",
+        )
+
+    skeleton_object = job["result_skeleton_object"]
+    if not skeleton_object:
+        raise HTTPException(
+            status_code=404,
+            detail="Skeleton replay is not available for this job",
+        )
+
+    try:
+        return ObjectStorageGateway().load_result_gzip_json(skeleton_object)
+    except oci.exceptions.ServiceError as error:
+        if error.status == 404:
+            raise HTTPException(
+                status_code=404,
+                detail="Skeleton replay has expired",
+            ) from error
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to load skeleton replay",
+        ) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to load skeleton replay",
         ) from error
 
 

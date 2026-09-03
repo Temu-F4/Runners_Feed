@@ -29,6 +29,10 @@ fi
 "$PYTHON_BIN" \
   /app/coach_adapter/report_adapter.py \
   "$WORKSPACE_ROOT/run/$RUN_ID"
+
+"$PYTHON_BIN" \
+  /app/coach_adapter/skeleton_adapter.py \
+  "$WORKSPACE_ROOT/run/$RUN_ID"
 echo "COACH_STAGE_SUCCESS=report_generate"
 
 echo "COACH_PIPELINE=PASS"
