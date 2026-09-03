@@ -784,7 +784,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT jobs.error_code AS \"Job Error\", jobs.error_message AS \"Job Message\", failed_stage.stage_key AS \"Failed Stage\", failed_stage.error_code AS \"Stage Error\", failed_stage.error_message AS \"Stage Message\" FROM inference_jobs jobs LEFT JOIN LATERAL (SELECT stage_key, error_code, error_message FROM inference_job_stages WHERE job_id = jobs.job_id AND status = 'FAILED' ORDER BY stage_order DESC LIMIT 1) failed_stage ON true WHERE jobs.job_id = NULLIF('${job_id}', '')::uuid AND jobs.status = 'FAILED'",
+          "rawSql": "SELECT jobs.error_code AS \"Job Error\", jobs.error_message AS \"Job Message\", failed_stage.stage_key AS \"Failed Stage\", failed_stage.error_code AS \"Stage Error\" FROM inference_jobs jobs LEFT JOIN LATERAL (SELECT stage_key, error_code FROM inference_job_stages WHERE job_id = jobs.job_id AND status = 'FAILED' ORDER BY stage_order DESC LIMIT 1) failed_stage ON true WHERE jobs.job_id = NULLIF('${job_id}', '')::uuid AND jobs.status = 'FAILED'",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -1053,7 +1053,7 @@
               "editorMode": "code",
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT stage_order AS \"#\", stage_key AS \"Stage\", status AS \"Status\", started_at AS \"Started\", completed_at AS \"Completed\", CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE duration_seconds END AS \"Duration\", error_code AS \"Error\", error_message AS \"Error Message\" FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid ORDER BY stage_order",
+              "rawSql": "SELECT stage_order AS \"#\", stage_key AS \"Stage\", status AS \"Status\", started_at AS \"Started\", completed_at AS \"Completed\", CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE duration_seconds END AS \"Duration\", error_code AS \"Error\" FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid ORDER BY stage_order",
               "refId": "A",
               "sql": {
                 "columns": [],
