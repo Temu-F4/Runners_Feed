@@ -2,9 +2,7 @@ name: runners-feed
 
 services:
   postgres:
-    # Keep pgvector for the release that runs migration 006. Switch this to
-    # postgres:16-bookworm only after the vector extension has been removed.
-    image: pgvector/pgvector:pg16
+    image: postgres:16-bookworm
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -172,7 +170,7 @@ services:
       - monitoring
 
   grafana-db-init:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-bookworm
     restart: "no"
     environment:
       PGHOST: postgres
