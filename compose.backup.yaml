@@ -1,0 +1,46 @@
+services:
+  db-backup:
+    profiles:
+      - backup
+    build:
+      context: .
+      dockerfile: deploy/backup/Dockerfile
+    user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      OCI_CONFIG_FILE: /.oci/config
+      OCI_CONFIG_PROFILE: DEFAULT
+      OCI_REGION: ap-seoul-1
+      OCI_BACKUP_BUCKET: ${OCI_BACKUP_BUCKET:?OCI_BACKUP_BUCKET is required}
+      DB_BACKUP_RETENTION_DAYS: ${DB_BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - /home/ubuntu/.oci:/.oci:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  db-backup-verify:
+    profiles:
+      - backup
+    build:
+      context: .
+      dockerfile: deploy/backup/Dockerfile
+    user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
+    entrypoint:
+      - python3
+      - /app/verify_backup.py
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      OCI_CONFIG_FILE: /.oci/config
+      OCI_CONFIG_PROFILE: DEFAULT
+      OCI_REGION: ap-seoul-1
+      OCI_BACKUP_BUCKET: ${OCI_BACKUP_BUCKET:?OCI_BACKUP_BUCKET is required}
+    volumes:
+      - /home/ubuntu/.oci:/.oci:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend

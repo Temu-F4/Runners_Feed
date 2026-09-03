@@ -1,0 +1,11 @@
+[Unit]
+Description=Verify a Runners Feed database restore monthly
+
+[Timer]
+OnCalendar=*-*-01 04:00:00 Asia/Seoul
+RandomizedDelaySec=30m
+Persistent=true
+Unit=runners-feed-db-backup-verify.service
+
+[Install]
+WantedBy=timers.target

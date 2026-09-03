@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Runners Feed database backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Asia/Seoul
+RandomizedDelaySec=15m
+Persistent=true
+Unit=runners-feed-db-backup.service
+
+[Install]
+WantedBy=timers.target
