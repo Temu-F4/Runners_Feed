@@ -98,8 +98,8 @@ async def require_api_key(request: Request, call_next):
         issued_identity = issue_guest_identity()
         user_id = await run_in_threadpool(
             create_guest_session,
-            issued_identity.token_hash,
-            issued_identity.expires_at,
+            token_hash=issued_identity.token_hash,
+            expires_at=issued_identity.expires_at,
         )
 
     request.state.user_id = user_id
