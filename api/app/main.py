@@ -16,16 +16,16 @@ from starlette.concurrency import run_in_threadpool
 from app.database import (
     create_guest_session,
     create_job,
-    find_active_guest_user,
     get_job as get_persisted_job,
     initialize_database,
     list_jobs as list_persisted_jobs,
     mark_job_dispatch_failed,
+    renew_active_guest_session,
 )
 from app.guest_identity import (
     GUEST_COOKIE_NAME,
-    hash_guest_token,
     issue_guest_identity,
+    renew_guest_identity,
     set_guest_cookie,
 )
 from app.object_storage import ObjectStorageGateway, load_oci_config
@@ -82,30 +82,31 @@ async def require_api_key(request: Request, call_next):
 
     guest_token = request.cookies.get(GUEST_COOKIE_NAME)
     user_id = None
+    response_identity = None
     if guest_token:
         try:
-            token_hash = hash_guest_token(guest_token)
+            response_identity = renew_guest_identity(guest_token)
             user_id = await run_in_threadpool(
-                find_active_guest_user,
-                token_hash,
+                renew_active_guest_session,
+                token_hash=response_identity.token_hash,
+                expires_at=response_identity.expires_at,
             )
         except ValueError:
             # Replace malformed or oversized cookies with a valid identity.
             user_id = None
+            response_identity = None
 
-    issued_identity = None
     if user_id is None:
-        issued_identity = issue_guest_identity()
+        response_identity = issue_guest_identity()
         user_id = await run_in_threadpool(
             create_guest_session,
-            token_hash=issued_identity.token_hash,
-            expires_at=issued_identity.expires_at,
+            token_hash=response_identity.token_hash,
+            expires_at=response_identity.expires_at,
         )
-
     request.state.user_id = user_id
     response = await call_next(request)
-    if issued_identity is not None:
-        set_guest_cookie(response, issued_identity)
+    if response_identity is not None:
+        set_guest_cookie(response, response_identity)
     return response
 
 

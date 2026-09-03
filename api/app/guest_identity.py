@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 
 GUEST_COOKIE_NAME = "__Host-rf_guest"
-DEFAULT_GUEST_SESSION_TTL_DAYS = 30
+DEFAULT_GUEST_SESSION_TTL_DAYS = 365
 MIN_GUEST_SESSION_TTL_DAYS = 1
 MAX_GUEST_SESSION_TTL_DAYS = 365
 MAX_GUEST_TOKEN_LENGTH = 512
@@ -52,6 +52,25 @@ def issue_guest_identity(
     max_age_seconds = int(timedelta(days=ttl_days).total_seconds())
     token = secrets.token_urlsafe(32)
 
+    return IssuedGuestIdentity(
+        token=token,
+        token_hash=hash_guest_token(token),
+        expires_at=issued_at + timedelta(days=ttl_days),
+        max_age_seconds=max_age_seconds,
+    )
+
+
+def renew_guest_identity(
+    token: str,
+    *,
+    now: datetime | None = None,
+) -> IssuedGuestIdentity:
+    issued_at = now or datetime.now(timezone.utc)
+    if issued_at.tzinfo is None:
+        raise ValueError("Guest identity renewal time must include a timezone")
+
+    ttl_days = guest_session_ttl_days()
+    max_age_seconds = int(timedelta(days=ttl_days).total_seconds())
     return IssuedGuestIdentity(
         token=token,
         token_hash=hash_guest_token(token),

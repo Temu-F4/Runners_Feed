@@ -18,6 +18,7 @@ from app.database import (
     find_active_guest_user,
     get_job,
     list_jobs,
+    renew_active_guest_session,
 )
 
 
@@ -65,6 +66,30 @@ class GuestSessionDatabaseTests(TestCase):
         cursor.fetchone.return_value = None
 
         self.assertIsNone(find_active_guest_user(VALID_TOKEN_HASH))
+
+    @patch("app.database.psycopg.connect")
+    def test_renew_active_guest_session_updates_expiry_and_activity(
+        self,
+        connect,
+    ) -> None:
+        expected_user_id = uuid4()
+        expires_at = datetime(2027, 9, 3, tzinfo=timezone.utc)
+        connection = connect.return_value.__enter__.return_value
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (expected_user_id,)
+
+        actual_user_id = renew_active_guest_session(
+            token_hash=VALID_TOKEN_HASH,
+            expires_at=expires_at,
+        )
+
+        self.assertEqual(actual_user_id, expected_user_id)
+        session_query, session_parameters = cursor.execute.call_args_list[0].args
+        self.assertIn("last_seen_at = NOW()", session_query)
+        self.assertEqual(session_parameters, (expires_at, VALID_TOKEN_HASH))
+        user_query, user_parameters = cursor.execute.call_args_list[1].args
+        self.assertIn("updated_at = NOW()", user_query)
+        self.assertEqual(user_parameters, (expected_user_id,))
 
     @patch("app.database.psycopg.connect")
     def test_rejects_invalid_token_hash_before_database_access(self, connect) -> None:

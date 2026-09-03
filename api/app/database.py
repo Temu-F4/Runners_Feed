@@ -121,6 +121,43 @@ def find_active_guest_user(token_hash: str) -> UUID | None:
     return row[0] if row is not None else None
 
 
+def renew_active_guest_session(
+    *,
+    token_hash: str,
+    expires_at: datetime,
+) -> UUID | None:
+    _validate_token_hash(token_hash)
+    if expires_at.tzinfo is None:
+        raise ValueError("Guest session expiry must include a timezone")
+
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE guest_sessions
+                SET expires_at = %s,
+                    last_seen_at = NOW()
+                WHERE token_hash = %s
+                  AND expires_at > NOW()
+                RETURNING user_id
+                """,
+                (expires_at, token_hash),
+            )
+            row = cursor.fetchone()
+
+            if row is not None:
+                cursor.execute(
+                    """
+                    UPDATE app_users
+                    SET updated_at = NOW()
+                    WHERE user_id = %s
+                    """,
+                    (row[0],),
+                )
+
+    return row[0] if row is not None else None
+
+
 def create_job(
     *,
     job_id: str,
