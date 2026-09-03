@@ -16,9 +16,14 @@ class JobStageRecorderTest(unittest.TestCase):
             JOB_STAGE_DEFINITIONS,
             (
                 (1, "input_download"),
-                (2, "coach_pipeline"),
-                (3, "result_upload"),
-                (4, "workspace_cleanup"),
+                (2, "frame_extract"),
+                (3, "pose_inference"),
+                (4, "frame_render"),
+                (5, "video_compose"),
+                (6, "feature_extract"),
+                (7, "report_generate"),
+                (8, "result_upload"),
+                (9, "workspace_cleanup"),
             ),
         )
 
@@ -85,6 +90,31 @@ class JobStageRecorderTest(unittest.TestCase):
                     error_code="RuntimeError",
                 )
             ]
+        )
+
+    @patch("job_stages.mark_job_stage_finished")
+    @patch("job_stages.mark_job_stage_running")
+    @patch("job_stages.initialize_job_stages")
+    @patch("job_stages.time.perf_counter", side_effect=[30.0, 34.0])
+    def test_supports_stage_markers_from_pipeline_process(
+        self,
+        _perf_counter,
+        _initialize,
+        mark_running,
+        mark_finished,
+    ) -> None:
+        recorder = JobStageRecorder("job-4")
+        recorder.initialize()
+
+        recorder.start("pose_inference")
+        recorder.finish("pose_inference", status="SUCCESS")
+
+        mark_running.assert_called_once_with("job-4", "pose_inference")
+        mark_finished.assert_called_once_with(
+            "job-4",
+            "pose_inference",
+            status="SUCCESS",
+            duration_seconds=4.0,
         )
 
     @patch("job_stages.mark_pending_job_stages_skipped")

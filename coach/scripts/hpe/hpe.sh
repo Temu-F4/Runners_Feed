@@ -48,31 +48,38 @@ if [[ "${1:-}" == "--extract" ]]; then
     echo "영상 발견: $VIDEO_PATH"
 
     ## 스크립트 실행
+    echo "COACH_STAGE_START=frame_extract"
     "$PYTHON_BIN" \
         "$HPE_DIR/extract_frames.py" \
         "$VIDEO_PATH" \
         "$RUN_DIR/inputs"
+    echo "COACH_STAGE_SUCCESS=frame_extract"
 
     shift
 fi
 
 ## HPE 추론
 printf '\nHPE 추론\n'
+echo "COACH_STAGE_START=pose_inference"
 "$PYTHON_BIN" \
   "$HPE_DIR/hpe_model.py" \
   "$WORKSPACE_ROOT" \
   "$RUN_FOLDER" \
   "$@"
+echo "COACH_STAGE_SUCCESS=pose_inference"
 
 ## 렌더링
 printf '\n렌더링\n'
+echo "COACH_STAGE_START=frame_render"
 "$PYTHON_BIN" \
   "$HPE_DIR/render.py" \
   "$RUN_DIR/inputs" \
   "$RUN_DIR/outputs"
+echo "COACH_STAGE_SUCCESS=frame_render"
 
 ## 렌더링 이미지로 영상 합성
 printf '\n이미지 합성\n'
+echo "COACH_STAGE_START=video_compose"
 "$PYTHON_BIN" \
   "$HPE_DIR/compose_video.py" \
   "$RUN_DIR/outputs/details.json" \
@@ -89,3 +96,4 @@ ffmpeg \
   -pix_fmt yuv420p \
   -movflags +faststart \
   "$RUN_DIR/outputs/rendered.mp4"
+echo "COACH_STAGE_SUCCESS=video_compose"

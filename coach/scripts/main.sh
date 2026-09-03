@@ -21,7 +21,10 @@ fi
 
 
 "$SCRIPT_DIR/hpe/hpe.sh" "$RUN_FOLDER" "$@"
+echo "COACH_STAGE_START=feature_extract"
 "$SCRIPT_DIR/features/features.sh" "$RUN_FOLDER"
+echo "COACH_STAGE_SUCCESS=feature_extract"
+echo "COACH_STAGE_START=report_generate"
 if [[ "$RUN_AGENT" == "true" ]]; then
     "$SCRIPT_DIR/Agent/agent.sh" "$RUN_FOLDER"
 else

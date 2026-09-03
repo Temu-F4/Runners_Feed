@@ -293,7 +293,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT now() AS \"time\", CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'coach_pipeline' THEN 'Coach 파이프라인' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'report_generate' THEN '리포트 생성' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' ELSE stage_key END AS metric, coalesce(duration_seconds, 0) AS value FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid ORDER BY coalesce(duration_seconds, 0) DESC LIMIT 1",
+          "rawSql": "SELECT now() AS \"time\", CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'coach_pipeline' THEN 'Coach 파이프라인' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'feature_extract' THEN '특징값 계산' WHEN 'report_generate' THEN '코칭 리포트 생성' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' ELSE stage_key END AS metric, coalesce(duration_seconds, 0) AS value FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid ORDER BY coalesce(duration_seconds, 0) DESC LIMIT 1",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -467,7 +467,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT stage_order || '. ' || CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'coach_pipeline' THEN 'Coach 파이프라인' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'report_generate' THEN '리포트 생성' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' ELSE stage_key END AS stage, CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE coalesce(duration_seconds, 0) END AS duration_seconds FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid ORDER BY stage_order",
+          "rawSql": "SELECT stage_order || '. ' || CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'coach_pipeline' THEN 'Coach 파이프라인' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'feature_extract' THEN '특징값 계산' WHEN 'report_generate' THEN '코칭 리포트 생성' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' ELSE stage_key END AS stage, CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE coalesce(duration_seconds, 0) END AS duration_seconds FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid ORDER BY stage_order",
           "refId": "A",
           "sql": {
             "columns": [],

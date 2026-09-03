@@ -2,8 +2,10 @@ import json
 import logging
 import os
 import re
+import selectors
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from coach_celery_app import celery_app
@@ -20,11 +22,161 @@ from run_cleanup import remove_successful_run
 LOGGER = logging.getLogger(__name__)
 WORKSPACE_DIR = Path("/workspace")
 CASE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+STAGE_MARKER_PATTERN = re.compile(
+    r"^COACH_STAGE_(START|SUCCESS)=([a-z_]+)$"
+)
+PIPELINE_STAGE_KEYS = (
+    "frame_extract",
+    "pose_inference",
+    "frame_render",
+    "video_compose",
+    "feature_extract",
+    "report_generate",
+)
 
 
 def validate_case_id(case_id: str) -> None:
     if not CASE_ID_PATTERN.fullmatch(case_id):
         raise ValueError("Invalid case_id")
+
+
+def invoke_tracked_pipeline(
+    command: list[str],
+    *,
+    timeout_seconds: int,
+    stage_recorder: JobStageRecorder,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    if process.stdout is None:
+        process.kill()
+        raise RuntimeError("Coach pipeline output stream is unavailable")
+
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ)
+    deadline = time.monotonic() + timeout_seconds
+    output_lines: list[str] = []
+    active_stage: str | None = None
+    observed_stages: list[str] = []
+
+    try:
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                process.kill()
+                process.wait()
+                if active_stage is not None:
+                    stage_recorder.finish(
+                        active_stage,
+                        status="FAILED",
+                        error_code="TimeoutExpired",
+                    )
+                    active_stage = None
+                raise subprocess.TimeoutExpired(
+                    command,
+                    timeout_seconds,
+                    output="".join(output_lines),
+                )
+
+            for key, _ in selector.select(timeout=min(0.25, remaining)):
+                line = key.fileobj.readline()
+                if not line:
+                    selector.unregister(key.fileobj)
+                    continue
+
+                output_lines.append(line)
+                marker = STAGE_MARKER_PATTERN.fullmatch(line.strip())
+                if marker is None:
+                    continue
+
+                action, stage_key = marker.groups()
+                if action == "START":
+                    if active_stage is not None:
+                        raise RuntimeError(
+                            "Coach pipeline started a stage before finishing "
+                            f"{active_stage}: {stage_key}"
+                        )
+                    expected_index = len(observed_stages)
+                    if (
+                        expected_index >= len(PIPELINE_STAGE_KEYS)
+                        or stage_key != PIPELINE_STAGE_KEYS[expected_index]
+                    ):
+                        expected = (
+                            PIPELINE_STAGE_KEYS[expected_index]
+                            if expected_index < len(PIPELINE_STAGE_KEYS)
+                            else "end of pipeline"
+                        )
+                        raise RuntimeError(
+                            "Coach pipeline stage order mismatch: "
+                            f"expected {expected}, got {stage_key}"
+                        )
+                    stage_recorder.start(stage_key)
+                    active_stage = stage_key
+                    observed_stages.append(stage_key)
+                else:
+                    if active_stage != stage_key:
+                        raise RuntimeError(
+                            "Coach pipeline finished an unexpected stage: "
+                            f"{stage_key}"
+                        )
+                    stage_recorder.finish(stage_key, status="SUCCESS")
+                    active_stage = None
+
+        return_code = process.wait()
+        output = "".join(output_lines)
+        if return_code != 0:
+            if active_stage is not None:
+                stage_recorder.finish(
+                    active_stage,
+                    status="FAILED",
+                    error_code="CalledProcessError",
+                )
+                active_stage = None
+            raise subprocess.CalledProcessError(
+                return_code,
+                command,
+                output=output,
+            )
+        if active_stage is not None:
+            stage_recorder.finish(
+                active_stage,
+                status="FAILED",
+                error_code="MissingStageSuccess",
+            )
+            unfinished_stage = active_stage
+            active_stage = None
+            raise RuntimeError(
+                f"Coach pipeline did not finish stage: {unfinished_stage}"
+            )
+        if tuple(observed_stages) != PIPELINE_STAGE_KEYS:
+            raise RuntimeError(
+                "Coach pipeline did not report every stage: "
+                f"{observed_stages}"
+            )
+        return subprocess.CompletedProcess(
+            command,
+            return_code,
+            stdout=output,
+            stderr="",
+        )
+    except Exception:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        if active_stage is not None:
+            stage_recorder.finish(
+                active_stage,
+                status="FAILED",
+                error_code="StageProtocolError",
+            )
+        raise
+    finally:
+        selector.close()
 
 
 def execute_pipeline(
@@ -49,9 +201,11 @@ def execute_pipeline(
 
     timeout_seconds = int(os.getenv("COACH_TIMEOUT_SECONDS", "3600"))
 
+    command = ["/app/run_coach_pipeline.sh", run_id]
+
     def invoke_pipeline() -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            ["/app/run_coach_pipeline.sh", run_id],
+            command,
             check=True,
             capture_output=True,
             text=True,
@@ -62,8 +216,11 @@ def execute_pipeline(
         if stage_recorder is None:
             completed = invoke_pipeline()
         else:
-            with stage_recorder.track("coach_pipeline"):
-                completed = invoke_pipeline()
+            completed = invoke_tracked_pipeline(
+                command,
+                timeout_seconds=timeout_seconds,
+                stage_recorder=stage_recorder,
+            )
     except subprocess.CalledProcessError as error:
         error_log = (error.stderr or error.stdout or "")[-4000:]
         raise RuntimeError(f"Coach pipeline failed:\n{error_log}") from error
