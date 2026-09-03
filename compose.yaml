@@ -2,7 +2,7 @@ name: runners-feed
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-bookworm
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -170,7 +170,7 @@ services:
       - monitoring
 
   grafana-db-init:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-bookworm
     restart: "no"
     environment:
       PGHOST: postgres
