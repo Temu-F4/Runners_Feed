@@ -35,6 +35,7 @@ COPY worker/coach_adapter /app/coach_adapter
 COPY worker/coach_celery_app.py /app/coach_celery_app.py
 COPY worker/coach_tasks.py /app/coach_tasks.py
 COPY worker/job_repository.py /app/job_repository.py
+COPY worker/job_stages.py /app/job_stages.py
 COPY worker/object_storage_gateway.py /app/object_storage_gateway.py
 COPY worker/run_cleanup.py /app/run_cleanup.py
 COPY worker/run_coach_pipeline.sh /app/run_coach_pipeline.sh

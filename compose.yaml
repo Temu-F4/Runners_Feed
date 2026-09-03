@@ -101,6 +101,7 @@ services:
       - /home/ubuntu/runners-feed-certbot/conf:/etc/letsencrypt:ro
     networks:
       - backend
+      - monitoring
   certbot:
     image: certbot/certbot:v5.7.0
     profiles:
@@ -127,10 +128,184 @@ services:
       retries: 5
     networks:
       - backend
+  alertmanager:
+    image: prom/alertmanager:v0.33.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    expose:
+      - "9093"
+    networks:
+      - monitoring
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=5GB
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    expose:
+      - "9090"
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --spider
+        - http://localhost:9090/-/ready
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - monitoring
+
+  grafana-db-init:
+    image: pgvector/pgvector:pg16
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      GRAFANA_POSTGRES_PASSWORD: ${GRAFANA_POSTGRES_PASSWORD:?GRAFANA_POSTGRES_PASSWORD is required}
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - >-
+        psql
+        --set=ON_ERROR_STOP=1
+        --set=db_name="$${PGDATABASE}"
+        --set=grafana_password="$${GRAFANA_POSTGRES_PASSWORD}"
+        --file=/sql/init-reader.sql
+    volumes:
+      - ./monitoring/grafana/sql/init-reader.sql:/sql/init-reader.sql:ro
+    networks:
+      - backend
+
+  grafana:
+    image: grafana/grafana:13.1.4
+    restart: unless-stopped
+    environment:
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://140.238.0.197/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: "1s"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GRAFANA_POSTGRES_USER: grafana_reader
+      GRAFANA_POSTGRES_PASSWORD: ${GRAFANA_POSTGRES_PASSWORD:?GRAFANA_POSTGRES_PASSWORD is required}
+      GRAFANA_POSTGRES_DB: ${POSTGRES_DB}
+    depends_on:
+      grafana-db-init:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_healthy
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    expose:
+      - "3000"
+    networks:
+      - backend
+      - monitoring
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:0.60.5
+    restart: unless-stopped
+    privileged: true
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=1s
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    expose:
+      - "8080"
+    networks:
+      - monitoring
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.textfile.directory=/textfile-collector
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave
+      - node_textfile_data:/textfile-collector:ro
+    expose:
+      - "9100"
+    networks:
+      - monitoring
+
+  host-metrics-collector:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - /collector/collect.sh
+    environment:
+      PROCESS_INTERVAL_SECONDS: "15"
+      STORAGE_INTERVAL_SECONDS: "300"
+      TOP_PROCESS_COUNT: "20"
+      TOP_STORAGE_COUNT: "20"
+      LARGE_FILE_MIN_BYTES: "10485760"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /:/host:ro,rslave
+      - ./monitoring/host-metrics-collector/collect.sh:/collector/collect.sh:ro
+      - node_textfile_data:/textfile-collector
+    tmpfs:
+      - /tmp
+    network_mode: none
+
 volumes:
   postgres_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+  node_textfile_data:
 
 networks:
   backend:
     driver: bridge
+  monitoring:
+    driver: bridge
+    internal: true

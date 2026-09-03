@@ -12,6 +12,7 @@ from job_repository import (
     mark_job_processing,
     mark_job_success,
 )
+from job_stages import JobStageRecorder
 from object_storage_gateway import ObjectStorageGateway
 from run_cleanup import remove_successful_run
 
@@ -30,6 +31,7 @@ def execute_pipeline(
     case_id: str,
     job_id: str,
     run_id: str,
+    stage_recorder: JobStageRecorder | None = None,
 ) -> dict:
     validate_case_id(case_id)
     validate_case_id(run_id)
@@ -46,14 +48,22 @@ def execute_pipeline(
         raise FileExistsError(f"Output already exists: {output_dir}")
 
     timeout_seconds = int(os.getenv("COACH_TIMEOUT_SECONDS", "3600"))
-    try:
-        completed = subprocess.run(
+
+    def invoke_pipeline() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
             ["/app/run_coach_pipeline.sh", run_id],
             check=True,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
         )
+
+    try:
+        if stage_recorder is None:
+            completed = invoke_pipeline()
+        else:
+            with stage_recorder.track("coach_pipeline"):
+                completed = invoke_pipeline()
     except subprocess.CalledProcessError as error:
         error_log = (error.stderr or error.stdout or "")[-4000:]
         raise RuntimeError(f"Coach pipeline failed:\n{error_log}") from error
@@ -95,6 +105,7 @@ def run_object_storage(
     user_height_m: float,
 ) -> dict:
     job_id = str(self.request.id)
+    stage_recorder: JobStageRecorder | None = None
 
     try:
         validate_case_id(case_id)
@@ -105,6 +116,9 @@ def run_object_storage(
             raise ValueError("user_height_m must be between 0.5 and 2.5")
 
         mark_job_processing(job_id)
+        stage_recorder = JobStageRecorder(job_id)
+        stage_recorder.initialize()
+
         run_dir = WORKSPACE_DIR / "run" / job_id
         if run_dir.exists():
             shutil.rmtree(run_dir)
@@ -119,16 +133,18 @@ def run_object_storage(
             encoding="utf-8",
         )
 
-        storage = ObjectStorageGateway()
-        storage.download_input(
-            object_name=input_object_name,
-            destination=run_dir / "input.mp4",
-        )
+        with stage_recorder.track("input_download"):
+            storage = ObjectStorageGateway()
+            storage.download_input(
+                object_name=input_object_name,
+                destination=run_dir / "input.mp4",
+            )
 
         result = execute_pipeline(
             case_id=case_id,
             job_id=job_id,
             run_id=job_id,
+            stage_recorder=stage_recorder,
         )
         output_dir = run_dir / "outputs"
         output_prefix = f"jobs/{job_id}"
@@ -139,33 +155,38 @@ def run_object_storage(
             "rendered_video": f"{output_prefix}/rendered.mp4",
         }
 
-        storage.upload_result(
-            source=output_dir / "details.json",
-            object_name=result_objects["details"],
-            content_type="application/json",
-        )
-        storage.upload_result(
-            source=output_dir / "pose_predictions.json",
-            object_name=result_objects["predictions"],
-            content_type="application/json",
-        )
-        storage.upload_result(
-            source=output_dir / "report.json",
-            object_name=result_objects["report"],
-            content_type="application/json",
-        )
-        storage.upload_result(
-            source=output_dir / "rendered.mp4",
-            object_name=result_objects["rendered_video"],
-            content_type="video/mp4",
-        )
+        with stage_recorder.track("result_upload"):
+            storage.upload_result(
+                source=output_dir / "details.json",
+                object_name=result_objects["details"],
+                content_type="application/json",
+            )
+            storage.upload_result(
+                source=output_dir / "pose_predictions.json",
+                object_name=result_objects["predictions"],
+                content_type="application/json",
+            )
+            storage.upload_result(
+                source=output_dir / "report.json",
+                object_name=result_objects["report"],
+                content_type="application/json",
+            )
+            storage.upload_result(
+                source=output_dir / "rendered.mp4",
+                object_name=result_objects["rendered_video"],
+                content_type="video/mp4",
+            )
 
         mark_job_success(job_id, result_objects)
         try:
-            result["local_run_deleted"] = remove_successful_run(
-                run_dir,
-                run_root=WORKSPACE_DIR / "run",
-            )
+            with stage_recorder.track(
+                "workspace_cleanup",
+                failure_status="WARNING",
+            ):
+                result["local_run_deleted"] = remove_successful_run(
+                    run_dir,
+                    run_root=WORKSPACE_DIR / "run",
+                )
         except Exception:
             result["local_run_deleted"] = False
             LOGGER.warning(
@@ -178,6 +199,14 @@ def run_object_storage(
         result["result_objects"] = result_objects
         return result
     except Exception as error:
+        if stage_recorder is not None:
+            try:
+                stage_recorder.skip_pending()
+            except Exception:
+                LOGGER.exception(
+                    "Failed to skip remaining stages for job %s",
+                    job_id,
+                )
         try:
             mark_job_failed(job_id, error)
         except Exception:
