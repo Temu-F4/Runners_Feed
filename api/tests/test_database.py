@@ -15,9 +15,11 @@ sys.modules.setdefault("psycopg.rows", psycopg_rows_module)
 from app.database import (
     create_guest_session,
     create_job,
+    delete_user_data,
     find_active_guest_user,
     get_job,
     list_jobs,
+    list_user_artifacts,
     renew_active_guest_session,
 )
 
@@ -176,3 +178,29 @@ class GuestSessionDatabaseTests(TestCase):
             list_jobs(user_id=uuid4(), limit=51)
 
         connect.assert_not_called()
+
+    @patch("app.database.psycopg.connect")
+    def test_lists_all_artifacts_for_one_user(self, connect) -> None:
+        user_id = uuid4()
+        connection = connect.return_value.__enter__.return_value
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [{"result_report_object": "report.json"}]
+
+        result = list_user_artifacts(user_id)
+
+        self.assertEqual(result, [{"result_report_object": "report.json"}])
+        query, parameters = cursor.execute.call_args.args
+        self.assertIn("result_skeleton_object", query)
+        self.assertEqual(parameters, (user_id,))
+
+    @patch("app.database.psycopg.connect")
+    def test_deletes_jobs_before_user(self, connect) -> None:
+        user_id = uuid4()
+
+        delete_user_data(user_id)
+
+        connection = connect.return_value.__enter__.return_value
+        cursor = connection.cursor.return_value.__enter__.return_value
+        self.assertEqual(cursor.execute.call_count, 2)
+        self.assertIn("DELETE FROM inference_jobs", cursor.execute.call_args_list[0].args[0])
+        self.assertIn("DELETE FROM app_users", cursor.execute.call_args_list[1].args[0])

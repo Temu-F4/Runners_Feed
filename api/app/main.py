@@ -16,9 +16,11 @@ from starlette.concurrency import run_in_threadpool
 from app.database import (
     create_guest_session,
     create_job,
+    delete_user_data,
     get_job as get_persisted_job,
     initialize_database,
     list_jobs as list_persisted_jobs,
+    list_user_artifacts,
     mark_job_dispatch_failed,
     renew_active_guest_session,
 )
@@ -105,7 +107,15 @@ async def require_api_key(request: Request, call_next):
         )
     request.state.user_id = user_id
     response = await call_next(request)
-    if response_identity is not None:
+    if getattr(request.state, "delete_guest_cookie", False):
+        response.delete_cookie(
+            key=GUEST_COOKIE_NAME,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
+    elif response_identity is not None:
         set_guest_cookie(response, response_identity)
     return response
 
@@ -511,6 +521,37 @@ def get_job_skeleton(job_id: str, request: Request):
             status_code=503,
             detail="Failed to load skeleton replay",
         ) from error
+
+
+@app.delete("/me/data")
+def delete_my_data(request: Request):
+    user_id = request.state.user_id
+    storage = ObjectStorageGateway()
+
+    try:
+        for artifact in list_user_artifacts(user_id):
+            input_name = artifact.get("input_object_name")
+            if input_name:
+                storage.delete_input(input_name)
+            for field in (
+                "result_details_object",
+                "result_predictions_object",
+                "result_report_object",
+                "result_skeleton_object",
+                "result_video_object",
+            ):
+                object_name = artifact.get(field)
+                if object_name:
+                    storage.delete_result(object_name)
+        delete_user_data(user_id)
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to delete all user data",
+        ) from error
+
+    request.state.delete_guest_cookie = True
+    return {"status": "deleted"}
 
 
 @app.get("/health/storage")

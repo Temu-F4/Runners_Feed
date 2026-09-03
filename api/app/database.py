@@ -281,3 +281,38 @@ def list_jobs(
                 (user_id, limit),
             )
             return list(cursor.fetchall())
+
+
+def list_user_artifacts(user_id: UUID) -> list[dict[str, Any]]:
+    with psycopg.connect(
+        _database_url(),
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT input_object_name,
+                       result_details_object,
+                       result_predictions_object,
+                       result_report_object,
+                       result_skeleton_object,
+                       result_video_object
+                FROM inference_jobs
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            return list(cursor.fetchall())
+
+
+def delete_user_data(user_id: UUID) -> None:
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM inference_jobs WHERE user_id = %s",
+                (user_id,),
+            )
+            cursor.execute(
+                "DELETE FROM app_users WHERE user_id = %s",
+                (user_id,),
+            )

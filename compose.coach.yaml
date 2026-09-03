@@ -70,3 +70,42 @@ services:
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
     networks:
       - backend
+
+  maintenance:
+    profiles:
+      - coach
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: worker/Dockerfile.coach
+      args:
+        COACH_UID: ${COACH_UID:-1000}
+        COACH_GID: ${COACH_GID:-1000}
+    user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
+    entrypoint:
+      - python
+      - /app/maintenance.py
+    environment:
+      HOME: /home/app
+      OCI_CONFIG_FILE: /.oci/config
+      OCI_CONFIG_PROFILE: DEFAULT
+      OCI_REGION: ap-seoul-1
+      OCI_RAW_BUCKET: bucket-t04-raw
+      OCI_RESULTS_BUCKET: bucket-t04-results
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      WORKSPACE_ROOT: /workspace
+      TRANSIENT_ARTIFACT_TTL_HOURS: ${TRANSIENT_ARTIFACT_TTL_HOURS:-24}
+      FAILED_RUN_TTL_HOURS: ${FAILED_RUN_TTL_HOURS:-48}
+      INACTIVE_GUEST_TTL_DAYS: ${INACTIVE_GUEST_TTL_DAYS:-365}
+      MAINTENANCE_INTERVAL_SECONDS: ${MAINTENANCE_INTERVAL_SECONDS:-21600}
+      MAINTENANCE_BATCH_SIZE: ${MAINTENANCE_BATCH_SIZE:-100}
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - /home/ubuntu/.oci:/.oci:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
+    networks:
+      - backend
