@@ -28,6 +28,19 @@ def _load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {
+            key: _json_safe(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
+
+
 def _percentage(numerator: int, denominator: int) -> float | None:
     if denominator <= 0:
         return None
@@ -150,7 +163,9 @@ def build_report(run_dir: Path) -> dict[str, Any]:
     output_dir = run_dir / "outputs"
     details = _load_json(output_dir / "details.json")
     predictions = _load_json(output_dir / "pose_predictions.json")
-    features = _load_json(output_dir / "feature_results.json")
+    features = _json_safe(
+        _load_json(output_dir / "feature_results.json")
+    )
     video = details.get("video", {})
 
     return {

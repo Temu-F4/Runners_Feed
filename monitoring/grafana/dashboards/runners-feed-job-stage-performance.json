@@ -85,7 +85,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT CASE status WHEN 'SUCCESS' THEN 1 WHEN 'RUNNING' THEN 2 WHEN 'FAILED' THEN 0 ELSE -1 END AS \"상태\" FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+          "rawSql": "SELECT CASE status WHEN 'SUCCESS' THEN 1 WHEN 'RUNNING' THEN 2 WHEN 'FAILED' THEN 0 ELSE -1 END AS \"상태\" FROM inference_jobs WHERE job_id = NULLIF('${job_id}', '')::uuid",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -155,7 +155,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT extract(epoch FROM coalesce(completed_at, now()) - started_at) AS \"총 처리시간\" FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+          "rawSql": "SELECT extract(epoch FROM coalesce(completed_at, now()) - started_at) AS \"총 처리시간\" FROM inference_jobs WHERE job_id = NULLIF('${job_id}', '')::uuid",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -224,7 +224,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT extract(epoch FROM started_at - created_at) AS \"대기시간\" FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+          "rawSql": "SELECT extract(epoch FROM started_at - created_at) AS \"대기시간\" FROM inference_jobs WHERE job_id = NULLIF('${job_id}', '')::uuid",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -293,7 +293,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT now() AS \"time\", CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'coach_pipeline' THEN 'Coach 파이프라인' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'report_generate' THEN '리포트 생성' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' ELSE stage_key END AS metric, coalesce(duration_seconds, 0) AS value FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY coalesce(duration_seconds, 0) DESC LIMIT 1",
+          "rawSql": "SELECT now() AS \"time\", CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'coach_pipeline' THEN 'Coach 파이프라인' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'report_generate' THEN '리포트 생성' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' ELSE stage_key END AS metric, coalesce(duration_seconds, 0) AS value FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid ORDER BY coalesce(duration_seconds, 0) DESC LIMIT 1",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -467,7 +467,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT stage_order || '. ' || CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'coach_pipeline' THEN 'Coach 파이프라인' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'report_generate' THEN '리포트 생성' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' ELSE stage_key END AS stage, CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE coalesce(duration_seconds, 0) END AS duration_seconds FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY stage_order",
+          "rawSql": "SELECT stage_order || '. ' || CASE stage_key WHEN 'input_download' THEN '입력 다운로드' WHEN 'coach_pipeline' THEN 'Coach 파이프라인' WHEN 'frame_extract' THEN '프레임 추출' WHEN 'pose_inference' THEN '자세 추론' WHEN 'report_generate' THEN '리포트 생성' WHEN 'frame_render' THEN '프레임 렌더링' WHEN 'video_compose' THEN '영상 합성' WHEN 'video_encode' THEN '최종 인코딩' WHEN 'result_upload' THEN '결과 업로드' WHEN 'workspace_cleanup' THEN '작업 폴더 정리' ELSE stage_key END AS stage, CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE coalesce(duration_seconds, 0) END AS duration_seconds FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid ORDER BY stage_order",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -526,7 +526,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "WITH selected AS (SELECT * FROM inference_jobs WHERE job_id = '${job_id}'::uuid), bounds AS (SELECT min(started_at) AS first_stage_at, max(coalesce(completed_at, now())) FILTER (WHERE status NOT IN ('PENDING', 'SKIPPED')) AS last_stage_at, sum(coalesce(duration_seconds, 0)) AS measured_stage_seconds, sum(coalesce(duration_seconds, 0)) FILTER (WHERE stage_key <> 'workspace_cleanup') AS measured_processing_seconds FROM inference_job_stages WHERE job_id = '${job_id}'::uuid) SELECT extract(epoch FROM selected.started_at - selected.created_at) AS queue_seconds, extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at) AS processing_seconds, coalesce(extract(epoch FROM bounds.last_stage_at - bounds.first_stage_at), extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at)) AS worker_active_seconds, bounds.measured_stage_seconds, greatest(extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at) - coalesce(bounds.measured_processing_seconds, extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at)), 0) AS unattributed_seconds FROM selected CROSS JOIN bounds",
+          "rawSql": "WITH selected AS (SELECT * FROM inference_jobs WHERE job_id = NULLIF('${job_id}', '')::uuid), bounds AS (SELECT min(started_at) AS first_stage_at, max(coalesce(completed_at, now())) FILTER (WHERE status NOT IN ('PENDING', 'SKIPPED')) AS last_stage_at, sum(coalesce(duration_seconds, 0)) AS measured_stage_seconds, sum(coalesce(duration_seconds, 0)) FILTER (WHERE stage_key <> 'workspace_cleanup') AS measured_processing_seconds FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid) SELECT extract(epoch FROM selected.started_at - selected.created_at) AS queue_seconds, extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at) AS processing_seconds, coalesce(extract(epoch FROM bounds.last_stage_at - bounds.first_stage_at), extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at)) AS worker_active_seconds, bounds.measured_stage_seconds, greatest(extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at) - coalesce(bounds.measured_processing_seconds, extract(epoch FROM coalesce(selected.completed_at, now()) - selected.started_at)), 0) AS unattributed_seconds FROM selected CROSS JOIN bounds",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -754,6 +754,55 @@
       },
       "fieldConfig": {
         "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "id": 13,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "runners-feed-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT jobs.error_code AS \"Job Error\", jobs.error_message AS \"Job Message\", failed_stage.stage_key AS \"Failed Stage\", failed_stage.error_code AS \"Stage Error\", failed_stage.error_message AS \"Stage Message\" FROM inference_jobs jobs LEFT JOIN LATERAL (SELECT stage_key, error_code, error_message FROM inference_job_stages WHERE job_id = jobs.job_id AND status = 'FAILED' ORDER BY stage_order DESC LIMIT 1) failed_stage ON true WHERE jobs.job_id = NULLIF('${job_id}', '')::uuid AND jobs.status = 'FAILED'",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "실패 원인",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "runners-feed-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
         "overrides": [
           {
             "matcher": {
@@ -838,7 +887,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 28
       },
       "id": 6,
       "options": {
@@ -862,7 +911,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT created_at AS \"Created\", left(job_id::text, 8) AS \"Job ID\", case_id AS \"Case\", status AS \"Status\", round(extract(epoch FROM completed_at - started_at)::numeric, 3)::double precision AS \"Processing\", CASE WHEN EXISTS (SELECT 1 FROM inference_job_stages stages WHERE stages.job_id = jobs.job_id) THEN '9단계' ELSE '총시간만' END AS \"Measurement\" FROM inference_jobs jobs WHERE $__timeFilter(created_at) ORDER BY created_at DESC LIMIT 50",
+          "rawSql": "SELECT created_at AS \"Created\", left(jobs.job_id::text, 8) AS \"Job ID\", jobs.case_id AS \"Case\", jobs.status AS \"Status\", round(extract(epoch FROM jobs.completed_at - jobs.started_at)::numeric, 3)::double precision AS \"Processing\", CASE WHEN measurement.stage_count > 0 THEN measurement.stage_count::text || '단계' ELSE '총시간만' END AS \"Measurement\" FROM inference_jobs jobs LEFT JOIN LATERAL (SELECT count(*) AS stage_count FROM inference_job_stages stages WHERE stages.job_id = jobs.job_id) measurement ON true WHERE $__timeFilter(jobs.created_at) ORDER BY jobs.created_at DESC LIMIT 50",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -880,7 +929,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 37
       },
       "id": 100,
       "panels": [
@@ -914,7 +963,7 @@
             "h": 5,
             "w": 24,
             "x": 0,
-            "y": 33
+            "y": 38
           },
           "id": 1,
           "options": {
@@ -938,7 +987,7 @@
               "editorMode": "code",
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT left(job_id::text, 8) AS \"Job ID\", case_id AS \"Case\", status AS \"Status\", created_at AS \"Created\", started_at AS \"Started\", completed_at AS \"Completed\", round(extract(epoch FROM started_at - created_at)::numeric, 3)::double precision AS queue_seconds, round(extract(epoch FROM completed_at - started_at)::numeric, 3)::double precision AS processing_seconds FROM inference_jobs WHERE job_id = '${job_id}'::uuid",
+              "rawSql": "SELECT left(job_id::text, 8) AS \"Job ID\", case_id AS \"Case\", status AS \"Status\", created_at AS \"Created\", started_at AS \"Started\", completed_at AS \"Completed\", round(extract(epoch FROM started_at - created_at)::numeric, 3)::double precision AS queue_seconds, round(extract(epoch FROM completed_at - started_at)::numeric, 3)::double precision AS processing_seconds FROM inference_jobs WHERE job_id = NULLIF('${job_id}', '')::uuid",
               "refId": "A",
               "sql": {
                 "columns": [],
@@ -980,7 +1029,7 @@
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 38
+            "y": 43
           },
           "id": 5,
           "options": {
@@ -1004,7 +1053,7 @@
               "editorMode": "code",
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT stage_order AS \"#\", stage_key AS \"Stage\", status AS \"Status\", started_at AS \"Started\", completed_at AS \"Completed\", CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE duration_seconds END AS \"Duration\", error_code AS \"Error\" FROM inference_job_stages WHERE job_id = '${job_id}'::uuid ORDER BY stage_order",
+              "rawSql": "SELECT stage_order AS \"#\", stage_key AS \"Stage\", status AS \"Status\", started_at AS \"Started\", completed_at AS \"Completed\", CASE WHEN status = 'RUNNING' THEN extract(epoch FROM now() - started_at) ELSE duration_seconds END AS \"Duration\", error_code AS \"Error\", error_message AS \"Error Message\" FROM inference_job_stages WHERE job_id = NULLIF('${job_id}', '')::uuid ORDER BY stage_order",
               "refId": "A",
               "sql": {
                 "columns": [],

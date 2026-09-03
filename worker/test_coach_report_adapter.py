@@ -87,6 +87,18 @@ class CoachReportAdapterTest(unittest.TestCase):
         persisted = json.loads(output_path.read_text(encoding="utf-8"))
         self.assertEqual(persisted["schema_version"], "coach-1.0")
 
+    def test_converts_non_finite_feature_value_to_null(self) -> None:
+        (self.output_dir / "feature_results.json").write_text(
+            '{"feature1":{"value":NaN,"unit":"ratio"}}',
+            encoding="utf-8",
+        )
+
+        output_path = write_report(self.run_dir)
+
+        persisted = json.loads(output_path.read_text(encoding="utf-8"))
+        self.assertIsNone(persisted["features"]["feature1"]["value"])
+        self.assertIsNone(persisted["metrics"][0]["value"])
+
 
 if __name__ == "__main__":
     unittest.main()

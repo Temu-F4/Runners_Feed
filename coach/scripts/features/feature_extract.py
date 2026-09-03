@@ -58,9 +58,14 @@ def feature2(ps: PoseSequence):
     ps.df[['left_shoulder_x','left_shoulder_y', 'right_shoulder_x', 'right_shoulder_y']]
 
 if __name__ == "__main__":
+    feature1_value = feature1(ps=ps)
     features = {
         'feature1': {
-            "value": feature1(ps=ps),
+            "value": (
+                float(feature1_value)
+                if np.isfinite(feature1_value)
+                else None
+            ),
             "unit": "ratio",
             "measurement_source": "2d_pose"
         }
@@ -72,6 +77,7 @@ if __name__ == "__main__":
                 features,
                 ensure_ascii=False,
                 indent=2,
+                allow_nan=False,
             ),
             encoding="utf-8",
     )
