@@ -162,7 +162,170 @@ Compose config
 Production 배포는 반드시 SHA 태그를 사용한다. 이동 가능한 `main` 태그는 사람이
 이미지를 확인할 때만 사용하고 배포 입력으로 사용하지 않는다.
 
-## 5. Production 환경 파일
+## 5. Push 기준 CI/CD Runtime Flow 및 실패 처리
+
+이 절은 소스 변경을 Push한 시점부터 Production 반영 또는 배포 중단까지의 실제
+실행 흐름을 설명한다. 일반적인 배포 경로는 Feature branch Push, Pull Request
+검증, `main` 병합, OCI CI 이미지 릴리스, OCI Production 배포 순서다.
+
+### Push 종류별 Workflow 실행
+
+| Push 또는 이벤트 | 실행되는 Workflow | Production 영향 |
+| --- | --- | --- |
+| PR이 없는 Feature branch Push | 없음 | 없음 |
+| 열린 PR의 Feature branch Push | `PR CI` | PR 검사만 실행 |
+| 배포 대상 파일이 포함된 PR의 `main` 병합 | `PR CI` 통과 후 `Release GHCR and deploy OCI` | OCI CI 및 Production 배포 |
+| 문서 등 배포 대상 외 파일만 `main`에 병합 | Release 미실행 | 없음 |
+| `workflow_dispatch` 수동 실행 | `Release GHCR and deploy OCI` | 선택한 revision을 빌드·배포 |
+
+`main`은 보호 브랜치이므로 정상적인 변경 경로는 Pull Request 병합이다. 직접
+Push가 허용되는 예외 상황에서는 PR CI를 거치지 않고 `main` Push Release 조건만
+적용될 수 있으므로 사용하지 않는다.
+
+### 전체 실행 흐름
+
+```text
+Feature branch Push
+        |
+        v
+열린 PR이 있으면 GitHub-hosted Runner에서 PR CI
+        |
+        +-- 실패: PR 병합 차단, OCI Release·Production 배포 없음
+        |
+        +-- 성공: PR 병합 가능
+                    |
+                    v
+              main Push 이벤트
+                    |
+        +-----------+-----------+
+        |                       |
+  배포 대상 변경 없음       배포 대상 변경 있음
+        |                       |
+  Release 미실행          OCI CI VM 실행
+                                |
+                  Compose 검증·이미지 빌드·테스트
+                                |
+                    SHA 이미지 GHCR Push
+                                |
+                 +--------------+--------------+
+                 |                             |
+             Release 실패                 Release 성공
+                 |                             |
+       Production 배포 생략          OCI Production VM 실행
+                                               |
+                                 Pull·Compose 배포·Health Check
+                                               |
+                                  성공 또는 자동 Rollback
+```
+
+### PR CI 단계
+
+`.github/workflows/pr-ci.yml`은 `main` 대상 Pull Request에서 다음 검사를 병렬로
+실행한다.
+
+| 검사 | 실패할 수 있는 원인 | 실패 시 동작 |
+| --- | --- | --- |
+| API tests | API 코드, 의존성 또는 단위 테스트 오류 | PR 병합 차단 |
+| Worker tests | Worker 코드 또는 결정적 단위 테스트 오류 | PR 병합 차단 |
+| Frontend build | npm 의존성 또는 production build 오류 | PR 병합 차단 |
+| Compose config | Compose 설정 또는 Rollback 테스트 오류 | PR 병합 차단 |
+
+이 단계는 GitHub-hosted Runner에서 실행하며 OCI Credential, Production 환경 파일,
+Self-hosted Runner를 사용하지 않는다. 네 개의 필수 Check가 모두 통과해야
+`main` 병합이 가능하다.
+
+### OCI CI Release 단계
+
+배포 대상 경로가 변경된 `main` Push가 발생하면 `oci-ci-e4`가 다음 작업을
+수행한다.
+
+1. 저장소를 깨끗한 상태로 checkout한다.
+2. GHCR에 로그인하고 Compose profile을 검증한다.
+3. API, Frontend, Web, Coach Worker 이미지를 `--pull` 옵션으로 빌드한다.
+4. 빌드된 API·Worker 이미지 내부에서 단위 테스트를 다시 실행한다.
+5. 네 이미지를 `sha-<40자리 commit>` 불변 태그로 GHCR에 Push한다.
+6. 같은 이미지를 확인 편의를 위해 `main` alias로도 Push한다.
+
+불변 이미지 Push와 alias Push는 각각 최대 3회 재시도한다. Production은 `main`
+alias가 아니라 불변 SHA 태그를 사용한다.
+
+다음 단계에서 실패하면 `release` Job이 실패하고 `needs: release` 조건에 따라
+Production Deploy Job은 실행되지 않는다. Production에는 기존 마지막 성공 버전이
+그대로 남는다.
+
+| 실패 지점 | 가능한 원인 | Production 상태 |
+| --- | --- | --- |
+| CI Runner 대기·오프라인 | OCI VM 또는 systemd Runner 장애 | 기존 버전 유지 |
+| Compose 검증 | 환경변수 또는 서비스 설정 오류 | 기존 버전 유지 |
+| 이미지 빌드 | Dockerfile, 의존성 또는 디스크 문제 | 기존 버전 유지 |
+| 빌드 이미지 테스트 | API·Worker 테스트 실패 | 기존 버전 유지 |
+| GHCR 로그인 | `GITHUB_TOKEN` 또는 Package 권한 문제 | 기존 버전 유지 |
+| GHCR immutable Push | 네트워크 timeout 또는 Registry 오류 | 기존 버전 유지 |
+| GHCR alias Push | alias Push 권한·네트워크 오류 | 기존 버전 유지 |
+
+GHCR에 일부 이미지가 먼저 올라간 뒤 Release가 실패할 수 있지만, Production
+배포 Job이 실행되지 않으므로 운영 컨테이너는 변경되지 않는다.
+
+### OCI Production 배포 단계
+
+Release가 성공하면 `oci-prod-deploy`가 `deploy/deploy_ghcr_release.sh`를 실행한다.
+
+1. `sha-<40자리 commit>` 형식과 Production 환경 파일을 확인한다.
+2. API, Frontend, Web, Coach Worker의 해당 SHA 이미지를 Pull한다.
+3. Compose 설정을 검증한다.
+4. 대상 서비스만 `--no-build --no-deps --wait`로 갱신한다.
+5. `/`, `/api/health`, `/api/health/dependencies`, `/api/health/storage`를
+   확인한다.
+6. 네 검사가 모두 성공하면 `last-successful.env`를 새 SHA로 원자적으로 갱신한다.
+
+Production 배포 중에는 다음 문제가 발생할 수 있다.
+
+| 실패 지점 | 가능한 원인 | 후속 처리 |
+| --- | --- | --- |
+| Production Runner 대기·오프라인 | VM 또는 Runner 서비스 장애 | 배포 Job이 실행되지 않음 |
+| 이미지 Pull | GHCR 인증, 권한 또는 네트워크 오류 | 이전 SHA Rollback 시도 |
+| Compose config | Production 환경변수 또는 설정 오류 | 이전 SHA Rollback 시도 |
+| Compose up | 컨테이너 기동, Health 상태 또는 migration 오류 | 로그 수집 후 Rollback 시도 |
+| HTTP Health Check | API, 의존 서비스, Object Storage 또는 Nginx 오류 | 로그 수집 후 Rollback 시도 |
+
+### 자동 Rollback 결과
+
+배포 대상 SHA의 Compose 기동 또는 네 가지 Health Check가 실패하면 스크립트는
+먼저 서비스 로그를 남긴다. 그 후 `/var/lib/runners-feed-cd/last-successful.env`
+에 저장된 직전 SHA가 유효하고 새 SHA와 다르면 직전 이미지를 다시 Pull·배포한다.
+
+```text
+새 SHA 배포 실패
+       |
+       v
+직전 성공 SHA 확인
+       |
+  +----+----+
+  |         |
+있음       없음
+  |         |
+이전 버전   자동 Rollback 불가
+재배포      수동 조치 필요
+  |
+  +-- 성공: Production은 이전 버전, Workflow는 실패
+  +-- 실패: Production 상태 확인 및 수동 복구
+```
+
+새 배포가 성공한 경우에만 상태 파일을 갱신한다. 따라서 배포 실패 시에도
+상태 파일은 직전 성공 SHA를 가리킨다. Rollback에 성공해도 장애 사실을 숨기지
+않기 위해 GitHub Actions Job은 실패로 종료된다.
+
+### 이번 구축에서 확인한 실제 실패 사례
+
+- GHCR의 Coach Worker 대용량 레이어 업로드가 `timeout awaiting response headers`로
+  실패했다. Release가 실패해 Production Deploy는 실행되지 않았고, Push 재시도
+  로직을 추가했다.
+- 재시도 함수를 이전 Workflow Step에서만 정의해 alias 단계에서 `exit 127`이
+  발생했다. alias 단계에도 함수를 정의한 뒤 최종 Release를 성공시켰다.
+- 최종 Release에서는 네 이미지의 immutable·alias Push, Production 배포와 네
+  가지 Health Check가 모두 성공했다.
+
+## 6. Production 환경 파일
 
 자동 배포는 다음 파일을 읽는다.
 
@@ -193,7 +356,7 @@ IMAGE_PREFIX=ghcr.io/temu-f4/runners-feed
 IMAGE_TAG=sha-<commit>
 ```
 
-## 6. 배포 성공 조건
+## 7. 배포 성공 조건
 
 `deploy/deploy_ghcr_release.sh`는 다음 검사를 모두 통과해야 배포를 성공으로
 기록한다.
@@ -221,7 +384,7 @@ PostgreSQL, Redis, Grafana, Prometheus와 Volume은 삭제하거나 재생성 �
 지정하지 않으며 `--no-deps`로 의존 서비스의 암묵적 재생성도 막는다. API의
 `/health`가 Healthy가 되기 전에 시작 시점 SQL migration이 완료되어야 한다.
 
-## 7. 롤백
+## 8. 롤백
 
 마지막 성공 SHA는 다음 파일에 기록된다.
 
@@ -248,7 +411,7 @@ DB migration은 자동으로 되돌리지 않는다. 자동 이미지 롤백을 
 기존 코드와 호환되는 테이블·컬럼 추가 방식으로 작성한다. 컬럼 삭제나 이름 변경은
 두 번 이상의 Release로 분리한다.
 
-## 8. Runner 운영
+## 9. Runner 운영
 
 ### 상태 확인
 
@@ -296,7 +459,7 @@ docker buildx prune --filter 'until=168h' --force
 Production VM에서는 자동으로 `docker system prune`, Volume 삭제 또는 전체 이미지
 정리를 실행하지 않는다.
 
-## 9. 장애 대응
+## 10. 장애 대응
 
 ### Workflow가 대기 상태
 
@@ -336,7 +499,7 @@ docker exec runners-feed-web-1 nginx -t
 docker exec runners-feed-web-1 nginx -s reload
 ```
 
-## 10. 최초 전환 체크리스트
+## 11. 최초 전환 체크리스트
 
 - [x] OCI에서 운영 중인 코드 변경을 검토하고 GitHub branch에 커밋
 - [x] CI/CD Workflow와 Compose 이미지 설정을 PR로 `main`에 병합
