@@ -9,7 +9,7 @@ import psycopg
 from celery import Celery
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from redis import Redis
 from starlette.concurrency import run_in_threadpool
 
@@ -44,6 +44,23 @@ celery_client = Celery(
         "redis://redis:6379/2",
     ),
 )
+
+SUPPORTED_VIDEO_CONTENT_TYPES = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+}
+
+
+def _video_suffix(filename: str) -> str | None:
+    normalized = filename.lower()
+    return next(
+        (
+            suffix
+            for suffix in SUPPORTED_VIDEO_CONTENT_TYPES
+            if normalized.endswith(suffix)
+        ),
+        None,
+    )
 
 
 @asynccontextmanager
@@ -159,24 +176,34 @@ class CreateCoachJobRequest(BaseModel):
 
     @field_validator("input_object_name")
     @classmethod
-    def require_mp4_object(cls, value: str) -> str:
+    def require_supported_video_object(cls, value: str) -> str:
         normalized = value.strip()
-        if not normalized.lower().endswith(".mp4"):
-            raise ValueError("input_object_name must reference an MP4")
+        if _video_suffix(normalized) is None:
+            raise ValueError("input_object_name must reference an MP4 or MOV")
         return normalized
 
 
 class CreateUploadRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
-    content_type: Literal["video/mp4"] = "video/mp4"
+    content_type: Literal["video/mp4", "video/quicktime"]
 
     @field_validator("filename")
     @classmethod
-    def require_mp4_filename(cls, value: str) -> str:
+    def require_supported_video_filename(cls, value: str) -> str:
         normalized = value.strip()
-        if not normalized.lower().endswith(".mp4"):
-            raise ValueError("filename must end with .mp4")
+        if _video_suffix(normalized) is None:
+            raise ValueError("filename must end with .mp4 or .mov")
         return normalized
+
+    @model_validator(mode="after")
+    def require_matching_content_type(self):
+        suffix = _video_suffix(self.filename)
+        if (
+            suffix is None
+            or self.content_type != SUPPORTED_VIDEO_CONTENT_TYPES[suffix]
+        ):
+            raise ValueError("content_type must match the video file extension")
+        return self
 
 
 class CompleteUploadRequest(BaseModel):
@@ -187,8 +214,8 @@ class CompleteUploadRequest(BaseModel):
     def require_generated_upload_name(cls, value: str) -> str:
         normalized = value.strip()
         prefix = "uploads/"
-        suffix = ".mp4"
-        if not normalized.startswith(prefix) or not normalized.endswith(suffix):
+        suffix = _video_suffix(normalized)
+        if not normalized.startswith(prefix) or suffix is None:
             raise ValueError("object_name must be a generated upload path")
 
         identifier = normalized[len(prefix) : -len(suffix)]
@@ -230,14 +257,16 @@ def _inspect_input_object(object_name: str) -> dict[str, object]:
             status_code=413,
             detail="Uploaded video exceeds the size limit",
         )
-    if (
-        object_name.startswith("uploads/")
-        and metadata["content_type"] != "video/mp4"
-    ):
-        raise HTTPException(
-            status_code=415,
-            detail="Uploaded object must have content type video/mp4",
+    if object_name.startswith("uploads/"):
+        suffix = _video_suffix(object_name)
+        expected_content_type = (
+            SUPPORTED_VIDEO_CONTENT_TYPES.get(suffix) if suffix else None
         )
+        if metadata["content_type"] != expected_content_type:
+            raise HTTPException(
+                status_code=415,
+                detail="Uploaded object content type does not match its extension",
+            )
 
     return metadata
 
@@ -331,8 +360,11 @@ def dependency_health():
 
 
 @app.post("/uploads", status_code=201)
-def create_upload(_: CreateUploadRequest):
-    object_name = f"uploads/{uuid4().hex}.mp4"
+def create_upload(request: CreateUploadRequest):
+    suffix = _video_suffix(request.filename)
+    if suffix is None:  # The request model validates this before the handler.
+        raise HTTPException(status_code=422, detail="Unsupported video format")
+    object_name = f"uploads/{uuid4().hex}{suffix}"
 
     try:
         upload_url, expires_at = (
@@ -351,7 +383,7 @@ def create_upload(_: CreateUploadRequest):
         "object_name": object_name,
         "upload_url": upload_url,
         "method": "PUT",
-        "required_headers": {"Content-Type": "video/mp4"},
+        "required_headers": {"Content-Type": request.content_type},
         "expires_at": expires_at,
         "max_size_bytes": _max_upload_bytes(),
     }

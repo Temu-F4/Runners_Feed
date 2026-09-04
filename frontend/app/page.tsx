@@ -8,6 +8,7 @@ type JobStatus = "IDLE" | "QUEUED" | "PROCESSING" | "SUCCESS" | "FAILED" | "ERRO
 interface UploadResponse {
   object_name: string;
   upload_url: string;
+  required_headers: { "Content-Type": string };
 }
 
 interface JobResponse {
@@ -179,6 +180,10 @@ function SkeletonReplay({ data }: { data: SkeletonReplayData }) {
 }
 
 const maxUploadBytes = 262144000;
+const supportedVideoTypes: Record<string, string> = {
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+};
 const stages: Exclude<Stage, "idle">[] = ["upload", "queue", "analysis", "result"];
 const statusLabels: Record<JobStatus, string> = {
   IDLE: "대기",
@@ -190,7 +195,7 @@ const statusLabels: Record<JobStatus, string> = {
 };
 
 function createCaseId(value: string) {
-  const stem = value.replace(/\.mp4$/i, "");
+  const stem = value.replace(/\.(mp4|mov)$/i, "");
   const normalized = stem
     .replace(/[^A-Za-z0-9_-]+/g, "-")
     .replace(/^[^A-Za-z0-9]+|[-]+$/g, "");
@@ -218,11 +223,17 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
-function uploadFile(url: string, file: File, onProgress: (ratio: number) => void) {
+function getVideoContentType(filename: string): string | null {
+  const normalized = filename.toLowerCase();
+  const suffix = Object.keys(supportedVideoTypes).find((candidate) => normalized.endsWith(candidate));
+  return suffix ? supportedVideoTypes[suffix] : null;
+}
+
+function uploadFile(url: string, file: File, contentType: string, onProgress: (ratio: number) => void) {
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", url);
-    request.setRequestHeader("Content-Type", "video/mp4");
+    request.setRequestHeader("Content-Type", contentType);
     request.upload.addEventListener("progress", (event) => {
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     });
@@ -352,8 +363,9 @@ export default function Home() {
     setResultUrl("");
     setReport(null);
     setSkeleton(null);
-    if (!file) return setError("먼저 MP4 영상을 선택해 주세요.");
-    if (!file.name.toLowerCase().endsWith(".mp4")) return setError("MP4 파일만 업로드할 수 있습니다.");
+    if (!file) return setError("먼저 MP4 또는 MOV 영상을 선택해 주세요.");
+    const contentType = getVideoContentType(file.name);
+    if (!contentType) return setError("MP4 또는 MOV 파일만 업로드할 수 있습니다.");
     if (file.size > maxUploadBytes) return setError("파일 크기는 250 MiB 이하여야 합니다.");
     const parsedHeightCm = Number(userHeightCm);
     if (!Number.isFinite(parsedHeightCm) || parsedHeightCm < 50 || parsedHeightCm > 250) {
@@ -365,9 +377,9 @@ export default function Home() {
       updateProgress(5, "업로드 URL을 준비하고 있습니다", "upload");
       const upload = await api<UploadResponse>("/uploads", {
         method: "POST",
-        body: JSON.stringify({ filename: file.name, content_type: "video/mp4" }),
+        body: JSON.stringify({ filename: file.name, content_type: contentType }),
       });
-      await uploadFile(upload.upload_url, file, (ratio) => {
+      await uploadFile(upload.upload_url, file, upload.required_headers["Content-Type"], (ratio) => {
         updateProgress(Math.max(8, Math.round(ratio * 32)), "영상을 안전하게 업로드하고 있습니다", "upload");
       });
       await api("/uploads/complete", { method: "POST", body: JSON.stringify({ object_name: upload.object_name }) });
@@ -403,16 +415,16 @@ export default function Home() {
       <header className="hero">
         <p className="eyebrow">RUNNERS FEED · MOTION LAB</p>
         <h1>달리는 순간을<br /><span>데이터로 읽습니다.</span></h1>
-        <p className="intro">MP4 영상을 올리면 자세 추정 파이프라인이 프레임을 분석하고, 관절 포인트가 표시된 결과 영상을 만듭니다.</p>
+        <p className="intro">MP4 또는 MOV 영상을 올리면 자세 추정 파이프라인이 프레임을 분석하고, 관절 포인트가 표시된 결과 영상을 만듭니다.</p>
       </header>
 
       <section className="workspace" aria-labelledby="upload-title">
         <div className="panel upload-panel">
           <div className="panel-heading"><p className="step-label">01 · INPUT</p><h2 id="upload-title">분석할 영상</h2></div>
           <label className="drop-zone" htmlFor="video-file">
-            <input id="video-file" type="file" accept="video/mp4,.mp4" onChange={selectFile} />
+            <input id="video-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov" onChange={selectFile} />
             <span className="drop-icon" aria-hidden="true">↗</span>
-            <strong>{file?.name || "MP4 파일을 선택하세요"}</strong>
+            <strong>{file?.name || "MP4 또는 MOV 파일을 선택하세요"}</strong>
             <span>최대 250 MiB · 원본은 비공개 저장</span>
           </label>
           <label className="field" htmlFor="case-id">
