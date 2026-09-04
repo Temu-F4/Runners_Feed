@@ -148,7 +148,8 @@ Compose config
 
 ### Release와 배포
 
-`.github/workflows/release-deploy.yml`은 `main` Push 또는 수동 실행에서 동작한다.
+`.github/workflows/release-deploy.yml`은 배포 관련 경로가 변경된 `main` Push 또는
+수동 실행에서 동작한다. 문서만 변경된 `main` Push는 Release를 실행하지 않는다.
 
 1. `oci-ci-e4`가 네 개의 이미지를 빌드한다.
 2. 빌드된 API·Worker 이미지 내부에서 단위 테스트를 다시 실행한다.

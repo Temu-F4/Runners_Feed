@@ -4,6 +4,17 @@ on:
   push:
     branches:
       - main
+    paths:
+      - .github/workflows/release-deploy.yml
+      - .dockerignore
+      - api/**
+      - coach/**
+      - compose.yaml
+      - compose.coach.yaml
+      - deploy/deploy_ghcr_release.sh
+      - frontend/**
+      - nginx/**
+      - worker/**
   workflow_dispatch:
 
 concurrency:
@@ -102,13 +113,28 @@ jobs:
           POSTGRES_PASSWORD: ci-placeholder
           GRAFANA_ADMIN_PASSWORD: ci-placeholder
           GRAFANA_POSTGRES_PASSWORD: ci-placeholder
-        run: >-
-          docker compose
-          -f compose.yaml
-          -f compose.coach.yaml
-          --profile coach
-          push
-          api frontend web coach-worker
+        run: |
+          push_with_retry() {
+            local attempt
+            for attempt in 1 2 3; do
+              echo "GHCR push attempt ${attempt}/3"
+              if "$@"; then
+                return 0
+              fi
+              if [[ "${attempt}" -eq 3 ]]; then
+                echo "GHCR push failed after ${attempt} attempts" >&2
+                return 1
+              fi
+              sleep $((attempt * 15))
+            done
+          }
+
+          push_with_retry docker compose \
+            -f compose.yaml \
+            -f compose.coach.yaml \
+            --profile coach \
+            push \
+            api frontend web coach-worker
 
       - name: Publish main aliases
         run: |
@@ -116,7 +142,7 @@ jobs:
             docker tag \
               "${IMAGE_PREFIX}-${service}:${IMAGE_TAG}" \
               "${IMAGE_PREFIX}-${service}:main"
-            docker push "${IMAGE_PREFIX}-${service}:main"
+            push_with_retry docker push "${IMAGE_PREFIX}-${service}:main"
           done
 
       - name: Summarize release
