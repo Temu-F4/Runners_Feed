@@ -253,7 +253,7 @@ net/http: timeout awaiting response headers
 - GHCR Push를 최대 3회 재시도하도록 Release Workflow를 수정했다.
 - 문서만 변경된 `main` Push가 불필요하게 Release를 실행하지 않도록 배포 관련
   경로 필터를 추가했다.
-- 해당 수정은 다음 PR에서 검증할 예정이다.
+- 해당 수정은 PR #5에서 반영되었다.
 
 ### 3.6 Workflow step 간 함수 범위 오류
 
@@ -268,7 +268,7 @@ step으로 전달되지 않는다는 점이었다. 이 때문에 alias 단계에
 - alias 단계에도 동일한 재시도 함수를 명시적으로 정의했다.
 - `needs: release` 조건으로 인해 이 경우에도 Production Deploy는 실행되지 않았다.
 - 운영은 마지막 성공 SHA `sha-49dd16...`를 유지했다.
-- 해당 수정은 다음 Release에서 재검증한다.
+- alias 단계 수정은 PR #6에서 반영되었고, 최종 Release에서 재검증했다.
 
 ## 4. 최종 검증 결과
 
@@ -291,7 +291,7 @@ step으로 전달되지 않는다는 점이었다. 이 때문에 alias 단계에
 최신 CI VM 빌드 후 디스크 상태:
 
 ```text
-Disk: 49G total / 18G used / 31G available / 37%
+Disk: 49G total / 21G used / 29G available / 42%
 ```
 
 ### GitHub 검증
@@ -306,6 +306,8 @@ Disk: 49G total / 18G used / 31G available / 37%
 - Compose config: Passed
 - Release Workflow: [33823128825](https://github.com/Temu-F4/Runners_Feed/actions/runs/33823128825), Passed
 - 이후 문서 전용 Release: 33824064897, GHCR 대용량 레이어 timeout으로 실패
+- GHCR retry 반영 전 Release: 33824584519, alias 함수 범위 오류로 실패
+- 최종 Release: [33825022473](https://github.com/Temu-F4/Runners_Feed/actions/runs/33825022473), Passed
 
 ### OCI 최종 상태
 
@@ -334,6 +336,28 @@ PR 병합 직후 `main` Push 이벤트로 Release Workflow가 자동 실행되�
 Release 단계에는 `docker/login-action@v3`의 Node.js 20 deprecation 경고가 있었지만
 Job 실패를 유발하지 않았고 Release·Deploy 모두 성공했다. 향후 해당 Action의
 Node.js 24 대응 버전이 안정화되면 버전 갱신을 검토한다.
+
+최종 Release에서는 immutable Push와 `main` alias Push가 모두 성공했고, Production
+배포도 성공했다.
+
+- 최종 merge commit: `5e4d3f5805661641604c574b9139d44ff31adfdd`
+- CI 빌드·테스트·Push: 성공, 5분 16초
+- Production Deploy·Health Check: 성공, 2분 15초
+- 최종 Production 태그: `sha-5e4d3f5805661641604c574b9139d44ff31adfdd`
+- 최종 Production Health Check 4개: 모두 HTTP 200
+
+### CI VM 검증 잔여물 정리
+
+반복 검증 때문에 CI VM 디스크 사용률이 77%까지 올라갔다. Production VM은
+정리하지 않고 CI VM에서만 다음을 수행했다.
+
+- 검증용 `runners-feed-validation-*` 이미지 제거
+- 로컬 테스트용 `runners-feed-final-*` 이미지 제거
+- 이전 Release의 CI VM 로컬 SHA 이미지 제거
+- 30분보다 오래된 BuildKit 캐시 정리
+
+정리 후 CI VM 디스크 사용률은 42%로 낮아졌고, GHCR Package와 Production
+컨테이너에는 영향을 주지 않았다.
 
 ## 5. 배포 후 남은 작업
 
