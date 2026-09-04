@@ -263,12 +263,13 @@ Disk: 49G total / 18G used / 31G available / 37%
 
 - PR: [Temu-F4/Runners_Feed#3](https://github.com/Temu-F4/Runners_Feed/pull/3)
 - Branch: `feat/oci-ghcr-cicd`
-- Commit: `bbf096399ae6ab111ce12ada15d2d439a1907d1d`
-- PR 상태: Open, mergeable
+- Merge commit: `49dd16be7d858b20bf40bc401d0fc1749afaaee7`
+- PR 상태: Merged
 - API tests: Passed
 - Worker tests: Passed
 - Frontend build: Passed
 - Compose config: Passed
+- Release Workflow: [33823128825](https://github.com/Temu-F4/Runners_Feed/actions/runs/33823128825), Passed
 
 ### OCI 최종 상태
 
@@ -279,20 +280,35 @@ Disk: 49G total / 18G used / 31G available / 37%
 - Production `/api/health/dependencies`: HTTP 200
 - Production `/api/health/storage`: HTTP 200
 
-## 5. 아직 수행하지 않은 작업
+### 최초 자동 Release·CD 결과
 
-다음 작업은 의도적으로 남겨두었다.
+PR 병합 직후 `main` Push 이벤트로 Release Workflow가 자동 실행되었다.
 
-- PR 병합
-- 최초 GHCR private package 생성
-- 최초 SHA 이미지 Production 배포
-- 최초 배포 후 `last-successful.env` 생성 확인
+- CI VM 이미지 빌드: 성공
+- API·Worker 이미지 내부 테스트: 성공
+- GHCR immutable SHA 이미지 4개 Push: 성공
+- GHCR `main` alias Push: 성공
+- Production 배포: 성공
+- 배포 소요 시간: 2분 16초
+- 기록된 마지막 성공 태그: `sha-49dd16be7d858b20bf40bc401d0fc1749afaaee7`
+- Production 실행 컨테이너 4개: 모두 동일 SHA 이미지
+- 네 가지 Production Health Check: 모두 HTTP 200
+- 이번 배포에서는 롤백이 필요하지 않았음
+
+Release 단계에는 `docker/login-action@v3`의 Node.js 20 deprecation 경고가 있었지만
+Job 실패를 유발하지 않았고 Release·Deploy 모두 성공했다. 향후 해당 Action의
+Node.js 24 대응 버전이 안정화되면 버전 갱신을 검토한다.
+
+## 5. 배포 후 남은 작업
+
+다음 작업은 CI/CD 최초 전환과 별개로 남아 있다.
+
 - 영상 업로드부터 Coach 분석 결과 조회까지 실제 E2E 검증
+- 실제 Production에서의 장애 유도 없는 롤백 리허설 또는 staging 환경 검증
+- Node.js 24 대응 Docker Login Action 버전 검토
 
-PR 병합은 GHCR Push와 Production 변경을 동시에 발생시키므로, 검토 후 별도
-승인을 받아 수행한다. 최초 배포는 GHCR에 직전 성공 SHA가 아직 없기 때문에
-자동 이미지 롤백 대상이 없다. 최초 배포가 성공하면 이후부터 자동 롤백 상태가
-축적된다.
+최초 배포가 성공해 `last-successful.env`가 생성되었으므로, 이후 Release부터는
+Health Check 실패 시 직전 immutable SHA로 자동 롤백할 수 있다.
 
 ## 6. 현재 커밋에 포함하지 않은 파일
 
@@ -309,7 +325,5 @@ OCI 동기화 과정에서 발견된 기존 추론 POC 관련 미추적 파일�
 
 ## 7. 최종 판단
 
-CI/CD 기반 구축과 자동 검증 구조는 구현·검증 완료 상태다. 현재 남은 단계는
-코드 문제가 아니라 최초 Production 전환 승인이다. PR 체크와 보호 규칙을 모두
-통과한 뒤 병합하면 private GHCR 이미지 생성과 OCI 자동 배포 흐름을 시작할 수
-있다.
+CI/CD 기반 구축과 최초 자동 Production 전환은 구현·검증 완료 상태다. 현재
+남은 단계는 실제 영상 E2E 검증과 운영 개선 항목이다.

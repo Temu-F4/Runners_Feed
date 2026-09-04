@@ -337,18 +337,20 @@ docker exec runners-feed-web-1 nginx -s reload
 
 ## 10. 최초 전환 체크리스트
 
-- [ ] OCI에서 운영 중인 코드 변경을 검토하고 GitHub branch에 커밋
-- [ ] CI/CD Workflow와 Compose 이미지 설정을 PR로 `main`에 병합
-- [ ] PR의 네 개 필수 Check 통과
-- [ ] `oci-ci-e4`, `oci-prod-deploy` Runner Online 확인
-- [ ] `production` Environment 변수 확인
-- [ ] `/etc/runners-feed/prod.env` 권한과 최신 상태 확인
-- [ ] 첫 GHCR Package 네 개가 Private인지 확인
-- [ ] 첫 SHA 배포와 Health Check 통과
-- [ ] `/var/lib/runners-feed-cd/last-successful.env` 생성 확인
-- [ ] 실행 컨테이너의 이미지 SHA 확인
+- [x] OCI에서 운영 중인 코드 변경을 검토하고 GitHub branch에 커밋
+- [x] CI/CD Workflow와 Compose 이미지 설정을 PR로 `main`에 병합
+- [x] PR의 네 개 필수 Check 통과
+- [x] `oci-ci-e4`, `oci-prod-deploy` Runner Online 확인
+- [x] `production` Environment 변수 확인
+- [x] `/etc/runners-feed/prod.env` 권한과 최신 상태 확인
+- [x] 첫 GHCR Package 네 개에 SHA 이미지 Push 확인
+- [x] 첫 SHA 배포와 Health Check 통과
+- [x] `/var/lib/runners-feed-cd/last-successful.env` 생성 확인
+- [x] 실행 컨테이너의 이미지 SHA 확인
 - [ ] 영상 한 건의 업로드, 분석, 결과 조회 E2E 확인
-- [ ] 배포 SHA, Job ID, 수행 시각과 결과 기록
+- [x] 배포 SHA, Job ID, 수행 시각과 결과 기록
+
+최초 자동 배포 결과: [Release Workflow 33823128825](https://github.com/Temu-F4/Runners_Feed/actions/runs/33823128825)
 
 현재 OCI에서만 존재하고 GitHub에 Commit되지 않은 파일은 Workflow가 빌드할 수
 없다. 자동 배포를 활성화하기 전에 운영 기준 소스가 `main`에 포함되어야 한다.
