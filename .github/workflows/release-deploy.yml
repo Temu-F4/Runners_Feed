@@ -1,0 +1,159 @@
+name: Release GHCR and deploy OCI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: runners-feed-production
+  cancel-in-progress: false
+
+env:
+  IMAGE_PREFIX: ghcr.io/temu-f4/runners-feed
+  IMAGE_TAG: sha-${{ github.sha }}
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: [self-hosted, Linux, X64, oci-ci]
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          clean: true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate Compose configuration
+        env:
+          API_KEY: ci-placeholder
+          POSTGRES_DB: runners_feed
+          POSTGRES_USER: runners_feed
+          POSTGRES_PASSWORD: ci-placeholder
+          GRAFANA_ADMIN_PASSWORD: ci-placeholder
+          GRAFANA_POSTGRES_PASSWORD: ci-placeholder
+          RUNNERS_FEED_RUNTIME_DIR: ./runtime
+        run: >-
+          docker compose
+          -f compose.yaml
+          -f compose.coach.yaml
+          --profile coach
+          config --quiet
+
+      - name: Set build metadata
+        run: |
+          {
+            echo "BUILD_CREATED=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "BUILD_REVISION=${GITHUB_SHA}"
+            echo "BUILD_SOURCE=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build release images
+        env:
+          API_KEY: ci-placeholder
+          POSTGRES_DB: runners_feed
+          POSTGRES_USER: runners_feed
+          POSTGRES_PASSWORD: ci-placeholder
+          GRAFANA_ADMIN_PASSWORD: ci-placeholder
+          GRAFANA_POSTGRES_PASSWORD: ci-placeholder
+        run: >-
+          docker compose
+          -f compose.yaml
+          -f compose.coach.yaml
+          --profile coach
+          build --pull
+          api frontend web coach-worker
+
+      - name: Test built API image
+        run: >-
+          docker run --rm
+          --entrypoint python
+          -v "$PWD/api/tests:/app/tests:ro"
+          "${IMAGE_PREFIX}-api:${IMAGE_TAG}"
+          -m unittest discover -s /app/tests -p 'test_*.py'
+
+      - name: Test built worker image
+        run: |
+          docker run --rm \
+            --entrypoint python \
+            -v "$PWD/worker:/tests:ro" \
+            --workdir /tests \
+            "${IMAGE_PREFIX}-coach-worker:${IMAGE_TAG}" \
+            -m unittest \
+            test_coach_report_adapter \
+            test_job_stages \
+            test_run_cleanup
+
+      - name: Push immutable images
+        env:
+          API_KEY: ci-placeholder
+          POSTGRES_DB: runners_feed
+          POSTGRES_USER: runners_feed
+          POSTGRES_PASSWORD: ci-placeholder
+          GRAFANA_ADMIN_PASSWORD: ci-placeholder
+          GRAFANA_POSTGRES_PASSWORD: ci-placeholder
+        run: >-
+          docker compose
+          -f compose.yaml
+          -f compose.coach.yaml
+          --profile coach
+          push
+          api frontend web coach-worker
+
+      - name: Publish main aliases
+        run: |
+          for service in api frontend web coach-worker; do
+            docker tag \
+              "${IMAGE_PREFIX}-${service}:${IMAGE_TAG}" \
+              "${IMAGE_PREFIX}-${service}:main"
+            docker push "${IMAGE_PREFIX}-${service}:main"
+          done
+
+      - name: Summarize release
+        run: |
+          {
+            echo "### GHCR release"
+            echo
+            echo "Tag: \`${IMAGE_TAG}\`"
+            echo
+            for service in api frontend web coach-worker; do
+              echo "- \`${IMAGE_PREFIX}-${service}:${IMAGE_TAG}\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy production
+    needs: release
+    runs-on: [self-hosted, Linux, X64, oci-prod-deploy]
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          clean: true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy immutable release
+        env:
+          PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+          RUNNERS_FEED_ENV_FILE: /etc/runners-feed/prod.env
+        run: bash deploy/deploy_ghcr_release.sh "${IMAGE_TAG}"

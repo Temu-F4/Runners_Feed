@@ -40,8 +40,13 @@ services:
     networks:
       - backend
   api:
+    image: ${IMAGE_PREFIX:-runners-feed}-api:${IMAGE_TAG:-local}
     build:
       context: ./api
+      args:
+        BUILD_CREATED: ${BUILD_CREATED:-unknown}
+        BUILD_REVISION: ${BUILD_REVISION:-unknown}
+        BUILD_SOURCE: ${BUILD_SOURCE:-https://github.com/Temu-F4/Runners_Feed}
     restart: unless-stopped
     environment:
       API_KEY: ${API_KEY:?API_KEY is required}
@@ -80,9 +85,14 @@ services:
     networks:
       - backend
   web:
+    image: ${IMAGE_PREFIX:-runners-feed}-web:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: nginx/Dockerfile
+      args:
+        BUILD_CREATED: ${BUILD_CREATED:-unknown}
+        BUILD_REVISION: ${BUILD_REVISION:-unknown}
+        BUILD_SOURCE: ${BUILD_SOURCE:-https://github.com/Temu-F4/Runners_Feed}
     restart: unless-stopped
     environment:
       API_KEY: ${API_KEY:?API_KEY is required}
@@ -112,8 +122,13 @@ services:
     networks:
       - backend
   frontend:
+    image: ${IMAGE_PREFIX:-runners-feed}-frontend:${IMAGE_TAG:-local}
     build:
       context: ./frontend
+      args:
+        BUILD_CREATED: ${BUILD_CREATED:-unknown}
+        BUILD_REVISION: ${BUILD_REVISION:-unknown}
+        BUILD_SOURCE: ${BUILD_SOURCE:-https://github.com/Temu-F4/Runners_Feed}
     restart: unless-stopped
     expose:
       - "3000"
