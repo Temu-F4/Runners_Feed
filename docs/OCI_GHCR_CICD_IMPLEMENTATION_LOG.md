@@ -255,6 +255,21 @@ net/http: timeout awaiting response headers
   경로 필터를 추가했다.
 - 해당 수정은 다음 PR에서 검증할 예정이다.
 
+### 3.6 Workflow step 간 함수 범위 오류
+
+재시도 수정 후 세 번째 Release에서는 immutable 이미지 Push까지 성공했지만,
+`Publish main aliases` 단계가 exit 127로 실패했다.
+
+원인은 `push_with_retry` Shell 함수가 이전 Workflow step 안에서만 정의되며 다음
+step으로 전달되지 않는다는 점이었다. 이 때문에 alias 단계에서 함수를 찾지 못했다.
+
+해결 내용:
+
+- alias 단계에도 동일한 재시도 함수를 명시적으로 정의했다.
+- `needs: release` 조건으로 인해 이 경우에도 Production Deploy는 실행되지 않았다.
+- 운영은 마지막 성공 SHA `sha-49dd16...`를 유지했다.
+- 해당 수정은 다음 Release에서 재검증한다.
+
 ## 4. 최종 검증 결과
 
 ### 로컬·CI VM 검증
