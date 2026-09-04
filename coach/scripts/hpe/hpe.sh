@@ -41,12 +41,29 @@ fi
 echo "영상 발견: $VIDEO_PATH"
 printf '\n영상 분석 및 렌더링\n'
 echo "COACH_STAGE_START=video_analysis"
-"$PYTHON_BIN" \
-  "$HPE_DIR/hpe.py" \
-  "$WORKSPACE_ROOT" \
-  "$RUN_FOLDER" \
-  "$VIDEO_PATH" \
-  "$@"
+VIDEO_ANALYSIS_BACKEND="${COACH_VIDEO_ANALYSIS_BACKEND:-local}"
+case "$VIDEO_ANALYSIS_BACKEND" in
+  local)
+    "$PYTHON_BIN" \
+      "$HPE_DIR/hpe.py" \
+      "$WORKSPACE_ROOT" \
+      "$RUN_FOLDER" \
+      "$VIDEO_PATH" \
+      "$@"
+    ;;
+  runpod)
+    "$PYTHON_BIN" \
+      /app/gpu_ab/coach_video_analysis_client.py \
+      "$WORKSPACE_ROOT" \
+      "$RUN_FOLDER" \
+      "$VIDEO_PATH" \
+      --code-root "$CODE_COACH_DIR"
+    ;;
+  *)
+    echo "지원하지 않는 video_analysis backend: $VIDEO_ANALYSIS_BACKEND" >&2
+    exit 2
+    ;;
+esac
 
 if [[ ! -f "$OUTPUT_DIR/output.mp4" ]]; then
     echo "분석 결과 영상을 찾지 못했습니다: $OUTPUT_DIR/output.mp4"

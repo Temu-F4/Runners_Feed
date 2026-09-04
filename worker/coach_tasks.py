@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from coach_celery_app import celery_app
+from gpu_ab_routing import pipeline_command
 from job_repository import (
     mark_job_failed,
     mark_job_processing,
@@ -198,7 +199,10 @@ def execute_pipeline(
 
     timeout_seconds = int(os.getenv("COACH_TIMEOUT_SECONDS", "3600"))
 
-    command = ["/app/run_coach_pipeline.sh", run_id]
+    command = pipeline_command(
+        case_id,
+        ["/app/run_coach_pipeline.sh", run_id],
+    )
 
     def invoke_pipeline() -> subprocess.CompletedProcess[str]:
         return subprocess.run(

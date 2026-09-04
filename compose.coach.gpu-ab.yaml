@@ -1,0 +1,22 @@
+services:
+  coach-worker:
+    environment:
+      GPU_AB_ENABLED: "1"
+      GPU_AB_CPU_CASE_ID: ${GPU_AB_CPU_CASE_ID:-video_analysis_cpu_ab}
+      GPU_AB_GPU_CASE_ID: ${GPU_AB_GPU_CASE_ID:-video_analysis_gpu_ab}
+      RUNPOD_GPU_BASE_URL: ${RUNPOD_GPU_BASE_URL:?set RUNPOD_GPU_BASE_URL}
+      RUNPOD_SHARED_TOKEN_FILE: /run/secrets/runpod_ab_token
+      RUNPOD_REQUEST_TIMEOUT: ${RUNPOD_REQUEST_TIMEOUT:-3600}
+      GPU_AB_EVIDENCE_DIR: /gpu-ab-evidence
+    volumes:
+      - type: bind
+        source: ${RUNPOD_SHARED_TOKEN_PATH:?set RUNPOD_SHARED_TOKEN_PATH}
+        target: /run/secrets/runpod_ab_token
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GPU_AB_EVIDENCE_PATH:?set GPU_AB_EVIDENCE_PATH}
+        target: /gpu-ab-evidence
+        bind:
+          create_host_path: false

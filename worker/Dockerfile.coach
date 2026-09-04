@@ -31,9 +31,11 @@ RUN python -m pip install --upgrade pip \
     && pip install -r /app/requirements.coach.txt
 
 COPY coach /app/coach
+COPY gpu_ab /app/gpu_ab
 COPY worker/coach_adapter /app/coach_adapter
 COPY worker/coach_celery_app.py /app/coach_celery_app.py
 COPY worker/coach_tasks.py /app/coach_tasks.py
+COPY worker/gpu_ab_routing.py /app/gpu_ab_routing.py
 COPY worker/job_repository.py /app/job_repository.py
 COPY worker/job_stages.py /app/job_stages.py
 COPY worker/object_storage_gateway.py /app/object_storage_gateway.py
