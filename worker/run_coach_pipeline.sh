@@ -23,7 +23,6 @@ fi
 /app/coach/scripts/main.sh \
   "$RUN_ID" \
   --agent "$COACH_AGENT_ENABLED" \
-  --extract \
   --device "$COACH_DEVICE"
 
 "$PYTHON_BIN" \

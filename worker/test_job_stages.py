@@ -16,14 +16,11 @@ class JobStageRecorderTest(unittest.TestCase):
             JOB_STAGE_DEFINITIONS,
             (
                 (1, "input_download"),
-                (2, "frame_extract"),
-                (3, "pose_inference"),
-                (4, "frame_render"),
-                (5, "video_compose"),
-                (6, "feature_extract"),
-                (7, "report_generate"),
-                (8, "result_upload"),
-                (9, "workspace_cleanup"),
+                (2, "video_analysis"),
+                (3, "feature_extract"),
+                (4, "report_generate"),
+                (5, "result_upload"),
+                (6, "workspace_cleanup"),
             ),
         )
 
@@ -106,13 +103,13 @@ class JobStageRecorderTest(unittest.TestCase):
         recorder = JobStageRecorder("job-4")
         recorder.initialize()
 
-        recorder.start("pose_inference")
-        recorder.finish("pose_inference", status="SUCCESS")
+        recorder.start("video_analysis")
+        recorder.finish("video_analysis", status="SUCCESS")
 
-        mark_running.assert_called_once_with("job-4", "pose_inference")
+        mark_running.assert_called_once_with("job-4", "video_analysis")
         mark_finished.assert_called_once_with(
             "job-4",
-            "pose_inference",
+            "video_analysis",
             status="SUCCESS",
             duration_seconds=4.0,
         )

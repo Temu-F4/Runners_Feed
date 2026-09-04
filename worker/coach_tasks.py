@@ -26,10 +26,7 @@ STAGE_MARKER_PATTERN = re.compile(
     r"^COACH_STAGE_(START|SUCCESS)=([a-z_]+)$"
 )
 PIPELINE_STAGE_KEYS = (
-    "frame_extract",
-    "pose_inference",
-    "frame_render",
-    "video_compose",
+    "video_analysis",
     "feature_extract",
     "report_generate",
 )
