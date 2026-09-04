@@ -5,6 +5,10 @@
 이 문서는 Runners Feed의 Pull Request 검증, Docker 이미지 빌드, GHCR 배포,
 OCI Production 반영과 실패 시 롤백 절차를 설명한다.
 
+실제 구축 중 수행한 작업, 발생한 문제와 해결 과정, 검증 결과는
+[OCI_GHCR_CICD_IMPLEMENTATION_LOG.md](./OCI_GHCR_CICD_IMPLEMENTATION_LOG.md)에
+기록되어 있다.
+
 CI와 CD는 서로 다른 OCI VM에서 실행한다.
 
 ```text
