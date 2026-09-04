@@ -61,7 +61,7 @@ def main(features_path: Path):
 
     # 4. LLM
     model = ChatOpenAI(
-        model="gpt-5-nano",
+        model="gpt-5.6-luna",
         temperature=0,
         api_key=api_key
     )

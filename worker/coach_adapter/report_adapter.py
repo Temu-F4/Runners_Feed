@@ -149,7 +149,7 @@ def _narrative(output_dir: Path) -> dict[str, Any]:
 
     return {
         "status": "success",
-        "model": "gpt-5-nano",
+        "model": "gpt-5.6-luna",
         "overall_summary": report,
         "findings": [],
         "coaching_points": [],
