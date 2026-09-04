@@ -1,5 +1,13 @@
 FROM python:3.11-slim-bookworm
 
+ARG BUILD_CREATED=unknown
+ARG BUILD_REVISION=unknown
+ARG BUILD_SOURCE=https://github.com/Temu-F4/Runners_Feed
+
+LABEL org.opencontainers.image.created="${BUILD_CREATED}" \
+      org.opencontainers.image.revision="${BUILD_REVISION}" \
+      org.opencontainers.image.source="${BUILD_SOURCE}"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1

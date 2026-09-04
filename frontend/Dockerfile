@@ -12,6 +12,14 @@ RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
+ARG BUILD_CREATED=unknown
+ARG BUILD_REVISION=unknown
+ARG BUILD_SOURCE=https://github.com/Temu-F4/Runners_Feed
+
+LABEL org.opencontainers.image.created="${BUILD_CREATED}" \
+      org.opencontainers.image.revision="${BUILD_REVISION}" \
+      org.opencontainers.image.source="${BUILD_SOURCE}"
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
