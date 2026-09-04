@@ -235,6 +235,26 @@ Nginx가 upstream에 연결하지 못했을 때의 `502`가 아니므로 DNS 재
 - CI/CD 커밋을 최신 `main` 위로 rebase했다.
 - 최신 소스 기준으로 이미지 빌드와 테스트를 다시 수행했다.
 
+### 3.5 GHCR 대용량 레이어 업로드 일시 실패
+
+최초 배포 후 문서 보완 PR을 `main`에 병합했을 때 두 번째 Release가 실행되었다.
+빌드와 API·Worker 테스트는 통과했지만, 약 2.7GB인 Coach Worker 이미지의 GHCR
+blob upload에서 다음 네트워크 timeout이 발생했다.
+
+```text
+Post "https://ghcr.io/v2/.../blobs/uploads/":
+net/http: timeout awaiting response headers
+```
+
+해결 및 확인 내용:
+
+- `needs: release` 조건 때문에 Production Deploy Job은 실행되지 않았다.
+- Production은 마지막 성공 태그 `sha-49dd16...`를 그대로 유지했다.
+- GHCR Push를 최대 3회 재시도하도록 Release Workflow를 수정했다.
+- 문서만 변경된 `main` Push가 불필요하게 Release를 실행하지 않도록 배포 관련
+  경로 필터를 추가했다.
+- 해당 수정은 다음 PR에서 검증할 예정이다.
+
 ## 4. 최종 검증 결과
 
 ### 로컬·CI VM 검증
@@ -270,6 +290,7 @@ Disk: 49G total / 18G used / 31G available / 37%
 - Frontend build: Passed
 - Compose config: Passed
 - Release Workflow: [33823128825](https://github.com/Temu-F4/Runners_Feed/actions/runs/33823128825), Passed
+- 이후 문서 전용 Release: 33824064897, GHCR 대용량 레이어 timeout으로 실패
 
 ### OCI 최종 상태
 
