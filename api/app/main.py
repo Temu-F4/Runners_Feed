@@ -1,5 +1,7 @@
 import os
 import hmac
+import logging
+import secrets
 from contextlib import asynccontextmanager
 from typing import Literal
 from uuid import UUID, uuid4
@@ -8,21 +10,36 @@ import oci
 import psycopg
 from celery import Celery
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from redis import Redis
 from starlette.concurrency import run_in_threadpool
 
 from app.database import (
+    create_account_session,
     create_guest_session,
     create_job,
+    delete_account_session,
     delete_user_data,
     get_job as get_persisted_job,
     initialize_database,
+    link_kakao_account,
     list_jobs as list_persisted_jobs,
     list_user_artifacts,
     mark_job_dispatch_failed,
+    renew_active_account_session,
     renew_active_guest_session,
+)
+from app.account_identity import (
+    ACCOUNT_COOKIE_NAME,
+    OAUTH_STATE_COOKIE_NAME,
+    fetch_kakao_profile,
+    issue_account_identity,
+    kakao_authorization_url,
+    new_oauth_state,
+    renew_account_identity,
+    set_account_cookie,
+    set_oauth_state_cookie,
 )
 from app.guest_identity import (
     GUEST_COOKIE_NAME,
@@ -32,6 +49,8 @@ from app.guest_identity import (
 )
 from app.object_storage import ObjectStorageGateway, load_oci_config
 
+
+LOGGER = logging.getLogger(__name__)
 
 celery_client = Celery(
     "runners_feed_api",
@@ -99,10 +118,31 @@ async def require_api_key(request: Request, call_next):
     if request.url.path.startswith("/health"):
         return await call_next(request)
 
-    guest_token = request.cookies.get(GUEST_COOKIE_NAME)
+    account_token = request.cookies.get(ACCOUNT_COOKIE_NAME)
     user_id = None
+    account = None
+    account_identity = None
+    clear_invalid_account_cookie = False
+    if account_token:
+        try:
+            account_identity = renew_account_identity(account_token)
+            account = await run_in_threadpool(
+                renew_active_account_session,
+                token_hash=account_identity.token_hash,
+                expires_at=account_identity.expires_at,
+            )
+            if account is not None:
+                user_id = account["user_id"]
+            else:
+                account_identity = None
+                clear_invalid_account_cookie = True
+        except ValueError:
+            account_identity = None
+            clear_invalid_account_cookie = True
+
+    guest_token = request.cookies.get(GUEST_COOKIE_NAME)
     response_identity = None
-    if guest_token:
+    if user_id is None and guest_token:
         try:
             response_identity = renew_guest_identity(guest_token)
             user_id = await run_in_threadpool(
@@ -123,8 +163,33 @@ async def require_api_key(request: Request, call_next):
             expires_at=response_identity.expires_at,
         )
     request.state.user_id = user_id
+    request.state.account = account
+    request.state.account_token_hash = (
+        account_identity.token_hash if account_identity is not None else None
+    )
     response = await call_next(request)
-    if getattr(request.state, "delete_guest_cookie", False):
+    delete_identity_cookies = getattr(
+        request.state, "delete_identity_cookies", False
+    )
+    delete_guest_cookie = getattr(
+        request.state, "delete_guest_cookie", False
+    )
+    if delete_identity_cookies:
+        response.delete_cookie(
+            key=GUEST_COOKIE_NAME,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
+        response.delete_cookie(
+            key=ACCOUNT_COOKIE_NAME,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
+    elif delete_guest_cookie:
         response.delete_cookie(
             key=GUEST_COOKIE_NAME,
             path="/",
@@ -134,6 +199,20 @@ async def require_api_key(request: Request, call_next):
         )
     elif response_identity is not None:
         set_guest_cookie(response, response_identity)
+    if (
+        account_identity is not None
+        and not delete_identity_cookies
+        and not getattr(request.state, "suppress_account_cookie", False)
+    ):
+        set_account_cookie(response, account_identity)
+    elif clear_invalid_account_cookie and not delete_identity_cookies:
+        response.delete_cookie(
+            key=ACCOUNT_COOKIE_NAME,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
     return response
 
 
@@ -160,6 +239,102 @@ def _max_upload_bytes() -> int:
     if max_bytes <= 0:
         raise ValueError("MAX_UPLOAD_BYTES must be positive")
     return max_bytes
+
+
+@app.get("/auth/kakao/start")
+def start_kakao_login():
+    state = new_oauth_state()
+    try:
+        destination = kakao_authorization_url(state)
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Kakao login is not configured",
+        ) from error
+    response = RedirectResponse(destination, status_code=302)
+    set_oauth_state_cookie(response, state)
+    return response
+
+
+@app.get("/auth/kakao/callback")
+async def finish_kakao_login(
+    request: Request,
+    code: str | None = Query(default=None, max_length=2048),
+    state: str | None = Query(default=None, max_length=512),
+    error: str | None = Query(default=None, max_length=255),
+):
+    expected_state = request.cookies.get(OAUTH_STATE_COOKIE_NAME, "")
+    state_valid = bool(
+        state
+        and expected_state
+        and secrets.compare_digest(state, expected_state)
+    )
+    if error or not code or not state_valid:
+        response = RedirectResponse("/?login=kakao-error", status_code=302)
+        response.delete_cookie(
+            key=OAUTH_STATE_COOKIE_NAME,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
+        return response
+
+    try:
+        profile = await run_in_threadpool(fetch_kakao_profile, code)
+        account_user_id = await run_in_threadpool(
+            link_kakao_account,
+            current_user_id=request.state.user_id,
+            provider_user_id=profile.provider_user_id,
+            email=profile.email,
+            display_name=profile.display_name,
+        )
+        identity = issue_account_identity()
+        await run_in_threadpool(
+            create_account_session,
+            token_hash=identity.token_hash,
+            user_id=account_user_id,
+            expires_at=identity.expires_at,
+        )
+    except Exception:
+        LOGGER.exception("Kakao login callback failed")
+        response = RedirectResponse("/?login=kakao-error", status_code=302)
+    else:
+        response = RedirectResponse("/?login=kakao-success", status_code=302)
+        set_account_cookie(response, identity)
+        request.state.delete_guest_cookie = True
+        request.state.suppress_account_cookie = True
+
+    response.delete_cookie(
+        key=OAUTH_STATE_COOKIE_NAME,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/me")
+def get_me(request: Request):
+    account = request.state.account
+    if account is None:
+        return {"authenticated": False, "provider": None}
+    return {
+        "authenticated": True,
+        "provider": account["provider"],
+        "email": account["email"],
+        "display_name": account["display_name"],
+    }
+
+
+@app.post("/auth/logout")
+def logout(request: Request):
+    token_hash = request.state.account_token_hash
+    if token_hash is not None:
+        delete_account_session(token_hash)
+    request.state.delete_identity_cookies = True
+    return {"status": "logged_out"}
 
 
 class CreateCoachJobRequest(BaseModel):
@@ -582,7 +757,7 @@ def delete_my_data(request: Request):
             detail="Failed to delete all user data",
         ) from error
 
-    request.state.delete_guest_cookie = True
+    request.state.delete_identity_cookies = True
     return {"status": "deleted"}
 
 
