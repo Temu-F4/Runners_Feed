@@ -51,6 +51,7 @@ def _prune(client, namespace: str, bucket: str, cutoff: datetime) -> int:
             namespace_name=namespace,
             bucket_name=bucket,
             prefix=BACKUP_PREFIX,
+            fields="name,timeModified",
             start=start,
         )
         for item in response.data.objects:
