@@ -29,7 +29,15 @@ fi
 exit 0
 EOF
 
-chmod +x "${test_root}/bin/docker" "${test_root}/bin/curl"
+cat >"${test_root}/verify_release.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'verify|%s\n' "${IMAGE_TAG:-unset}" >>"${MOCK_LOG}"
+if [[ "${IMAGE_TAG:-}" == "${MOCK_FAILED_TAG:-}" || "${IMAGE_TAG:-}" == "${MOCK_ROLLBACK_FAILED_TAG:-}" ]]; then
+  exit 1
+fi
+EOF
+
+chmod +x "${test_root}/bin/docker" "${test_root}/bin/curl" "${test_root}/verify_release.sh"
 
 run_deploy() {
   PATH="${test_root}/bin:${PATH}" \
@@ -37,6 +45,7 @@ run_deploy() {
   MOCK_FAILED_TAG="${MOCK_FAILED_TAG:-}" \
   RUNNERS_FEED_ENV_FILE="${test_root}/prod.env" \
   RUNNERS_FEED_DEPLOY_STATE_DIR="${test_root}/state" \
+  RELEASE_VERIFIER="${test_root}/verify_release.sh" \
   PRODUCTION_BASE_URL="https://production.example" \
   bash "${DEPLOY_SCRIPT}" "$1"
 }
@@ -56,6 +65,19 @@ fi
 
 grep -q "${FAILED_TAG}|compose" "${test_root}/docker.log"
 grep -q "${PREVIOUS_TAG}|compose" "${test_root}/docker.log"
+grep -q "verify|${FAILED_TAG}" "${test_root}/docker.log"
+grep -q "verify|${PREVIOUS_TAG}" "${test_root}/docker.log"
+grep -qx "IMAGE_TAG=${PREVIOUS_TAG}" "${test_root}/state/last-successful.env"
+
+: >"${test_root}/docker.log"
+MOCK_ROLLBACK_FAILED_TAG="${PREVIOUS_TAG}"
+export MOCK_ROLLBACK_FAILED_TAG
+if run_deploy "${FAILED_TAG}" >"${test_root}/rollback-failure.log" 2>&1; then
+  echo "Expected rollback verification failure to return a non-zero status" >&2
+  exit 1
+fi
+
+grep -q "Rollback failed" "${test_root}/rollback-failure.log"
 grep -qx "IMAGE_TAG=${PREVIOUS_TAG}" "${test_root}/state/last-successful.env"
 
 echo "Deployment success and rollback tests passed"

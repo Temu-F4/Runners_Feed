@@ -91,5 +91,7 @@ jobs:
           config --quiet
       - name: Test deployment rollback behavior
         run: bash deploy/test_deploy_ghcr_release.sh
+      - name: Test release verification behavior
+        run: bash deploy/test_verify_release.sh
       - name: Test database backup image selection
         run: bash deploy/test_database_backup_scripts.sh
