@@ -12,6 +12,7 @@ readonly COMPOSE_FILES=(
   -f "${PROJECT_DIR}/compose.coach.yaml"
 )
 readonly SERVICES=(api frontend web coach-worker maintenance)
+readonly SUPPORT_SERVICES=(alertmanager)
 
 fail() {
   echo "Release verification failed: $*" >&2
@@ -62,6 +63,33 @@ verify_services() {
     expected_image="${IMAGE_PREFIX}-${service}:${TARGET_TAG}"
     [[ "${config_image}" == "${expected_image}" ]] \
       || fail "${service} uses ${config_image}, expected ${expected_image}"
+
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container_id}")" \
+      || fail "unable to inspect health for ${service}"
+    if [[ "${health}" != "none" && "${health}" != "healthy" ]]; then
+      fail "${service} health is ${health}"
+    fi
+  done
+}
+
+verify_support_services() {
+  local service container_ids container_id state health
+
+  for service in "${SUPPORT_SERVICES[@]}"; do
+    container_ids="$(compose ps -q "${service}")" \
+      || fail "unable to inspect Compose support service ${service}"
+    if [[ -z "${container_ids}" ]]; then
+      fail "Compose support service ${service} has no running container"
+    fi
+    if [[ "$(printf '%s\n' "${container_ids}" | awk 'NF {count++} END {print count + 0}')" != 1 ]]; then
+      fail "Compose support service ${service} does not have exactly one running container"
+    fi
+
+    container_id="$(printf '%s\n' "${container_ids}" | awk 'NF {print; exit}')"
+    state="$(docker inspect -f '{{.State.Status}}' "${container_id}")" \
+      || fail "unable to inspect state for ${service}"
+    [[ "${state}" == "running" ]] \
+      || fail "${service} is ${state}, expected running"
 
     health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container_id}")" \
       || fail "unable to inspect health for ${service}"
@@ -134,6 +162,7 @@ response_dir="$(mktemp -d)"
 trap 'rm -rf "${response_dir}"' EXIT
 
 verify_services
+verify_support_services
 
 root_response="${response_dir}/root.html"
 fetch_http "/" "${root_response}"

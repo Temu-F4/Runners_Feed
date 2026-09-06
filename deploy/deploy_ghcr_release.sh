@@ -16,6 +16,7 @@ readonly COMPOSE_FILES=(
   -f "${PROJECT_ROOT}/compose.coach.yaml"
 )
 readonly SERVICES=(api frontend web coach-worker maintenance)
+readonly SUPPORT_SERVICES=(alertmanager)
 
 export IMAGE_PREFIX
 
@@ -62,14 +63,14 @@ deploy_tag() {
   export IMAGE_TAG
 
   compose config --quiet || return 1
-  compose pull "${SERVICES[@]}" || return 1
+  compose pull "${SERVICES[@]}" "${SUPPORT_SERVICES[@]}" || return 1
   compose up \
     --detach \
     --no-build \
     --no-deps \
     --wait \
     --wait-timeout 180 \
-    "${SERVICES[@]}" || return 1
+    "${SERVICES[@]}" "${SUPPORT_SERVICES[@]}" || return 1
   verify_release "$1" || return 1
 }
 
@@ -91,7 +92,7 @@ fi
 
 echo "Deployment failed: ${TARGET_TAG}" >&2
 IMAGE_TAG="${TARGET_TAG}"
-compose logs --no-color --tail 150 "${SERVICES[@]}" || true
+compose logs --no-color --tail 150 "${SERVICES[@]}" "${SUPPORT_SERVICES[@]}" || true
 
 if [[ "${previous_tag}" =~ ^sha-[0-9a-f]{40}$ ]] && [[ "${previous_tag}" != "${TARGET_TAG}" ]]; then
   echo "Rolling back to ${previous_tag}" >&2

@@ -20,6 +20,7 @@ on:
       - deploy/verify_database_backup.sh
       - deploy/systemd/**
       - frontend/**
+      - monitoring/alertmanager/**
       - nginx/**
       - worker/**
   workflow_dispatch:
@@ -69,6 +70,14 @@ jobs:
           --profile coach
           --profile backup
           config --quiet
+
+      - name: Validate Alertmanager configuration
+        run: >-
+          docker run --rm
+          --entrypoint /bin/amtool
+          -v "$PWD/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"
+          prom/alertmanager:v0.33.1
+          check-config /etc/alertmanager/alertmanager.yml
 
       - name: Set build metadata
         run: |

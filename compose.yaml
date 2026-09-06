@@ -157,6 +157,8 @@ services:
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
+    secrets:
+      - slack_webhook_url
     expose:
       - "9093"
     networks:
@@ -329,3 +331,7 @@ networks:
   monitoring:
     driver: bridge
     internal: true
+
+secrets:
+  slack_webhook_url:
+    file: ${ALERTMANAGER_SLACK_WEBHOOK_FILE:-./monitoring/alertmanager/slack_webhook_url.example}
