@@ -6,7 +6,11 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-User=ubuntu
-Group=docker
-WorkingDirectory=/home/ubuntu/runners-feed-poc-deploy
-ExecStart=/home/ubuntu/runners-feed-poc-deploy/deploy/run_database_backup.sh
+User=github-deploy
+Group=github-deploy
+SupplementaryGroups=docker
+Environment=RUNNERS_FEED_PROJECT_DIR=/opt/runners-feed/current
+Environment=RUNNERS_FEED_ENV_FILE=/etc/runners-feed/prod.env
+Environment=RUNNERS_FEED_DEPLOY_STATE_DIR=/var/lib/runners-feed-cd
+WorkingDirectory=/opt/runners-feed/current
+ExecStart=/opt/runners-feed/current/deploy/run_database_backup.sh

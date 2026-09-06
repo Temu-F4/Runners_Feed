@@ -146,7 +146,7 @@ Compose config
 - API: Python 3.11 단위 테스트
 - Worker: Python 3.12 결정적 단위 테스트
 - Frontend: Node 22 `npm ci`, `npm run build`
-- Compose: `compose.yaml + compose.coach.yaml --profile coach` 검증
+- Compose: `compose.yaml + compose.coach.yaml + compose.backup.yaml`와 `coach`, `backup` profile 검증
 - Secret, OCI Credential과 Self-hosted Runner를 사용하지 않음
 - 같은 PR에 새 Commit이 Push되면 이전 실행 취소
 
@@ -155,9 +155,9 @@ Compose config
 `.github/workflows/release-deploy.yml`은 배포 관련 경로가 변경된 `main` Push 또는
 수동 실행에서 동작한다. 문서만 변경된 `main` Push는 Release를 실행하지 않는다.
 
-1. `oci-ci-e4`가 네 개의 이미지를 빌드한다.
-2. 빌드된 API·Worker 이미지 내부에서 단위 테스트를 다시 실행한다.
-3. `sha-<40자리 commit>` 태그로 GHCR에 Push한다.
+1. `oci-ci-e4`가 애플리케이션 5개와 DB backup 이미지 2개를 빌드한다.
+2. 빌드된 API·Worker·DB backup 이미지 내부에서 단위 테스트를 다시 실행한다.
+3. 7개 이미지를 `sha-<40자리 commit>` 태그로 GHCR에 Push한다.
 4. 편의상 같은 이미지를 `main` 태그로도 Push한다.
 5. `oci-prod-deploy`가 SHA 태그를 Pull한다.
 6. Production Compose가 `--no-build --no-deps`로 대상 서비스만 갱신한다.
@@ -245,9 +245,9 @@ Self-hosted Runner를 사용하지 않는다. 네 개의 필수 Check가 모두 
 
 1. 저장소를 깨끗한 상태로 checkout한다.
 2. GHCR에 로그인하고 Compose profile을 검증한다.
-3. API, Frontend, Web, Coach Worker 이미지를 `--pull` 옵션으로 빌드한다.
-4. 빌드된 API·Worker 이미지 내부에서 단위 테스트를 다시 실행한다.
-5. 네 이미지를 `sha-<40자리 commit>` 불변 태그로 GHCR에 Push한다.
+3. API, Frontend, Web, Coach Worker, Maintenance와 DB backup 이미지를 `--pull` 옵션으로 빌드한다.
+4. 빌드된 API·Worker·DB backup 이미지 내부에서 단위 테스트를 다시 실행한다.
+5. 7개 이미지를 `sha-<40자리 commit>` 불변 태그로 GHCR에 Push한다.
 6. 같은 이미지를 확인 편의를 위해 `main` alias로도 Push한다.
 
 불변 이미지 Push와 alias Push는 각각 최대 3회 재시도한다. Production은 `main`
@@ -275,7 +275,7 @@ GHCR에 일부 이미지가 먼저 올라간 뒤 Release가 실패할 수 있지
 Release가 성공하면 `oci-prod-deploy`가 `deploy/deploy_ghcr_release.sh`를 실행한다.
 
 1. `sha-<40자리 commit>` 형식과 Production 환경 파일을 확인한다.
-2. API, Frontend, Web, Coach Worker의 해당 SHA 이미지를 Pull한다.
+2. API, Frontend, Web, Coach Worker, Maintenance의 해당 SHA 이미지를 Pull한다.
 3. Compose 설정을 검증한다.
 4. 대상 서비스만 `--no-build --no-deps --wait`로 갱신한다.
 5. `/`, `/api/health`, `/api/health/dependencies`, `/api/health/storage`를
@@ -326,7 +326,7 @@ Production 배포 중에는 다음 문제가 발생할 수 있다.
   로직을 추가했다.
 - 재시도 함수를 이전 Workflow Step에서만 정의해 alias 단계에서 `exit 127`이
   발생했다. alias 단계에도 함수를 정의한 뒤 최종 Release를 성공시켰다.
-- 최종 Release에서는 네 이미지의 immutable·alias Push, Production 배포와 네
+- 최종 Release에서는 7개 이미지의 immutable·alias Push, Production 배포와 네
   가지 Health Check가 모두 성공했다.
 
 ## 6. Production 환경 파일
@@ -360,6 +360,24 @@ IMAGE_PREFIX=ghcr.io/temu-f4/runners-feed
 IMAGE_TAG=sha-<commit>
 ```
 
+### Production release checkout
+
+Production 운영 파일은 Self-hosted Runner의 임시 `_work` 경로를 직접 참조하지
+않는다. 배포 Job은 성공한 commit의 파일을 다음 immutable release 경로에 설치하고,
+배포 성공 후 `current` 링크를 갱신한다.
+
+```text
+<PRODUCTION_RELEASE_ROOT>/releases/<commit-sha>
+<PRODUCTION_RELEASE_ROOT>/current -> releases/<commit-sha>
+```
+
+백업·인증서 갱신·모니터링 Compose는 항상 `current` 경로를 사용한다. Production
+환경 파일, OCI credential, 모델과 인증서는 release 파일과 분리해 보관한다.
+
+DB backup과 backup verification은 장시간 실행 서비스가 아니라 timer가 필요한
+시점에 실행하는 작업이다. 두 이미지도 GHCR의 동일한 SHA release에서 제공하며,
+timer 스크립트는 `last-successful.env`의 SHA를 읽고 `--no-build`로 실행한다.
+
 ## 7. 배포 성공 조건
 
 `deploy/deploy_ghcr_release.sh`는 다음 검사를 모두 통과해야 배포를 성공으로
@@ -381,7 +399,8 @@ Compose 대상은 다음과 같다.
 compose.yaml
 compose.coach.yaml
 profile: coach
-services: api, frontend, web, coach-worker
+services: api, frontend, web, coach-worker, maintenance
+profile: backup (timer가 db-backup, db-backup-verify를 on-demand 실행)
 ```
 
 PostgreSQL, Redis, Grafana, Prometheus와 Volume은 삭제하거나 재생성 대상으로
@@ -486,7 +505,7 @@ docker compose \
   -f compose.yaml \
   -f compose.coach.yaml \
   --profile coach \
-  logs --tail=150 api frontend web coach-worker
+  logs --tail=150 api frontend web coach-worker maintenance
 ```
 
 GitHub Actions 로그에서 자동 롤백 성공 여부와 이전 SHA를 확인한다. 롤백까지
