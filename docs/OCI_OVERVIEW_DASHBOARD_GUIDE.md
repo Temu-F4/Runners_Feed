@@ -259,7 +259,7 @@ inference-worker  85%
 패널의 `No data`는 metric 누락을 뜻하지 않는다. 최상단 exporter 상태가 UP이고
 `Firing Alerts`가 0인지 함께 확인한다.
 
-Alertmanager는 `#runners-feed-alerts` Slack 채널로 firing 및 resolved 알림을
+Alertmanager는 `#모니터링` Slack 채널로 firing 및 resolved 알림을
 발송한다. Incoming Webhook URL은 Git에 저장하지 않고 운영 VM의
 `/etc/runners-feed/secrets/slack_webhook_url` 파일에서 읽는다. 이 파일은
 `root:nogroup`, mode `0640`으로 유지하고 Alertmanager 컨테이너에 읽기 전용으로

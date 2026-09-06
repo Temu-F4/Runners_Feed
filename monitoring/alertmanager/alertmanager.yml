@@ -15,7 +15,7 @@ route:
 receivers:
   - name: slack-notifications
     slack_configs:
-      - channel: "#runners-feed-alerts"
+      - channel: "#모니터링"
         send_resolved: true
         username: Runners Feed Alerts
         title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
