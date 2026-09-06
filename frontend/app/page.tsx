@@ -27,6 +27,16 @@ interface JobListResponse {
   jobs: JobResponse[];
 }
 
+type ViewerResponse =
+  | { authenticated: false; provider: null; kakao_login_enabled: boolean }
+  | {
+      authenticated: true;
+      provider: "kakao";
+      email: string | null;
+      display_name: string | null;
+      kakao_login_enabled: boolean;
+    };
+
 interface ReportMetric {
   id: string;
   label: string;
@@ -269,6 +279,8 @@ export default function Home() {
   const [history, setHistory] = useState<JobResponse[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
+  const [viewer, setViewer] = useState<ViewerResponse | null>(null);
+  const [loginNotice, setLoginNotice] = useState("");
   const resultRef = useRef<HTMLElement>(null);
 
   async function loadHistory() {
@@ -285,8 +297,31 @@ export default function Home() {
   }
 
   useEffect(() => {
-    void loadHistory();
+    void (async () => {
+      try {
+        setViewer(await api<ViewerResponse>("/me"));
+      } catch {
+        setViewer({ authenticated: false, provider: null, kakao_login_enabled: false });
+      }
+      await loadHistory();
+    })();
+    const loginResult = new URLSearchParams(window.location.search).get("login");
+    if (loginResult === "kakao-success") {
+      setLoginNotice("카카오 로그인이 완료됐습니다. 기존 분석 기록도 이 계정에 연결되었습니다.");
+    } else if (loginResult === "kakao-error") {
+      setLoginNotice("카카오 로그인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+    if (loginResult) window.history.replaceState({}, "", window.location.pathname + window.location.hash);
   }, []);
+
+  async function logout() {
+    try {
+      await api("/auth/logout", { method: "POST", body: "{}" });
+      window.location.assign("/");
+    } catch {
+      setLoginNotice("로그아웃하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  }
 
   function updateProgress(value: number, message: string, nextStage: Stage) {
     setProgress(value);
@@ -461,9 +496,20 @@ export default function Home() {
         <nav aria-label="주요 메뉴">
           <a href="#analyze">새 분석</a>
           <a href="#history">분석 기록</a>
-          <span className="guest-chip">비회원 모드</span>
+          {viewer?.authenticated ? (
+            <>
+              <span className="account-chip">{viewer.display_name || "카카오 사용자"}</span>
+              <button className="logout-button" type="button" onClick={() => void logout()}>로그아웃</button>
+            </>
+          ) : viewer?.kakao_login_enabled ? (
+            <a className="kakao-login" href="/api/auth/kakao/start">카카오 로그인</a>
+          ) : (
+            <span className="guest-chip">비회원 모드</span>
+          )}
         </nav>
       </header>
+
+      {loginNotice && <p className="login-notice" role="status">{loginNotice}</p>}
 
       <section className="dashboard-hero" id="top">
         <div className="hero-copy">
@@ -474,7 +520,7 @@ export default function Home() {
         </div>
 
         <div className="dashboard-status" aria-label="분석 현황">
-          <div className="status-head"><p>MY ANALYSIS</p><span>{historyLoading ? "동기화 중" : "현재 브라우저"}</span></div>
+          <div className="status-head"><p>MY ANALYSIS</p><span>{historyLoading ? "동기화 중" : viewer?.authenticated ? "카카오 계정" : "현재 브라우저"}</span></div>
           <dl className="status-grid">
             <div><dt>전체 기록</dt><dd>{historyLoading ? "—" : history.length}</dd></div>
             <div><dt>완료</dt><dd>{historyLoading ? "—" : completedCount}</dd></div>

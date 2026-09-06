@@ -13,6 +13,7 @@ sys.modules.setdefault("psycopg", psycopg_module)
 sys.modules.setdefault("psycopg.rows", psycopg_rows_module)
 
 from app.database import (
+    create_account_session,
     create_guest_session,
     create_job,
     delete_user_data,
@@ -20,6 +21,8 @@ from app.database import (
     get_job,
     list_jobs,
     list_user_artifacts,
+    link_kakao_account,
+    renew_active_account_session,
     renew_active_guest_session,
 )
 
@@ -204,3 +207,106 @@ class GuestSessionDatabaseTests(TestCase):
         self.assertEqual(cursor.execute.call_count, 2)
         self.assertIn("DELETE FROM inference_jobs", cursor.execute.call_args_list[0].args[0])
         self.assertIn("DELETE FROM app_users", cursor.execute.call_args_list[1].args[0])
+
+    @patch("app.database.psycopg.connect")
+    def test_creates_hashed_account_session(self, connect) -> None:
+        user_id = uuid4()
+        expires_at = datetime(2026, 10, 6, tzinfo=timezone.utc)
+
+        create_account_session(
+            token_hash=VALID_TOKEN_HASH,
+            user_id=user_id,
+            expires_at=expires_at,
+        )
+
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        _, parameters = cursor.execute.call_args.args
+        self.assertEqual(parameters, (VALID_TOKEN_HASH, user_id, expires_at))
+
+    @patch("app.database.psycopg.connect")
+    def test_renews_account_session_and_returns_kakao_identity(self, connect) -> None:
+        user_id = uuid4()
+        expires_at = datetime(2026, 10, 6, tzinfo=timezone.utc)
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [
+            {"user_id": user_id},
+            {
+                "user_id": user_id,
+                "provider": "kakao",
+                "email": None,
+                "display_name": "러너",
+            },
+        ]
+
+        account = renew_active_account_session(
+            token_hash=VALID_TOKEN_HASH,
+            expires_at=expires_at,
+        )
+
+        self.assertEqual(account["display_name"], "러너")
+        self.assertEqual(cursor.execute.call_count, 3)
+
+    @patch("app.database.psycopg.connect")
+    def test_existing_kakao_login_moves_guest_jobs_to_account(self, connect) -> None:
+        guest_user_id = uuid4()
+        account_user_id = uuid4()
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [
+            {"user_id": guest_user_id, "user_type": "guest"},
+            {"user_id": account_user_id},
+        ]
+
+        result = link_kakao_account(
+            current_user_id=guest_user_id,
+            provider_user_id="123456",
+            email="runner@example.com",
+            display_name="러너",
+        )
+
+        self.assertEqual(result, account_user_id)
+        queries = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertTrue(any("UPDATE inference_jobs" in query for query in queries))
+        self.assertTrue(any("DELETE FROM guest_sessions" in query for query in queries))
+
+    @patch("app.database.psycopg.connect")
+    def test_first_kakao_login_converts_guest_without_moving_jobs(self, connect) -> None:
+        guest_user_id = uuid4()
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [
+            {"user_id": guest_user_id, "user_type": "guest"},
+            None,
+        ]
+
+        result = link_kakao_account(
+            current_user_id=guest_user_id,
+            provider_user_id="123456",
+            email=None,
+            display_name="러너",
+        )
+
+        self.assertEqual(result, guest_user_id)
+        queries = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertTrue(any("SET user_type = 'account'" in query for query in queries))
+        self.assertTrue(any("INSERT INTO oauth_identities" in query for query in queries))
+        self.assertFalse(any("UPDATE inference_jobs" in query for query in queries))
+
+    @patch("app.database.psycopg.connect")
+    def test_logged_in_account_cannot_merge_a_different_account(self, connect) -> None:
+        current_user_id = uuid4()
+        other_user_id = uuid4()
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [
+            {"user_id": current_user_id, "user_type": "account"},
+            {"user_id": other_user_id},
+        ]
+
+        with self.assertRaises(ValueError):
+            link_kakao_account(
+                current_user_id=current_user_id,
+                provider_user_id="other-kakao-id",
+                email=None,
+                display_name=None,
+            )
+
+        queries = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertFalse(any("UPDATE inference_jobs" in query for query in queries))

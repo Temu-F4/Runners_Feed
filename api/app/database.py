@@ -158,6 +158,236 @@ def renew_active_guest_session(
     return row[0] if row is not None else None
 
 
+def create_account_session(
+    *,
+    token_hash: str,
+    user_id: UUID,
+    expires_at: datetime,
+) -> None:
+    _validate_token_hash(token_hash)
+    if expires_at.tzinfo is None:
+        raise ValueError("Account session expiry must include a timezone")
+
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO account_sessions (token_hash, user_id, expires_at)
+                VALUES (%s, %s, %s)
+                """,
+                (token_hash, user_id, expires_at),
+            )
+
+
+def renew_active_account_session(
+    *,
+    token_hash: str,
+    expires_at: datetime,
+) -> dict[str, Any] | None:
+    _validate_token_hash(token_hash)
+    if expires_at.tzinfo is None:
+        raise ValueError("Account session expiry must include a timezone")
+
+    with psycopg.connect(
+        _database_url(),
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE account_sessions
+                SET expires_at = %s,
+                    last_seen_at = NOW()
+                WHERE token_hash = %s
+                  AND expires_at > NOW()
+                RETURNING user_id
+                """,
+                (expires_at, token_hash),
+            )
+            session = cursor.fetchone()
+            if session is None:
+                return None
+
+            cursor.execute(
+                """
+                SELECT i.user_id,
+                       i.provider,
+                       i.email,
+                       i.display_name
+                FROM oauth_identities AS i
+                WHERE i.user_id = %s
+                  AND i.provider = 'kakao'
+                """,
+                (session["user_id"],),
+            )
+            account = cursor.fetchone()
+            if account is None:
+                return None
+
+            cursor.execute(
+                """
+                UPDATE app_users
+                SET updated_at = NOW()
+                WHERE user_id = %s
+                """,
+                (session["user_id"],),
+            )
+            return account
+
+
+def delete_account_session(token_hash: str) -> None:
+    _validate_token_hash(token_hash)
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM account_sessions WHERE token_hash = %s",
+                (token_hash,),
+            )
+
+
+def link_kakao_account(
+    *,
+    current_user_id: UUID,
+    provider_user_id: str,
+    email: str | None,
+    display_name: str | None,
+) -> UUID:
+    if not provider_user_id or len(provider_user_id) > 255:
+        raise ValueError("Invalid Kakao user identifier")
+
+    with psycopg.connect(
+        _database_url(),
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            # Serialize first-time callbacks for the same Kakao account.
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                (f"kakao:{provider_user_id}",),
+            )
+            cursor.execute(
+                """
+                SELECT user_id, user_type
+                FROM app_users
+                WHERE user_id = %s
+                FOR UPDATE
+                """,
+                (current_user_id,),
+            )
+            current_user = cursor.fetchone()
+            if current_user is None:
+                raise ValueError("Current user does not exist")
+
+            cursor.execute(
+                """
+                SELECT user_id
+                FROM oauth_identities
+                WHERE provider = 'kakao'
+                  AND provider_user_id = %s
+                FOR UPDATE
+                """,
+                (provider_user_id,),
+            )
+            existing_identity = cursor.fetchone()
+
+            if (
+                existing_identity is not None
+                and existing_identity["user_id"] != current_user_id
+                and current_user["user_type"] != "guest"
+            ):
+                raise ValueError("An account session cannot merge another account")
+
+            if existing_identity is None:
+                account_user_id = current_user_id
+                if current_user["user_type"] == "account":
+                    cursor.execute(
+                        """
+                        SELECT provider_user_id
+                        FROM oauth_identities
+                        WHERE provider = 'kakao'
+                          AND user_id = %s
+                        """,
+                        (current_user_id,),
+                    )
+                    current_identity = cursor.fetchone()
+                    if (
+                        current_identity is not None
+                        and current_identity["provider_user_id"]
+                        != provider_user_id
+                    ):
+                        raise ValueError(
+                            "A different Kakao account is already linked"
+                        )
+                cursor.execute(
+                    """
+                    UPDATE app_users
+                    SET user_type = 'account',
+                        updated_at = NOW()
+                    WHERE user_id = %s
+                    """,
+                    (account_user_id,),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO oauth_identities (
+                        provider,
+                        provider_user_id,
+                        user_id,
+                        email,
+                        display_name
+                    )
+                    VALUES ('kakao', %s, %s, %s, %s)
+                    """,
+                    (
+                        provider_user_id,
+                        account_user_id,
+                        email,
+                        display_name,
+                    ),
+                )
+            else:
+                account_user_id = existing_identity["user_id"]
+                cursor.execute(
+                    """
+                    UPDATE oauth_identities
+                    SET email = %s,
+                        display_name = %s,
+                        updated_at = NOW()
+                    WHERE provider = 'kakao'
+                      AND provider_user_id = %s
+                    """,
+                    (email, display_name, provider_user_id),
+                )
+                if account_user_id != current_user_id:
+                    cursor.execute(
+                        """
+                        UPDATE inference_jobs
+                        SET user_id = %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (account_user_id, current_user_id),
+                    )
+                    cursor.execute(
+                        "DELETE FROM guest_sessions WHERE user_id = %s",
+                        (current_user_id,),
+                    )
+                    cursor.execute(
+                        """
+                        DELETE FROM app_users
+                        WHERE user_id = %s
+                          AND user_type = 'guest'
+                        """,
+                        (current_user_id,),
+                    )
+
+            cursor.execute(
+                "DELETE FROM guest_sessions WHERE user_id = %s",
+                (account_user_id,),
+            )
+            return account_user_id
+
+
 def create_job(
     *,
     job_id: str,
