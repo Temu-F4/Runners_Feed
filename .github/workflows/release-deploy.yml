@@ -134,6 +134,7 @@ jobs:
           docker run --rm
           --entrypoint python
           -v "$PWD/worker:/tests:ro"
+          -v "$PWD/coach:/coach:ro"
           "${IMAGE_PREFIX}-coach-worker:${IMAGE_TAG}"
           -m unittest discover -s /tests -p 'test_*.py'
 
