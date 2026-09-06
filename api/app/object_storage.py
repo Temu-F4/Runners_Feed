@@ -1,4 +1,5 @@
 import configparser
+import gzip
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -126,6 +127,17 @@ class ObjectStorageGateway:
             raise ValueError("Result JSON must contain an object")
         return payload
 
+    def load_result_gzip_json(self, object_name: str) -> dict:
+        response = self.client.get_object(
+            namespace_name=self.namespace,
+            bucket_name=self.results_bucket,
+            object_name=object_name,
+        )
+        payload = json.loads(gzip.decompress(response.data.content))
+        if not isinstance(payload, dict):
+            raise ValueError("Compressed result JSON must contain an object")
+        return payload
+
     def inspect_input_object(self, object_name: str) -> dict[str, object]:
         response = self.client.head_object(
             namespace_name=self.namespace,
@@ -137,3 +149,22 @@ class ObjectStorageGateway:
             "content_type": response.headers.get("content-type"),
             "etag": response.headers.get("etag"),
         }
+
+    def delete_input(self, object_name: str) -> bool:
+        return self._delete_object(self.raw_bucket, object_name)
+
+    def delete_result(self, object_name: str) -> bool:
+        return self._delete_object(self.results_bucket, object_name)
+
+    def _delete_object(self, bucket_name: str, object_name: str) -> bool:
+        try:
+            self.client.delete_object(
+                namespace_name=self.namespace,
+                bucket_name=bucket_name,
+                object_name=object_name,
+            )
+            return True
+        except oci.exceptions.ServiceError as error:
+            if error.status == 404:
+                return False
+            raise

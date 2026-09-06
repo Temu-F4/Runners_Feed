@@ -2,7 +2,7 @@ name: runners-feed
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-bookworm
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -59,7 +59,7 @@ services:
       RESULT_URL_TTL_SECONDS: ${RESULT_URL_TTL_SECONDS:-900}
       UPLOAD_URL_TTL_SECONDS: ${UPLOAD_URL_TTL_SECONDS:-900}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-262144000}
-      GUEST_SESSION_TTL_DAYS: ${GUEST_SESSION_TTL_DAYS:-30}
+      GUEST_SESSION_TTL_DAYS: ${GUEST_SESSION_TTL_DAYS:-365}
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -126,6 +126,7 @@ services:
     build:
       context: ./frontend
       args:
+        NEXT_PUBLIC_SHOW_INTERNAL_RESULTS: ${NEXT_PUBLIC_SHOW_INTERNAL_RESULTS:-0}
         BUILD_CREATED: ${BUILD_CREATED:-unknown}
         BUILD_REVISION: ${BUILD_REVISION:-unknown}
         BUILD_SOURCE: ${BUILD_SOURCE:-https://github.com/Temu-F4/Runners_Feed}
@@ -185,7 +186,7 @@ services:
       - monitoring
 
   grafana-db-init:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-bookworm
     restart: "no"
     environment:
       PGHOST: postgres

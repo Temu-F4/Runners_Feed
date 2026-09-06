@@ -20,80 +20,47 @@ cd "$CODE_COACH_DIR"
 RUN_FOLDER="$1"
 RUN_DIR="$WORKSPACE_ROOT/run/$RUN_FOLDER"
 
-INPUT_DIR="$RUN_DIR/inputs"
 OUTPUT_DIR="$RUN_DIR/outputs"
 
-# 테스트 폴더와 inputs, outputs 폴더 생성
-mkdir -p "$INPUT_DIR" "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR"
 
 shift
 
+VIDEO_PATH=$(find "$RUN_DIR" \
+    -maxdepth 1 \
+    -type f \
+    \( -iname "*.mp4" -o -iname "*.mov" \) \
+    -print \
+    -quit)
 
-## 영상에서 이미지 추출 조건
-if [[ "${1:-}" == "--extract" ]]; then
-
-    ## mp4 탐지 코드
-    VIDEO_PATH=$(find "$RUN_DIR" \
-        -maxdepth 1 \
-        -type f \
-        -iname "*.mp4" \
-        -print \
-        -quit)
-
-    if [[ -z "$VIDEO_PATH" ]]; then
-        echo "MP4 파일을 찾지 못했습니다: $RUN_DIR"
-        exit 1
-    fi
-
-    echo "영상 발견: $VIDEO_PATH"
-
-    ## 스크립트 실행
-    echo "COACH_STAGE_START=frame_extract"
-    "$PYTHON_BIN" \
-        "$HPE_DIR/extract_frames.py" \
-        "$VIDEO_PATH" \
-        "$RUN_DIR/inputs"
-    echo "COACH_STAGE_SUCCESS=frame_extract"
-
-    shift
+if [[ -z "$VIDEO_PATH" ]]; then
+    echo "MP4 또는 MOV 파일을 찾지 못했습니다: $RUN_DIR"
+    exit 1
 fi
 
-## HPE 추론
-printf '\nHPE 추론\n'
-echo "COACH_STAGE_START=pose_inference"
+echo "영상 발견: $VIDEO_PATH"
+printf '\n영상 분석 및 렌더링\n'
+echo "COACH_STAGE_START=video_analysis"
 "$PYTHON_BIN" \
-  "$HPE_DIR/hpe_model.py" \
+  "$HPE_DIR/hpe.py" \
   "$WORKSPACE_ROOT" \
   "$RUN_FOLDER" \
+  "$VIDEO_PATH" \
   "$@"
-echo "COACH_STAGE_SUCCESS=pose_inference"
 
-## 렌더링
-printf '\n렌더링\n'
-echo "COACH_STAGE_START=frame_render"
-"$PYTHON_BIN" \
-  "$HPE_DIR/render.py" \
-  "$RUN_DIR/inputs" \
-  "$RUN_DIR/outputs"
-echo "COACH_STAGE_SUCCESS=frame_render"
-
-## 렌더링 이미지로 영상 합성
-printf '\n이미지 합성\n'
-echo "COACH_STAGE_START=video_compose"
-"$PYTHON_BIN" \
-  "$HPE_DIR/compose_video.py" \
-  "$RUN_DIR/outputs/details.json" \
-  "$RUN_DIR/outputs/rendered" \
-  "$RUN_DIR/outputs/_rendered.mp4"
+if [[ ! -f "$OUTPUT_DIR/output.mp4" ]]; then
+    echo "분석 결과 영상을 찾지 못했습니다: $OUTPUT_DIR/output.mp4"
+    exit 1
+fi
 
 ffmpeg \
   -y \
   -hide_banner \
   -loglevel error \
   -stats \
-  -i "$RUN_DIR/outputs/_rendered.mp4" \
+  -i "$OUTPUT_DIR/output.mp4" \
   -c:v libx264 \
   -pix_fmt yuv420p \
   -movflags +faststart \
-  "$RUN_DIR/outputs/rendered.mp4"
-echo "COACH_STAGE_SUCCESS=video_compose"
+  "$OUTPUT_DIR/rendered.mp4"
+echo "COACH_STAGE_SUCCESS=video_analysis"

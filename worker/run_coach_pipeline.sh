@@ -23,11 +23,14 @@ fi
 /app/coach/scripts/main.sh \
   "$RUN_ID" \
   --agent "$COACH_AGENT_ENABLED" \
-  --extract \
   --device "$COACH_DEVICE"
 
 "$PYTHON_BIN" \
   /app/coach_adapter/report_adapter.py \
+  "$WORKSPACE_ROOT/run/$RUN_ID"
+
+"$PYTHON_BIN" \
+  /app/coach_adapter/skeleton_adapter.py \
   "$WORKSPACE_ROOT/run/$RUN_ID"
 echo "COACH_STAGE_SUCCESS=report_generate"
 

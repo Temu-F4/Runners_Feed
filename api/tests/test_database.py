@@ -15,9 +15,12 @@ sys.modules.setdefault("psycopg.rows", psycopg_rows_module)
 from app.database import (
     create_guest_session,
     create_job,
+    delete_user_data,
     find_active_guest_user,
     get_job,
     list_jobs,
+    list_user_artifacts,
+    renew_active_guest_session,
 )
 
 
@@ -65,6 +68,30 @@ class GuestSessionDatabaseTests(TestCase):
         cursor.fetchone.return_value = None
 
         self.assertIsNone(find_active_guest_user(VALID_TOKEN_HASH))
+
+    @patch("app.database.psycopg.connect")
+    def test_renew_active_guest_session_updates_expiry_and_activity(
+        self,
+        connect,
+    ) -> None:
+        expected_user_id = uuid4()
+        expires_at = datetime(2027, 9, 3, tzinfo=timezone.utc)
+        connection = connect.return_value.__enter__.return_value
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (expected_user_id,)
+
+        actual_user_id = renew_active_guest_session(
+            token_hash=VALID_TOKEN_HASH,
+            expires_at=expires_at,
+        )
+
+        self.assertEqual(actual_user_id, expected_user_id)
+        session_query, session_parameters = cursor.execute.call_args_list[0].args
+        self.assertIn("last_seen_at = NOW()", session_query)
+        self.assertEqual(session_parameters, (expires_at, VALID_TOKEN_HASH))
+        user_query, user_parameters = cursor.execute.call_args_list[1].args
+        self.assertIn("updated_at = NOW()", user_query)
+        self.assertEqual(user_parameters, (expected_user_id,))
 
     @patch("app.database.psycopg.connect")
     def test_rejects_invalid_token_hash_before_database_access(self, connect) -> None:
@@ -151,3 +178,29 @@ class GuestSessionDatabaseTests(TestCase):
             list_jobs(user_id=uuid4(), limit=51)
 
         connect.assert_not_called()
+
+    @patch("app.database.psycopg.connect")
+    def test_lists_all_artifacts_for_one_user(self, connect) -> None:
+        user_id = uuid4()
+        connection = connect.return_value.__enter__.return_value
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [{"result_report_object": "report.json"}]
+
+        result = list_user_artifacts(user_id)
+
+        self.assertEqual(result, [{"result_report_object": "report.json"}])
+        query, parameters = cursor.execute.call_args.args
+        self.assertIn("result_skeleton_object", query)
+        self.assertEqual(parameters, (user_id,))
+
+    @patch("app.database.psycopg.connect")
+    def test_deletes_jobs_before_user(self, connect) -> None:
+        user_id = uuid4()
+
+        delete_user_data(user_id)
+
+        connection = connect.return_value.__enter__.return_value
+        cursor = connection.cursor.return_value.__enter__.return_value
+        self.assertEqual(cursor.execute.call_count, 2)
+        self.assertIn("DELETE FROM inference_jobs", cursor.execute.call_args_list[0].args[0])
+        self.assertIn("DELETE FROM app_users", cursor.execute.call_args_list[1].args[0])

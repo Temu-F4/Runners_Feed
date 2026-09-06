@@ -1,0 +1,31 @@
+# Local Docker Desktop overrides for macOS development.
+# Combine with compose.yaml and, for coach services, compose.coach.yaml.
+services:
+  api:
+    volumes:
+      - ${RUNNERS_FEED_OCI_CONFIG_DIR:-./runtime/oci}:/.oci:ro
+
+  frontend:
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  coach-manual:
+    environment:
+      COACH_DEVICE: cpu
+    volumes:
+      - ${RUNNERS_FEED_OCI_CONFIG_DIR:-./runtime/oci}:/.oci:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
+
+  coach-worker:
+    environment:
+      COACH_DEVICE: cpu
+    volumes:
+      - ${RUNNERS_FEED_OCI_CONFIG_DIR:-./runtime/oci}:/.oci:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
+
+  maintenance:
+    volumes:
+      - ${RUNNERS_FEED_OCI_CONFIG_DIR:-./runtime/oci}:/.oci:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run

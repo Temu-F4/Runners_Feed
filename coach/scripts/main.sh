@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# ./coach/scripts/main.sh test1 --agent false --extract --device cpu
+# ./coach/scripts/main.sh test1 --agent false --device cpu
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-    echo "사용법: $0 RUN_ID [--agent true|false] [--extract] [--device cpu|cuda|mps]" >&2
+    echo "사용법: $0 RUN_ID [--agent true|false] [--device cpu|cuda|mps]" >&2
     exit 2
 fi
 

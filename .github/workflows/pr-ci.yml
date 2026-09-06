@@ -44,12 +44,7 @@ jobs:
       - name: Install worker test dependencies
         run: python -m pip install 'psycopg[binary]>=3.2,<4.0'
       - name: Run deterministic worker unit tests
-        working-directory: worker
-        run: >-
-          python -m unittest
-          test_coach_report_adapter
-          test_job_stages
-          test_run_cleanup
+        run: python -m unittest discover -s worker -p 'test_*.py'
 
   frontend-build:
     name: Frontend build
@@ -66,6 +61,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm test
       - run: npm run build
 
   compose-config:

@@ -6,6 +6,7 @@ from app.guest_identity import (
     GUEST_COOKIE_NAME,
     hash_guest_token,
     issue_guest_identity,
+    renew_guest_identity,
     set_guest_cookie,
 )
 
@@ -30,13 +31,13 @@ class GuestIdentityTests(TestCase):
             hash_guest_token("x" * 513)
 
     @patch.dict("os.environ", {}, clear=True)
-    def test_issues_30_day_identity_by_default(self) -> None:
+    def test_issues_365_day_identity_by_default(self) -> None:
         now = datetime(2026, 9, 3, tzinfo=timezone.utc)
 
         identity = issue_guest_identity(now=now)
 
-        self.assertEqual(identity.expires_at, now + timedelta(days=30))
-        self.assertEqual(identity.max_age_seconds, 30 * 24 * 60 * 60)
+        self.assertEqual(identity.expires_at, now + timedelta(days=365))
+        self.assertEqual(identity.max_age_seconds, 365 * 24 * 60 * 60)
         self.assertEqual(identity.token_hash, hash_guest_token(identity.token))
 
     @patch.dict("os.environ", {"GUEST_SESSION_TTL_DAYS": "7"})
@@ -56,6 +57,15 @@ class GuestIdentityTests(TestCase):
         with self.assertRaises(ValueError):
             issue_guest_identity(now=datetime(2026, 9, 3))
 
+    def test_renews_existing_token_without_rotating_it(self) -> None:
+        now = datetime(2026, 9, 3, tzinfo=timezone.utc)
+
+        identity = renew_guest_identity("existing-token", now=now)
+
+        self.assertEqual(identity.token, "existing-token")
+        self.assertEqual(identity.expires_at, now + timedelta(days=365))
+        self.assertEqual(identity.token_hash, hash_guest_token("existing-token"))
+
     def test_sets_secure_host_cookie(self) -> None:
         now = datetime(2026, 9, 3, tzinfo=timezone.utc)
         identity = issue_guest_identity(now=now)
@@ -66,8 +76,8 @@ class GuestIdentityTests(TestCase):
         response.set_cookie.assert_called_once_with(
             key="__Host-rf_guest",
             value=identity.token,
-            max_age=30 * 24 * 60 * 60,
-            expires=now + timedelta(days=30),
+            max_age=365 * 24 * 60 * 60,
+            expires=now + timedelta(days=365),
             path="/",
             secure=True,
             httponly=True,

@@ -14,14 +14,11 @@ from job_repository import (
 
 JOB_STAGE_DEFINITIONS = (
     (1, "input_download"),
-    (2, "frame_extract"),
-    (3, "pose_inference"),
-    (4, "frame_render"),
-    (5, "video_compose"),
-    (6, "feature_extract"),
-    (7, "report_generate"),
-    (8, "result_upload"),
-    (9, "workspace_cleanup"),
+    (2, "video_analysis"),
+    (3, "feature_extract"),
+    (4, "report_generate"),
+    (5, "result_upload"),
+    (6, "workspace_cleanup"),
 )
 
 JOB_STAGE_KEYS = {

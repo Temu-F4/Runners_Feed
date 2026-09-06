@@ -49,6 +49,10 @@ redis_data/
 # Backups
 *.bak
 *.before-*
+*.dump
 
 # macOS
 .DS_Store
+
+# Retired design artifacts
+/opendesign/

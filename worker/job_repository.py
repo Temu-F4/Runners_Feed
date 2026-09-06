@@ -45,6 +45,7 @@ def mark_job_success(
                     result_details_object = %s,
                     result_predictions_object = %s,
                     result_report_object = %s,
+                    result_skeleton_object = %s,
                     result_video_object = %s,
                     completed_at = NOW(),
                     updated_at = NOW()
@@ -54,6 +55,7 @@ def mark_job_success(
                     result_objects["details"],
                     result_objects["predictions"],
                     result_objects["report"],
+                    result_objects["skeleton"],
                     result_objects["rendered_video"],
                     job_id,
                 ),

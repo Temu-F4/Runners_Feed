@@ -9,23 +9,25 @@ import psycopg
 from celery import Celery
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from redis import Redis
 from starlette.concurrency import run_in_threadpool
 
 from app.database import (
     create_guest_session,
     create_job,
-    find_active_guest_user,
+    delete_user_data,
     get_job as get_persisted_job,
     initialize_database,
     list_jobs as list_persisted_jobs,
+    list_user_artifacts,
     mark_job_dispatch_failed,
+    renew_active_guest_session,
 )
 from app.guest_identity import (
     GUEST_COOKIE_NAME,
-    hash_guest_token,
     issue_guest_identity,
+    renew_guest_identity,
     set_guest_cookie,
 )
 from app.object_storage import ObjectStorageGateway, load_oci_config
@@ -42,6 +44,23 @@ celery_client = Celery(
         "redis://redis:6379/2",
     ),
 )
+
+SUPPORTED_VIDEO_CONTENT_TYPES = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+}
+
+
+def _video_suffix(filename: str) -> str | None:
+    normalized = filename.lower()
+    return next(
+        (
+            suffix
+            for suffix in SUPPORTED_VIDEO_CONTENT_TYPES
+            if normalized.endswith(suffix)
+        ),
+        None,
+    )
 
 
 @asynccontextmanager
@@ -82,30 +101,39 @@ async def require_api_key(request: Request, call_next):
 
     guest_token = request.cookies.get(GUEST_COOKIE_NAME)
     user_id = None
+    response_identity = None
     if guest_token:
         try:
-            token_hash = hash_guest_token(guest_token)
+            response_identity = renew_guest_identity(guest_token)
             user_id = await run_in_threadpool(
-                find_active_guest_user,
-                token_hash,
+                renew_active_guest_session,
+                token_hash=response_identity.token_hash,
+                expires_at=response_identity.expires_at,
             )
         except ValueError:
             # Replace malformed or oversized cookies with a valid identity.
             user_id = None
+            response_identity = None
 
-    issued_identity = None
     if user_id is None:
-        issued_identity = issue_guest_identity()
+        response_identity = issue_guest_identity()
         user_id = await run_in_threadpool(
             create_guest_session,
-            token_hash=issued_identity.token_hash,
-            expires_at=issued_identity.expires_at,
+            token_hash=response_identity.token_hash,
+            expires_at=response_identity.expires_at,
         )
-
     request.state.user_id = user_id
     response = await call_next(request)
-    if issued_identity is not None:
-        set_guest_cookie(response, issued_identity)
+    if getattr(request.state, "delete_guest_cookie", False):
+        response.delete_cookie(
+            key=GUEST_COOKIE_NAME,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
+    elif response_identity is not None:
+        set_guest_cookie(response, response_identity)
     return response
 
 
@@ -148,24 +176,34 @@ class CreateCoachJobRequest(BaseModel):
 
     @field_validator("input_object_name")
     @classmethod
-    def require_mp4_object(cls, value: str) -> str:
+    def require_supported_video_object(cls, value: str) -> str:
         normalized = value.strip()
-        if not normalized.lower().endswith(".mp4"):
-            raise ValueError("input_object_name must reference an MP4")
+        if _video_suffix(normalized) is None:
+            raise ValueError("input_object_name must reference an MP4 or MOV")
         return normalized
 
 
 class CreateUploadRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
-    content_type: Literal["video/mp4"] = "video/mp4"
+    content_type: Literal["video/mp4", "video/quicktime"]
 
     @field_validator("filename")
     @classmethod
-    def require_mp4_filename(cls, value: str) -> str:
+    def require_supported_video_filename(cls, value: str) -> str:
         normalized = value.strip()
-        if not normalized.lower().endswith(".mp4"):
-            raise ValueError("filename must end with .mp4")
+        if _video_suffix(normalized) is None:
+            raise ValueError("filename must end with .mp4 or .mov")
         return normalized
+
+    @model_validator(mode="after")
+    def require_matching_content_type(self):
+        suffix = _video_suffix(self.filename)
+        if (
+            suffix is None
+            or self.content_type != SUPPORTED_VIDEO_CONTENT_TYPES[suffix]
+        ):
+            raise ValueError("content_type must match the video file extension")
+        return self
 
 
 class CompleteUploadRequest(BaseModel):
@@ -176,8 +214,8 @@ class CompleteUploadRequest(BaseModel):
     def require_generated_upload_name(cls, value: str) -> str:
         normalized = value.strip()
         prefix = "uploads/"
-        suffix = ".mp4"
-        if not normalized.startswith(prefix) or not normalized.endswith(suffix):
+        suffix = _video_suffix(normalized)
+        if not normalized.startswith(prefix) or suffix is None:
             raise ValueError("object_name must be a generated upload path")
 
         identifier = normalized[len(prefix) : -len(suffix)]
@@ -219,14 +257,16 @@ def _inspect_input_object(object_name: str) -> dict[str, object]:
             status_code=413,
             detail="Uploaded video exceeds the size limit",
         )
-    if (
-        object_name.startswith("uploads/")
-        and metadata["content_type"] != "video/mp4"
-    ):
-        raise HTTPException(
-            status_code=415,
-            detail="Uploaded object must have content type video/mp4",
+    if object_name.startswith("uploads/"):
+        suffix = _video_suffix(object_name)
+        expected_content_type = (
+            SUPPORTED_VIDEO_CONTENT_TYPES.get(suffix) if suffix else None
         )
+        if metadata["content_type"] != expected_content_type:
+            raise HTTPException(
+                status_code=415,
+                detail="Uploaded object content type does not match its extension",
+            )
 
     return metadata
 
@@ -249,6 +289,7 @@ def _serialize_job(job: dict) -> dict:
             "details": job["result_details_object"],
             "predictions": job["result_predictions_object"],
             "report": job["result_report_object"],
+            "skeleton": job["result_skeleton_object"],
             "rendered_video": job["result_video_object"],
         }
 
@@ -319,8 +360,11 @@ def dependency_health():
 
 
 @app.post("/uploads", status_code=201)
-def create_upload(_: CreateUploadRequest):
-    object_name = f"uploads/{uuid4().hex}.mp4"
+def create_upload(request: CreateUploadRequest):
+    suffix = _video_suffix(request.filename)
+    if suffix is None:  # The request model validates this before the handler.
+        raise HTTPException(status_code=422, detail="Unsupported video format")
+    object_name = f"uploads/{uuid4().hex}{suffix}"
 
     try:
         upload_url, expires_at = (
@@ -339,7 +383,7 @@ def create_upload(_: CreateUploadRequest):
         "object_name": object_name,
         "upload_url": upload_url,
         "method": "PUT",
-        "required_headers": {"Content-Type": "video/mp4"},
+        "required_headers": {"Content-Type": request.content_type},
         "expires_at": expires_at,
         "max_size_bytes": _max_upload_bytes(),
     }
@@ -474,6 +518,72 @@ def get_job_report(job_id: str, request: Request):
             status_code=503,
             detail="Failed to load analysis report",
         ) from error
+
+
+@app.get("/jobs/{job_id}/skeleton")
+def get_job_skeleton(job_id: str, request: Request):
+    job = _get_owned_job_or_404(job_id, request.state.user_id)
+    if job["status"] != "SUCCESS":
+        raise HTTPException(
+            status_code=409,
+            detail="Skeleton is not available until the job succeeds",
+        )
+
+    skeleton_object = job["result_skeleton_object"]
+    if not skeleton_object:
+        raise HTTPException(
+            status_code=404,
+            detail="Skeleton replay is not available for this job",
+        )
+
+    try:
+        return ObjectStorageGateway().load_result_gzip_json(skeleton_object)
+    except oci.exceptions.ServiceError as error:
+        if error.status == 404:
+            raise HTTPException(
+                status_code=404,
+                detail="Skeleton replay has expired",
+            ) from error
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to load skeleton replay",
+        ) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to load skeleton replay",
+        ) from error
+
+
+@app.delete("/me/data")
+def delete_my_data(request: Request):
+    user_id = request.state.user_id
+    storage = ObjectStorageGateway()
+
+    try:
+        for artifact in list_user_artifacts(user_id):
+            input_name = artifact.get("input_object_name")
+            if input_name:
+                storage.delete_input(input_name)
+            for field in (
+                "result_details_object",
+                "result_predictions_object",
+                "result_report_object",
+                "result_skeleton_object",
+                "result_video_object",
+            ):
+                object_name = artifact.get(field)
+                if object_name:
+                    storage.delete_result(object_name)
+        delete_user_data(user_id)
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to delete all user data",
+        ) from error
+
+    request.state.delete_guest_cookie = True
+    return {"status": "deleted"}
 
 
 @app.get("/health/storage")

@@ -94,16 +94,12 @@ jobs:
           -m unittest discover -s /app/tests -p 'test_*.py'
 
       - name: Test built worker image
-        run: |
-          docker run --rm \
-            --entrypoint python \
-            -v "$PWD/worker:/tests:ro" \
-            --workdir /tests \
-            "${IMAGE_PREFIX}-coach-worker:${IMAGE_TAG}" \
-            -m unittest \
-            test_coach_report_adapter \
-            test_job_stages \
-            test_run_cleanup
+        run: >-
+          docker run --rm
+          --entrypoint python
+          -v "$PWD/worker:/tests:ro"
+          "${IMAGE_PREFIX}-coach-worker:${IMAGE_TAG}"
+          -m unittest discover -s /tests -p 'test_*.py'
 
       - name: Push immutable images
         env:

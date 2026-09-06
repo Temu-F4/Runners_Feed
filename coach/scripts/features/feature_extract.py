@@ -23,10 +23,6 @@ RUN_DIR = COACH_DIR / "run" / RUN_FOLDER
 # 루트 디렉토리 바로 아래의 pose_predictions.json 지정
 OUTPUTS_DIR = RUN_DIR / "outputs"
 
-user = RUN_DIR / "user_info.json"
-with user.open(mode="r", encoding='utf-8') as file:
-    user_data = json.load(file)
-
 hpe = OUTPUTS_DIR / "pose_predictions.json"
 with hpe.open(mode="r", encoding='utf-8') as file:
     pose_data = json.load(file)
@@ -34,6 +30,10 @@ with hpe.open(mode="r", encoding='utf-8') as file:
 details = OUTPUTS_DIR / "details.json"
 with details.open(mode="r", encoding='utf-8') as file:
     detail_data = json.load(file)
+
+user = RUN_DIR / "user_info.json"
+with user.open(mode="r", encoding='utf-8') as file:
+    user_data = json.load(file)
 
 ps = PoseSequence(pose_data, detail_data, user_data)
 
@@ -49,7 +49,7 @@ def feature1(ps: PoseSequence):
     for i in range(len(strides)):
         start, end = strides[i]
         res += ps.df["hip_center_y"][start:end].agg(['min', 'max']).diff()['max']
-
+        
     # APO: Amplitude of pelvis oscillation : 골반 진동 진폭
     apo_pixel = res / len(strides)
     return apo_pixel * ps.m_per_pixel / ps.user['height']
@@ -57,15 +57,11 @@ def feature1(ps: PoseSequence):
 def feature2(ps: PoseSequence):
     ps.df[['left_shoulder_x','left_shoulder_y', 'right_shoulder_x', 'right_shoulder_y']]
 
+
 if __name__ == "__main__":
-    feature1_value = feature1(ps=ps)
     features = {
         'feature1': {
-            "value": (
-                float(feature1_value)
-                if np.isfinite(feature1_value)
-                else None
-            ),
+            "value": feature1(ps=ps),
             "unit": "ratio",
             "measurement_source": "2d_pose"
         }
@@ -77,7 +73,6 @@ if __name__ == "__main__":
                 features,
                 ensure_ascii=False,
                 indent=2,
-                allow_nan=False,
             ),
             encoding="utf-8",
     )

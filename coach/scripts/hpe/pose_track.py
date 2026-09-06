@@ -69,7 +69,7 @@ def _person_record(
 
 
 def build_frame_record(
-    image_path: str,
+    frame_num: int,
     detections: list[Detection],
     previous: Optional[TrackState],
     keypoint_threshold: float,
@@ -91,6 +91,6 @@ def build_frame_record(
     ]
     primary = detections[primary_index]
     return (
-        {"image_path": image_path, "people": people},
+        {"frame_num": frame_num, "people": people},
         TrackState(bbox=primary.bbox, keypoints=primary.keypoints),
     )

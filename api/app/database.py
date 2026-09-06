@@ -121,6 +121,43 @@ def find_active_guest_user(token_hash: str) -> UUID | None:
     return row[0] if row is not None else None
 
 
+def renew_active_guest_session(
+    *,
+    token_hash: str,
+    expires_at: datetime,
+) -> UUID | None:
+    _validate_token_hash(token_hash)
+    if expires_at.tzinfo is None:
+        raise ValueError("Guest session expiry must include a timezone")
+
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE guest_sessions
+                SET expires_at = %s,
+                    last_seen_at = NOW()
+                WHERE token_hash = %s
+                  AND expires_at > NOW()
+                RETURNING user_id
+                """,
+                (expires_at, token_hash),
+            )
+            row = cursor.fetchone()
+
+            if row is not None:
+                cursor.execute(
+                    """
+                    UPDATE app_users
+                    SET updated_at = NOW()
+                    WHERE user_id = %s
+                    """,
+                    (row[0],),
+                )
+
+    return row[0] if row is not None else None
+
+
 def create_job(
     *,
     job_id: str,
@@ -190,6 +227,7 @@ def get_job(
                        result_details_object,
                        result_predictions_object,
                        result_report_object,
+                       result_skeleton_object,
                        result_video_object,
                        error_code,
                        created_at,
@@ -228,6 +266,7 @@ def list_jobs(
                        result_details_object,
                        result_predictions_object,
                        result_report_object,
+                       result_skeleton_object,
                        result_video_object,
                        error_code,
                        created_at,
@@ -242,3 +281,38 @@ def list_jobs(
                 (user_id, limit),
             )
             return list(cursor.fetchall())
+
+
+def list_user_artifacts(user_id: UUID) -> list[dict[str, Any]]:
+    with psycopg.connect(
+        _database_url(),
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT input_object_name,
+                       result_details_object,
+                       result_predictions_object,
+                       result_report_object,
+                       result_skeleton_object,
+                       result_video_object
+                FROM inference_jobs
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            return list(cursor.fetchall())
+
+
+def delete_user_data(user_id: UUID) -> None:
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM inference_jobs WHERE user_id = %s",
+                (user_id,),
+            )
+            cursor.execute(
+                "DELETE FROM app_users WHERE user_id = %s",
+                (user_id,),
+            )
