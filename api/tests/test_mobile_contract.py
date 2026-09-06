@@ -1,7 +1,10 @@
+import json
+import os
 from unittest import TestCase
+from unittest.mock import patch
 from uuid import uuid4
 
-from app.main import MobileJobRequest, _mobile_result
+from app.main import MobileJobRequest, _mobile_result, model_quality_health
 
 
 class MobileContractTests(TestCase):
@@ -41,3 +44,55 @@ class MobileContractTests(TestCase):
         self.assertIsNone(result["features"][0]["referenceRange"])
         self.assertEqual(result["features"][0]["confidenceLevel"], "excluded")
         self.assertEqual(result["narrative"]["status"], "unavailable")
+
+    @patch("app.main.get_model_quality_summary")
+    def test_quality_health_accepts_initial_sample_for_current_release(
+        self,
+        summary,
+    ) -> None:
+        summary.return_value = {
+            "completed_count": 1,
+            "success_count": 1,
+            "failure_count": 0,
+            "invalid_result_count": 0,
+            "stale_processing_count": 0,
+            "average_processing_seconds": 12,
+        }
+        with patch.dict(
+            os.environ,
+            {"MODEL_RELEASE": "sha-test", "COACH_MODEL_ID": "model-test"},
+        ):
+            response = model_quality_health()
+
+        self.assertEqual(response["status"], "insufficient_sample")
+        self.assertEqual(response["modelRelease"], "sha-test")
+        summary.assert_called_once_with(
+            window_minutes=60,
+            max_processing_seconds=3600,
+            model_id="model-test",
+            model_release="sha-test",
+        )
+
+    @patch("app.main.get_model_quality_summary")
+    def test_invalid_artifact_requires_rollback_before_minimum_sample(
+        self,
+        summary,
+    ) -> None:
+        summary.return_value = {
+            "completed_count": 1,
+            "success_count": 0,
+            "failure_count": 1,
+            "invalid_result_count": 1,
+            "stale_processing_count": 0,
+            "average_processing_seconds": 12,
+        }
+        with patch.dict(os.environ, {"MODEL_RELEASE": "sha-test"}):
+            response = model_quality_health()
+
+        self.assertEqual(response.status_code, 503)
+        payload = json.loads(response.body)
+        self.assertEqual(payload["status"], "rollback_required")
+        self.assertIn(
+            "invalid_result_artifact_detected",
+            payload["rollbackConditionsTriggered"],
+        )

@@ -142,6 +142,38 @@ for spec in specs:
 PY
 }
 
+assert_quality_status() {
+  local payload_file="$1"
+  local target_tag="$2"
+  local model_id="${COACH_MODEL_ID:-sehyeon-dcc2d7d}"
+
+  python3 - "${payload_file}" "${target_tag}" "${model_id}" <<'PY'
+import json
+import os
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    payload = json.load(stream)
+
+status = payload.get("status")
+if status not in {"ok", "insufficient_sample"}:
+    raise SystemExit(f"model quality status is not deployable: {status!r}")
+if payload.get("rollbackConditionsTriggered"):
+    raise SystemExit("model quality reported rollback conditions")
+reported_release = payload.get("modelRelease")
+reported_model_id = payload.get("modelId")
+allow_legacy = os.getenv("ALLOW_LEGACY_MODEL_QUALITY", "0") == "1"
+if reported_release is None and reported_model_id is None and allow_legacy:
+    pass
+elif reported_release != sys.argv[2] or reported_model_id != sys.argv[3]:
+    raise SystemExit(
+        "model quality identity mismatch: "
+        f"{reported_model_id!r}/{reported_release!r} != "
+        f"{sys.argv[3]!r}/{sys.argv[2]!r}"
+    )
+PY
+}
+
 assert_storage_buckets() {
   local payload_file="$1"
 
@@ -175,7 +207,7 @@ assert_json_fields "${health_response}" "status=ok"
 
 quality_response="${response_dir}/model-quality.json"
 fetch_http "/api/health/model-quality" "${quality_response}"
-assert_json_fields "${quality_response}" "status=ok"
+assert_quality_status "${quality_response}" "${TARGET_TAG}"
 
 dependencies_response="${response_dir}/dependencies.json"
 fetch_http "/api/health/dependencies" "${dependencies_response}"

@@ -62,6 +62,8 @@ export interface ValidatedNarrative {
 
 export interface AnalysisResult {
   jobId: string;
+  modelId: string | null;
+  modelRelease: string | null;
   createdAt: string;
   completedAt: string;
   analyzedFrameCount: number;
@@ -95,6 +97,8 @@ export interface ActiveAnalysisJob {
   completedAt: string | null;
   updatedAt: string;
   heightCm: number | null;
+  modelId: string | null;
+  modelRelease: string | null;
   error: string | null;
 }
 

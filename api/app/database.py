@@ -536,6 +536,8 @@ def create_job(
     input_object_name: str,
     user_id: UUID,
     height_snapshot_m: float,
+    model_id: str,
+    model_release: str,
 ) -> None:
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
@@ -547,9 +549,11 @@ def create_job(
                     input_object_name,
                     user_id,
                     height_snapshot_m,
+                    model_id,
+                    model_release,
                     status
                 )
-                VALUES (%s, %s, %s, %s, %s, 'QUEUED')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'QUEUED')
                 """,
                 (
                     job_id,
@@ -557,6 +561,8 @@ def create_job(
                     input_object_name,
                     user_id,
                     height_snapshot_m,
+                    model_id,
+                    model_release,
                 ),
             )
 
@@ -594,6 +600,9 @@ def get_job(
                        case_id,
                        input_object_name,
                        height_snapshot_m,
+                       model_id,
+                       model_release,
+                       artifact_validation_status,
                        status,
                        result_details_object,
                        result_predictions_object,
@@ -633,6 +642,9 @@ def list_jobs(
                        case_id,
                        input_object_name,
                        height_snapshot_m,
+                       model_id,
+                       model_release,
+                       artifact_validation_status,
                        status,
                        result_details_object,
                        result_predictions_object,
@@ -682,9 +694,13 @@ def get_model_quality_summary(
     *,
     window_minutes: int,
     max_processing_seconds: int,
+    model_id: str,
+    model_release: str,
 ) -> dict[str, Any]:
     if window_minutes <= 0 or max_processing_seconds <= 0:
         raise ValueError("quality window and processing limit must be positive")
+    if not model_id or not model_release:
+        raise ValueError("model ID and release must not be empty")
 
     with psycopg.connect(
         _database_url(),
@@ -693,6 +709,12 @@ def get_model_quality_summary(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
+                WITH release_jobs AS (
+                    SELECT *
+                    FROM inference_jobs
+                    WHERE model_id = %s
+                      AND model_release = %s
+                )
                 SELECT
                     COUNT(*) FILTER (
                         WHERE status IN ('SUCCESS', 'FAILED')
@@ -707,9 +729,17 @@ def get_model_quality_summary(
                           AND completed_at >= NOW() - (%s * INTERVAL '1 minute')
                     ) AS failure_count,
                     COUNT(*) FILTER (
-                        WHERE status = 'SUCCESS'
+                        WHERE (
+                                artifact_validation_status = 'INVALID'
+                                OR (
+                                    status = 'SUCCESS'
+                                    AND (
+                                        artifact_validation_status IS DISTINCT FROM 'VALID'
+                                        OR result_report_object IS NULL
+                                    )
+                                )
+                              )
                           AND completed_at >= NOW() - (%s * INTERVAL '1 minute')
-                          AND result_report_object IS NULL
                     ) AS invalid_result_count,
                     COUNT(*) FILTER (
                         WHERE status IN ('QUEUED', 'PROCESSING')
@@ -724,9 +754,11 @@ def get_model_quality_summary(
                         WHERE status IN ('SUCCESS', 'FAILED')
                           AND completed_at >= NOW() - (%s * INTERVAL '1 minute')
                     ) AS average_processing_seconds
-                FROM inference_jobs
+                FROM release_jobs
                 """,
                 (
+                    model_id,
+                    model_release,
                     window_minutes,
                     window_minutes,
                     window_minutes,

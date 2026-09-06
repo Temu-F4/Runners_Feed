@@ -100,7 +100,13 @@ case "$path" in
     printf '{"status":"ok","dependencies":{"postgres":"ok","redis":"ok"}}\n' >"$output_file"
     ;;
   "/api/health/model-quality")
-    printf '{"status":"ok","rollbackConditionsTriggered":[]}\n' >"$output_file"
+    if [[ "${MOCK_LEGACY_QUALITY:-0}" == "1" ]]; then
+      printf '{"status":"%s","rollbackConditionsTriggered":[]}\n' \
+        "${MOCK_QUALITY_STATUS:-ok}" >"$output_file"
+    else
+      printf '{"status":"%s","modelId":"sehyeon-dcc2d7d","modelRelease":"%s","rollbackConditionsTriggered":[]}\n' \
+        "${MOCK_QUALITY_STATUS:-ok}" "${IMAGE_TAG}" >"$output_file"
+    fi
     ;;
   "/api/health/storage")
     printf '{"status":"ok","storage":"oci_object_storage","buckets":{"raw":"raw","results":"results"}}\n' >"$output_file"
@@ -124,10 +130,27 @@ run_verify() {
   RUNNERS_FEED_PROJECT_DIR="${test_root}/project" \
   RUNNERS_FEED_ENV_FILE="${test_root}/prod.env" \
   PRODUCTION_BASE_URL="https://production.example" \
+  ALLOW_LEGACY_MODEL_QUALITY="${ALLOW_LEGACY_MODEL_QUALITY:-0}" \
   bash "${VERIFY_SCRIPT}" "${TARGET_TAG}"
 }
 
 run_verify
+
+MOCK_QUALITY_STATUS="insufficient_sample"
+export MOCK_QUALITY_STATUS
+run_verify
+unset MOCK_QUALITY_STATUS
+
+MOCK_LEGACY_QUALITY=1
+export MOCK_LEGACY_QUALITY
+if run_verify; then
+  echo "New releases must report their model release" >&2
+  exit 1
+fi
+ALLOW_LEGACY_MODEL_QUALITY=1
+export ALLOW_LEGACY_MODEL_QUALITY
+run_verify
+unset ALLOW_LEGACY_MODEL_QUALITY MOCK_LEGACY_QUALITY
 
 MOCK_BAD_IMAGE_SERVICE="api"
 export MOCK_BAD_IMAGE_SERVICE

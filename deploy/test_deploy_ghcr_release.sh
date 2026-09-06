@@ -31,13 +31,25 @@ EOF
 
 cat >"${test_root}/verify_release.sh" <<'EOF'
 #!/usr/bin/env bash
-printf 'verify|%s\n' "${IMAGE_TAG:-unset}" >>"${MOCK_LOG}"
+printf 'verify|%s|%s\n' \
+  "${IMAGE_TAG:-unset}" \
+  "${ALLOW_LEGACY_MODEL_QUALITY:-0}" >>"${MOCK_LOG}"
 if [[ "${IMAGE_TAG:-}" == "${MOCK_FAILED_TAG:-}" || "${IMAGE_TAG:-}" == "${MOCK_ROLLBACK_FAILED_TAG:-}" ]]; then
   exit 1
 fi
 EOF
 
-chmod +x "${test_root}/bin/docker" "${test_root}/bin/curl" "${test_root}/verify_release.sh"
+cat >"${test_root}/verify_model_candidate.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'canary|%s\n' "${IMAGE_TAG:-unset}" >>"${MOCK_LOG}"
+exit 0
+EOF
+
+chmod +x \
+  "${test_root}/bin/docker" \
+  "${test_root}/bin/curl" \
+  "${test_root}/verify_release.sh" \
+  "${test_root}/verify_model_candidate.sh"
 
 run_deploy() {
   PATH="${test_root}/bin:${PATH}" \
@@ -46,12 +58,20 @@ run_deploy() {
   RUNNERS_FEED_ENV_FILE="${test_root}/prod.env" \
   RUNNERS_FEED_DEPLOY_STATE_DIR="${test_root}/state" \
   RELEASE_VERIFIER="${test_root}/verify_release.sh" \
+  MODEL_CANDIDATE_VERIFIER="${test_root}/verify_model_candidate.sh" \
   PRODUCTION_BASE_URL="https://production.example" \
   bash "${DEPLOY_SCRIPT}" "$1"
 }
 
 run_deploy "${SUCCESS_TAG}"
 grep -qx "IMAGE_TAG=${SUCCESS_TAG}" "${test_root}/state/last-successful.env"
+
+printf 'IMAGE_TAG=%s\n' "${PREVIOUS_TAG}" >"${test_root}/state/last-successful.env"
+run_deploy "${SUCCESS_TAG}"
+grep -qx "TARGET_TAG=${SUCCESS_TAG}" "${test_root}/state/model-candidate.env"
+grep -qx "PREVIOUS_TAG=${PREVIOUS_TAG}" "${test_root}/state/model-candidate.env"
+grep -qx "MODEL_ID=sehyeon-dcc2d7d" "${test_root}/state/model-candidate.env"
+rm "${test_root}/state/model-candidate.env"
 
 printf 'IMAGE_TAG=%s\n' "${PREVIOUS_TAG}" >"${test_root}/state/last-successful.env"
 : >"${test_root}/docker.log"
@@ -65,9 +85,19 @@ fi
 
 grep -q "${FAILED_TAG}|compose" "${test_root}/docker.log"
 grep -q "${PREVIOUS_TAG}|compose" "${test_root}/docker.log"
-grep -q "verify|${FAILED_TAG}" "${test_root}/docker.log"
-grep -q "verify|${PREVIOUS_TAG}" "${test_root}/docker.log"
+grep -q "verify|${FAILED_TAG}|0" "${test_root}/docker.log"
+grep -q "verify|${PREVIOUS_TAG}|1" "${test_root}/docker.log"
+grep -q "canary|${FAILED_TAG}" "${test_root}/docker.log"
+if grep -q "canary|${PREVIOUS_TAG}" "${test_root}/docker.log"; then
+  echo "Rollback must not be blocked by the candidate canary" >&2
+  exit 1
+fi
 grep -qx "IMAGE_TAG=${PREVIOUS_TAG}" "${test_root}/state/last-successful.env"
+
+if [[ -e "${test_root}/state/model-candidate.env" ]]; then
+  echo "Failed release must not arm watchdog" >&2
+  exit 1
+fi
 
 : >"${test_root}/docker.log"
 MOCK_ROLLBACK_FAILED_TAG="${PREVIOUS_TAG}"

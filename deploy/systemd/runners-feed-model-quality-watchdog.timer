@@ -1,0 +1,12 @@
+[Unit]
+Description=Observe newly deployed Runners Feed model quality every minute
+
+[Timer]
+OnBootSec=1m
+OnUnitActiveSec=1m
+AccuracySec=10s
+Persistent=true
+Unit=runners-feed-model-quality-watchdog.service
+
+[Install]
+WantedBy=timers.target

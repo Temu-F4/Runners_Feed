@@ -105,8 +105,8 @@ groups:
           severity: critical
           service: runners-feed-model
         annotations:
-          summary: A successful job is missing its result artifact
-          description: Result artifact validation detected an invalid successful job.
+          summary: A model job produced an invalid result artifact
+          description: Runtime artifact validation rejected at least one model result.
 
       - alert: ModelProcessingTooLong
         expr: runners_feed_model_stale_processing_count > 0

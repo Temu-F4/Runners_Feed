@@ -90,6 +90,14 @@ SUPPORTED_VIDEO_CONTENT_TYPES = {
 }
 
 
+def _model_id() -> str:
+    return os.getenv("COACH_MODEL_ID", "sehyeon-dcc2d7d").strip()
+
+
+def _model_release() -> str:
+    return os.getenv("MODEL_RELEASE", "local").strip()
+
+
 def _video_suffix(filename: str) -> str | None:
     normalized = filename.lower()
     return next(
@@ -531,6 +539,8 @@ def _serialize_job(job: dict) -> dict:
         "case_id": job["case_id"],
         "input_object_name": job["input_object_name"],
         "height_snapshot_m": job["height_snapshot_m"],
+        "model_id": job.get("model_id"),
+        "model_release": job.get("model_release"),
         "status": job["status"],
         "created_at": job["created_at"],
         "started_at": job["started_at"],
@@ -700,6 +710,8 @@ def _mobile_job(job: dict) -> dict:
             if job.get("height_snapshot_m") is not None
             else None
         ),
+        "modelId": job.get("model_id"),
+        "modelRelease": job.get("model_release"),
         "error": (
             job.get("error_code") or "coach_failed"
             if status == "FAILED"
@@ -826,6 +838,8 @@ def _mobile_result(job: dict, report: dict) -> dict:
     tracking = report.get("tracking", {})
     return {
         "jobId": str(job["job_id"]),
+        "modelId": job.get("model_id"),
+        "modelRelease": job.get("model_release"),
         "createdAt": job["created_at"],
         "completedAt": job["completed_at"],
         "analyzedFrameCount": tracking.get("tracked_frames", 0),
@@ -1121,6 +1135,8 @@ def metrics():
             max_processing_seconds=_quality_int(
                 "MODEL_QUALITY_MAX_PROCESSING_SECONDS", 3600
             ),
+            model_id=_model_id(),
+            model_release=_model_release(),
         )
     except Exception:
         LOGGER.exception("Failed to collect model metrics")
@@ -1152,7 +1168,7 @@ def metrics():
         "# HELP runners_feed_model_failure_count Failed jobs in the quality window.",
         "# TYPE runners_feed_model_failure_count gauge",
         f"runners_feed_model_failure_count {failure}",
-        "# HELP runners_feed_model_invalid_result_count Successful jobs missing a result report.",
+        "# HELP runners_feed_model_invalid_result_count Jobs rejected by artifact validation.",
         "# TYPE runners_feed_model_invalid_result_count gauge",
         f"runners_feed_model_invalid_result_count {invalid}",
         "# HELP runners_feed_model_stale_processing_count Jobs exceeding the processing budget.",
@@ -1183,6 +1199,8 @@ def model_quality_health():
     summary = get_model_quality_summary(
         window_minutes=window_minutes,
         max_processing_seconds=max_processing_seconds,
+        model_id=_model_id(),
+        model_release=_model_release(),
     )
     completed_count = int(summary.get("completed_count") or 0)
     success_count = int(summary.get("success_count") or 0)
@@ -1197,18 +1215,20 @@ def model_quality_health():
     conditions: list[str] = []
     if stale_processing_count:
         conditions.append("long_processing_detected")
+    if invalid_result_count:
+        conditions.append("invalid_result_artifact_detected")
     if completed_count >= min_sample_size:
         if success_rate is not None and success_rate < min_success_rate:
             conditions.append("success_rate_below_threshold")
         if failure_rate is not None and failure_rate > max_failure_rate:
             conditions.append("failure_rate_above_threshold")
-        if invalid_result_count:
-            conditions.append("invalid_result_artifact_detected")
     status = "rollback_required" if conditions else (
         "insufficient_sample" if completed_count < min_sample_size else "ok"
     )
     payload = {
         "status": status,
+        "modelId": _model_id(),
+        "modelRelease": _model_release(),
         "rollbackConditionsTriggered": conditions,
         "windowMinutes": window_minutes,
         "thresholds": {
@@ -1330,6 +1350,8 @@ def create_coach_job(
         input_object_name=payload.input_object_name,
         user_id=request.state.user_id,
         height_snapshot_m=payload.user_height_m,
+        model_id=_model_id(),
+        model_release=_model_release(),
     )
 
     try:

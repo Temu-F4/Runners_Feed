@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "test": "jest --runInBand",
-    "doctor": "expo-doctor"
+    "doctor": "npx --yes expo-doctor@latest"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",

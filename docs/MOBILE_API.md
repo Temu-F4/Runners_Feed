@@ -43,6 +43,8 @@ The app does not contain `API_KEY`. Production Nginx injects the internal
 The mobile result contract renders only fields returned by the report adapter.
 If a feature has no reference range, series, confidence, or evidence, the app
 shows an explicit unavailable state instead of deriving one from the chart.
+Job and result responses include nullable `modelId` and `modelRelease` fields
+so an analysis can be traced to the exact model plugin and immutable image tag.
 
 ## Local configuration
 
@@ -59,3 +61,19 @@ npm ci --legacy-peer-deps
 npm run typecheck
 npm run doctor
 ```
+
+## Android internal distribution
+
+`mobile/eas.json` defines the `preview` profile as EAS internal distribution
+with Android `buildType: apk`. After linking this repository to an Expo project,
+create an installable test build with:
+
+```bash
+cd mobile
+npx eas-cli@latest login
+npx eas-cli@latest init
+npx eas-cli@latest build --platform android --profile preview
+```
+
+`eas init` adds the Expo account/project identifier and therefore requires the
+project owner's Expo login. Do not commit signing credentials or access tokens.

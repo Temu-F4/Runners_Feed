@@ -1,162 +1,163 @@
 # 모델·모바일 통합 구현 기록
 
 최종 업데이트: 2026-09-07
+
 브랜치: `feat/model-mobile-v1`
-기준 커밋: `d3753fc9c2c28c22492542e35d3f3cdb7c34534c`
 
-## 사용자 결정
+기준 브랜치: GitHub `main`
 
-- GitHub `main`을 로컬의 기준본으로 사용한다.
-- `sehyeon` 모델의 수치·계산 방식을 적용한다.
-- OCI 실행에 필요한 서비스 어댑터는 유지한다.
-- LLM 모델은 환경변수로 바꿀 수 있게 하고 기본값은 `gpt-5.6-luna`로 둔다.
-- 모델러가 새 모델 코드를 전달하면 고정 계약을 통해 바로 교체할 수 있어야 한다.
-- 비회원 분석과 Kakao 로그인 전환을 함께 지원한다.
-- 모바일 앱은 `mobile/`에 Expo 기반으로 추가한다.
+## 확정된 방향
 
-## 지금까지 완료
+- 모델 계산 코드는 `Oracle_Project/sehyeon`의 커밋
+  `dcc2d7d7a7eaacb8b2828745d31a5b375c5b893b`을 기준으로 한다.
+- 원본 모델 파일을 플러그인 단위로 보존하고, OCI 경로·단계 기록·결과 변환은
+  서비스 어댑터가 담당한다.
+- 사용자는 앱 설치 직후 게스트로 분석할 수 있고, 원하면 Kakao 계정으로
+  전환한다.
+- 앱은 React Native + Expo Router이며, 참고 UI의 색상·정보 구조를 모바일
+  컴포넌트로 구현한다.
+- 추가 VM이나 별도 DB를 만들지 않고 현재 Production API/PostgreSQL/Object
+  Storage를 공유한다.
+- 모델 품질 저하, 잘못된 산출물, 장시간 처리를 자동 롤백 신호에 포함한다.
 
-### Git 기준 정리
+## 구현 완료
 
-- 기존 로컬의 대규모 미커밋 변경을 제거했다.
-- `origin/main` 최신 커밋으로 동기화했다.
-- 새 작업 브랜치를 만들었다.
+### 모델 플러그인
 
-### `sehyeon` 수치 적용
+`coach/model_plugins/sehyeon-dcc2d7d/`에 원본 HPE, pose tracking, feature,
+paper, prompt, Agent 코드를 보존했다. 플러그인에는 다음 메타데이터도 있다.
 
-`coach/scripts/features/utils.py`에 다음 원본 계산을 적용했다.
+- `model_manifest.json`: 원본 commit, 입출력 계약, 가중치 경로와 SHA-256
+- `quality_baseline.json`: 필수 feature, 단위·범위, 추적률, 처리시간 기준
+- `README.md`: 원본과 서비스 어댑터의 경계
 
-- peak 탐색 실패 시 거리 보정값 `distance - 2`, 최소값 `1`
-- 잘못된 peak 교대 시 거리 보정값 `distance - 1`, 최소값 `1`
-- 원본의 무릎 peak 순서 검증
-- 원본의 스트라이드 순번 1~4 계산 방식
-- 픽셀-미터 변환 기준을 스트라이드 2번 프레임으로 변경
-- GCT 이벤트를 스트라이드 2·4 기준으로 변경
-- GCT 탐색 구간을 종료 프레임 이후 10프레임으로 변경
-- 발가락 이벤트 임계값을 `0.01m / m_per_pixel`로 변경
+`COACH_MODEL_ID`로 플러그인을 선택한다. HPE와 feature wrapper는 선택된
+플러그인의 엔트리포인트를 실행하고, 기존 서비스 기능인 `/workspace` 경로,
+MP4/MOV 탐색, H.264 변환, 단계 로그와 결과 계약 검사는 유지한다.
 
-### 서비스와 모델의 분리
+원본 Agent는 플러그인에 그대로 보존했지만 기본 실행에는 서비스용 Agent
+adapter를 사용한다. 원본은 `_OPENAI_API_KEY`, `gpt-5-nano`, 로컬 `Coach/run`
+경로에 고정되어 있어 OCI에 그대로 실행할 수 없기 때문이다. adapter는
+`OPENAI_API_KEY`, `COACH_LLM_MODEL`, `/workspace/run`을 사용한다. LLM은 수치
+계산이 아닌 선택적 한국어 설명 생성에만 관여하며 기본값은
+`gpt-5.6-luna`다.
 
-다음 코드는 모델러가 수정하지 않아도 되는 서비스 연결부다.
+### 모바일 API와 인증
 
-- 컨테이너의 `/workspace` 경로
-- MP4/MOV 입력 탐색
-- 단계 로그 `COACH_STAGE_*`
-- H.264 결과 영상 변환
-- 모델 결과 JSON 검증
-- Object Storage, DB, Celery 연결
+`/api/mobile/v1` 계약과 Expo 앱을 구현했다.
 
-### 모델 교체 계약
+- 게스트: 앱이 Bearer token을 발급받아 SecureStore에 저장한다.
+- Kakao: system browser OAuth, 서버 callback, 일회용 exchange code, native
+  deep link 순서로 계정 세션을 발급한다.
+- API key는 앱에 포함하지 않는다. Production Nginx가 내부 요청에만
+  `X-API-Key`를 주입한다.
+- 사용자별 프로필 키, signed upload, 작업 생성·조회, 단계 polling, 결과와
+  만료형 영상 URL을 지원한다.
+- 작업과 결과에 `modelId`, `modelRelease`를 반환해 어떤 모델과 immutable
+  image가 분석했는지 추적한다.
 
-다음 문서와 템플릿을 추가했다.
+DB migration `009_model_release_quality.sql`은 작업에 모델 ID, 릴리스 tag,
+산출물 검증 상태를 추가한다. migration은 API 시작 시 advisory lock 아래
+additive 방식으로 적용된다.
 
-- `coach/scripts/model_contract/README.md`
-- `coach/scripts/model_contract/model_manifest.example.json`
-- `coach/scripts/model_contract/templates/hpe_entrypoint.py`
-- `coach/scripts/model_contract/templates/feature_entrypoint.py`
-- `coach/scripts/model_contract/validate_artifacts.py`
-- `coach/scripts/model_contract/quality_gate.py`
-- `coach/scripts/model_contract/quality_baseline.example.json`
-- `coach/tests/fixtures/model-golden/`
+### Expo Android 배포
 
-모델러는 다음 네 가지를 제공하면 된다.
+`mobile/eas.json`에 다음 profile을 추가했다.
 
-1. pose 엔트리포인트
-2. feature 엔트리포인트
-3. 출력 artifact 계약을 만족하는 샘플 결과
-4. 모델 버전·가중치 SHA-256 manifest
+- `development`: development client 내부 APK
+- `preview`: 테스터가 직접 설치할 수 있는 EAS internal APK
+- `production`: Android store 배포용 profile
 
-파이프라인은 기본 엔트리포인트를 유지하면서 다음 환경변수로 교체할 수 있다.
+모든 profile은 기존 Production API를 사용한다. Expo 계정의 project ID와
+Android signing credential은 저장소에 넣지 않으며, 프로젝트 소유자가
+`eas init`과 최초 build에서 연결한다.
 
-```text
-COACH_HPE_ENTRYPOINT
-COACH_FEATURE_ENTRYPOINT
-COACH_AGENT_ENTRYPOINT
+### 품질 판정과 자동 롤백
+
+품질 집계는 전체 과거 작업이 아니라 현재 `MODEL_RELEASE`와 일치하는 작업만
+사용한다.
+
+| 조건 | 기본 기준 | 표본 3건 미만 |
+|---|---:|---|
+| 잘못된 산출물 | 1건 이상 | 즉시 롤백 신호 |
+| 장시간 QUEUED/PROCESSING | 3,600초 초과 1건 이상 | 즉시 롤백 신호 |
+| 성공률 저하 | 95% 미만 | 판정 보류 |
+| 실패율 증가 | 10% 초과 | 판정 보류 |
+
+배포 직후 완료 표본이 부족한 `insufficient_sample`은 정상적인 관찰 상태다.
+배포 검증기는 `ok`와 `insufficient_sample`을 허용하지만, 릴리스 tag가 다르거나
+rollback condition이 있으면 실패한다.
+
+성공한 새 배포는 이전 immutable tag와 함께 60분 watchdog을 자동으로
+설정한다. systemd timer가 1분마다 품질 endpoint를 확인하고 HTTP 503과
+`rollback_required`를 함께 확인했을 때만 이전 tag로 배포한다. 네트워크 오류나
+잘못된 응답만으로는 모델을 롤백하지 않고 다음 실행에서 재시도한다.
+
+```mermaid
+sequenceDiagram
+    participant CI as GitHub Actions
+    participant Deploy as OCI deploy script
+    participant API as Production API
+    participant Timer as systemd watchdog
+
+    CI->>Deploy: immutable sha tag 배포
+    Deploy->>Deploy: 승인 canary(활성화된 경우)
+    Deploy->>API: 즉시 health/quality 검증
+    API-->>Deploy: ok 또는 insufficient_sample
+    Deploy->>Timer: 이전 tag로 60분 관찰 상태 생성
+    loop 1분마다
+        Timer->>API: 현재 release 품질 조회
+        alt rollback_required
+            Timer->>Deploy: 이전 immutable tag 재배포
+        else ok / insufficient_sample
+            Timer->>Timer: 관찰 계속
+        end
+    end
 ```
 
-모델 교체 전에 quality gate가 필수 artifact, feature ID, 단위·범위, 추적률,
-처리시간 예산을 검사한다. worker 단계에서도 artifact validator가 실행되므로
-출력 파일이 계약을 어기면 해당 작업은 성공으로 기록되지 않는다.
+모델러 승인 golden 영상이 준비되면 `MODEL_CANARY_REQUIRED=1`로 전환한다.
+배포기는 모델 image로 golden 영상을 실제 처리한 뒤 승인 baseline과 결과를
+비교하며, 실패하면 Production container 교체 전에 배포를 중단한다. 개인 영상은
+GitHub에 올리지 않고 `/opt/runners-feed/model-golden/<model_id>/`에 둔다.
 
-### 모바일 앱 구현
+### CI와 운영 자동화
 
-`mobile/`에 Expo SDK 57 + Expo Router 기반 앱을 추가했다.
+- PR CI: API, worker, frontend, Compose, 모델 quality gate, Expo typecheck
+- Release CI: 모델 gate, image build/test/push, Production 배포·검증
+- CI disk guard: 75% 이상에서 24시간 초과 미사용 container/image/build cache
+  정리, 90% 이상이면 build 중단; Docker volume은 삭제하지 않는다.
+- systemd unit sync: 인증서, DB backup/restore 검증, model watchdog unit을
+  allowlist로 자동 설치·활성화한다.
 
-- 비회원 Bearer 세션을 앱 시작 시 발급하고 SecureStore에 보관
-- Kakao system-browser 로그인 후 일회용 exchange code를 native deep link로 교환
-- 프로필 키 저장과 분석별 키 override
-- 갤러리·카메라 MP4/MOV 선택, signed URL 업로드 진행률 표시
-- 분석 stage polling, 실패·장시간 대기 상태, 결과 자동 이동
-- 결과 feature 카드, 기준 범위가 없을 때의 명시적 빈 상태, 근거 상세 modal
-- 분석 기록과 결과 영상 signed URL 열기
+## 검증 현황
 
-외부 `runners-feed-mobile-app` 참고 구성의 색상·타이포그래피·정보 순서를
-React Native 토큰으로 옮겼다. 현재 모델 결과가 `feature1`만 제공하므로 앱은
-추가 지표를 추정해 만들지 않고 실제 API feature만 렌더링한다.
+- Python 전체 compile: 통과
+- API unit test 44개: 전체 requirements 격리 환경에서 통과
+- Worker deterministic unit test 24개: 통과
+- 배포 즉시 검증 shell test: 통과
+- 배포 실패 rollback shell test: 통과
+- 60분 watchdog shell test: 통과
+- 모델 원본 대조: 의미 있는 내용 차이 없음(줄 끝 공백과 마지막 개행만 정규화)
+- 로컬 API test: OCI SDK가 없는 호스트에서 import 3건만 실행 불가; 나머지 통과
+- Docker Compose와 image test: 로컬 Docker 미설치로 GitHub CI에서 실행 예정
+- Expo typecheck: 통과
+- Expo Doctor: 21/21 통과
+- Production dependency audit: high/critical 없음, Expo transitive dependency의
+  moderate 13건은 강제 수정 시 SDK 호환성이 깨져 현재 버전을 유지
 
-### CI/CD 품질과 롤백
+## 배포 전에 남은 항목
 
-- PR CI에 모바일 typecheck와 model quality gate를 추가했다.
-- release build 전에 golden artifact quality gate를 실행한다.
-- `/api/health/model-quality`는 최근 작업의 성공률·실패율·결과 artifact 누락·
-  장시간 처리 작업을 검사한다.
-- `deploy/verify_release.sh`가 해당 endpoint의 `status=ok`를 확인한다.
-- 검증 실패 시 `deploy/deploy_ghcr_release.sh`가 마지막 성공 immutable tag로
-  자동 rollback을 시도한다.
+- 모델러가 golden 영상·반복 실행 기준값을 승인하고
+  `quality_baseline.json`의 `approval_status`를 `approved`로 변경
+- Kakao Developers에 mobile server callback URI 등록
+- Expo 소유자 계정으로 `eas init` 후 preview APK build
+- GitHub required checks에 `Model contract and quality gate`,
+  `Mobile Expo typecheck` 추가
+- Production 환경변수와 systemd sudo 권한 점검
+- 새 migration 적용 전 DB backup 실행
 
-기본 rollback guard는 최근 60분, 최소 완료 3건, 성공률 95% 미만, 실패율 10%
-초과, 처리 3600초 초과다. 표본이 3건보다 적으면 `insufficient_sample`로
-기록하고 자동 rollback하지 않는다. 운영 환경에서는 `.env`에서 기준을 조정할
-수 있다.
+배포 후에는 14일 안정성 관찰을 새 배포일부터 다시 계산한다. 그 기간에는
+레거시 경로, 오래된 release, 로컬 Docker image를 삭제하지 않는다.
 
-## 용어 정리
-
-### 서비스 어댑터란?
-
-모델의 계산값을 바꾸는 코드가 아니다. 모델이 실행될 위치, 입력 파일 위치,
-단계 측정, 결과 파일 보관, API 응답 변환을 담당한다. 모델러는 이 부분을
-수정하지 않아도 된다.
-
-### Luna란?
-
-자세 keypoint나 러닝 수치를 계산하는 모델이 아니다. `feature_results.json`에
-이미 계산된 값을 받아 한국어 코칭 문장을 만드는 선택적 LLM이다. 따라서 Luna가
-꺼져도 자세 분석과 수치 결과는 동작한다.
-
-현재 기본값은 `COACH_LLM_MODEL=gpt-5.6-luna`이며 `gpt-5-nano` 등 다른 모델로
-환경변수만 바꿀 수 있다. 현재 OpenAI 공식 문서는 비용 중심 고빈도 작업에는
-GPT-5.6 Luna를 권장하고, GPT-5 nano도 지원하지만 이전 세대 모델로 표시한다.
-
-## 모델러 전달물 적용 절차
-
-모델러가 코드를 전달하면 다음 순서로 반영한다.
-
-1. 코드와 모델 manifest를 `coach/model_plugins/<model_id>/`에 추가한다.
-2. 입력 영상 확장자와 `user_info.json`의 키·단위를 확인한다.
-3. 필수 artifact를 생성하도록 엔트리포인트를 연결한다.
-4. `validate_artifacts.py`와 worker 단위 테스트를 통과시킨다.
-5. 승인된 골든영상으로 수치·추적률·처리시간을 비교한다.
-6. 기준을 통과하면 환경변수로 새 엔트리포인트를 선택한다.
-7. PR CI와 OCI 배포 검증을 통과시킨다.
-
-모델러 코드는 API, DB, Expo 코드를 직접 수정하지 않는다. 새로운 지표가 추가되면
-지표 ID, 단위, 계산식, 기준 범위, 신뢰도, 제한사항을 manifest와 결과 예시에
-함께 기록한다.
-
-## 남은 작업
-
-- 실제 OCI에서 DB 백업·복구, Prometheus/Grafana/Alertmanager, maintenance 동작 확인
-- 실제 Kakao Developers redirect URI와 Expo development/internal build 검증
-- 모델러가 전달하는 실제 골든영상·manifest·가중치 SHA-256을 quality baseline에 반영
-- Grafana에 새 model-quality metric panel을 추가하는 운영 대시보드 보강
-- 14일 안정성 관찰 후 레거시 경로와 미사용 Docker image 정리
-- API 전체 테스트는 로컬 OCI SDK 미설치로 일부 import가 막혀 있어 CI에서 최종 실행
-
-## 자동 진행 기록
-
-사용자가 부재 중에는 이 문서의 결정과 테스트 결과를 기준으로 구현을 계속하도록
-승인했다. 외부 OCI 상태 변경·배포 실행은 하지 않았고, 코드·문서·CI 변경만
-브랜치에 준비했다.
-
-상세 계약은 [`MODEL_HANDOFF.md`](MODEL_HANDOFF.md)와
-[`MOBILE_API.md`](MOBILE_API.md)에 정리했다.
+상세 모델 전달 규격은 [`MODEL_HANDOFF.md`](MODEL_HANDOFF.md), 모바일 endpoint와
+EAS 절차는 [`MOBILE_API.md`](MOBILE_API.md)를 참고한다.

@@ -1,0 +1,14 @@
+{
+  "contract_version": "coach-model-1.0",
+  "required_feature_ids": ["feature1"],
+  "min_tracking_coverage": 0.5,
+  "max_runtime_seconds": 3600,
+  "feature_bounds": {
+    "feature1": {
+      "min": 0.0,
+      "max": 1.0,
+      "unit": "ratio"
+    }
+  },
+  "approval_status": "pending_modeler_approval"
+}

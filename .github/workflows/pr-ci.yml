@@ -60,6 +60,13 @@ jobs:
           python coach/scripts/model_contract/quality_gate.py
           coach/tests/fixtures/model-golden
           coach/scripts/model_contract/quality_baseline.example.json
+      - name: Validate model plugin manifest and Python syntax
+        run: |
+          python coach/scripts/model_contract/validate_plugin.py \
+            coach/model_plugins/sehyeon-dcc2d7d
+          python -m compileall -q \
+            coach/model_plugins/sehyeon-dcc2d7d \
+            coach/scripts/model_contract
 
   mobile-typecheck:
     name: Mobile Expo typecheck
@@ -132,5 +139,7 @@ jobs:
         run: bash deploy/test_deploy_ghcr_release.sh
       - name: Test release verification behavior
         run: bash deploy/test_verify_release.sh
+      - name: Test model quality watchdog behavior
+        run: bash deploy/test_model_quality_watchdog.sh
       - name: Test database backup image selection
         run: bash deploy/test_database_backup_scripts.sh

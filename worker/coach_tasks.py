@@ -16,6 +16,10 @@ from job_repository import (
 )
 from job_stages import JobStageRecorder
 from object_storage_gateway import ObjectStorageGateway
+from output_validation import (
+    ModelArtifactValidationError,
+    validate_completed_artifacts,
+)
 from run_cleanup import remove_successful_run
 
 
@@ -220,6 +224,8 @@ def execute_pipeline(
             )
     except subprocess.CalledProcessError as error:
         error_log = (error.stderr or error.stdout or "")[-4000:]
+        if "MODEL_CONTRACT_INVALID=" in error_log:
+            raise ModelArtifactValidationError(error_log) from error
         raise RuntimeError(f"Coach pipeline failed:\n{error_log}") from error
 
     required_artifacts = {
@@ -235,10 +241,12 @@ def execute_pipeline(
         if not path.is_file()
     ]
     if missing:
-        raise FileNotFoundError(
+        raise ModelArtifactValidationError(
             "Coach pipeline did not create required artifacts: "
             + ", ".join(missing)
         )
+
+    validate_completed_artifacts(required_artifacts)
 
     return {
         "job_id": job_id,
@@ -270,7 +278,11 @@ def run_object_storage(
         if not 0.5 <= user_height_m <= 2.5:
             raise ValueError("user_height_m must be between 0.5 and 2.5")
 
-        mark_job_processing(job_id)
+        mark_job_processing(
+            job_id,
+            model_id=os.getenv("COACH_MODEL_ID", "sehyeon-dcc2d7d"),
+            model_release=os.getenv("MODEL_RELEASE", "local"),
+        )
         stage_recorder = JobStageRecorder(job_id)
         stage_recorder.initialize()
 
@@ -369,7 +381,13 @@ def run_object_storage(
                     job_id,
                 )
         try:
-            mark_job_failed(job_id, error)
+            mark_job_failed(
+                job_id,
+                error,
+                artifact_invalid=isinstance(
+                    error, ModelArtifactValidationError
+                ),
+            )
         except Exception:
             LOGGER.exception(
                 "Failed to persist FAILED state for job %s",
