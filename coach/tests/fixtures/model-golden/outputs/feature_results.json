@@ -1,0 +1,7 @@
+{
+  "feature1": {
+    "value": 0.046,
+    "unit": "ratio",
+    "measurement_source": "2d_pose"
+  }
+}
