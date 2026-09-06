@@ -1,0 +1,16 @@
+[Unit]
+Description=Check a newly deployed Runners Feed model and roll back on quality failure
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=github-deploy
+Group=github-deploy
+SupplementaryGroups=docker
+Environment=RUNNERS_FEED_DEPLOY_STATE_DIR=/var/lib/runners-feed-cd
+Environment=RUNNERS_FEED_DEPLOY_SCRIPT=/opt/runners-feed/current/deploy/deploy_ghcr_release.sh
+Environment=PRODUCTION_BASE_URL=https://140.238.0.197
+WorkingDirectory=/opt/runners-feed/current
+ExecStart=/opt/runners-feed/current/deploy/check_model_quality.sh

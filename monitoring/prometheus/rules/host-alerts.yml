@@ -77,3 +77,43 @@ groups:
         annotations:
           summary: Host disk usage is at least 90%
           description: Disk usage on {{ $labels.mountpoint }} has remained at or above 90% for 5 minutes (current {{ $value | printf "%.1f" }}%).
+
+      - alert: ModelSuccessRateLow
+        expr: runners_feed_model_completed_count >= 3 and runners_feed_model_success_rate < 0.95
+        for: 5m
+        labels:
+          severity: critical
+          service: runners-feed-model
+        annotations:
+          summary: Model success rate is below the rollback threshold
+          description: Recent completed jobs have a success rate of {{ $value | printf "%.3f" }}.
+
+      - alert: ModelFailureRateHigh
+        expr: runners_feed_model_completed_count >= 3 and runners_feed_model_failure_rate > 0.10
+        for: 5m
+        labels:
+          severity: critical
+          service: runners-feed-model
+        annotations:
+          summary: Model failure rate is above the rollback threshold
+          description: Recent failed jobs exceed the configured failure-rate guard.
+
+      - alert: ModelInvalidResultDetected
+        expr: runners_feed_model_invalid_result_count > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: runners-feed-model
+        annotations:
+          summary: A model job produced an invalid result artifact
+          description: Runtime artifact validation rejected at least one model result.
+
+      - alert: ModelProcessingTooLong
+        expr: runners_feed_model_stale_processing_count > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: runners-feed-model
+        annotations:
+          summary: A model job exceeded the processing-time budget
+          description: At least one queued or processing job exceeded the configured runtime guard.

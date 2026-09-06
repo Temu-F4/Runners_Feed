@@ -26,6 +26,8 @@ runtime/
 data/
 uploads/
 outputs/
+!coach/tests/fixtures/model-golden/outputs/
+!coach/tests/fixtures/model-golden/outputs/*.json
 results/
 logs/
 

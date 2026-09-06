@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Runners Feed",
+    "slug": "runners-feed",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "runnersfeed",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "package": "com.temuf4.runnersfeed",
+      "adaptiveIcon": {
+        "backgroundColor": "#090b0a"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "러닝 자세 분석을 위해 영상을 선택합니다.",
+          "cameraPermission": "러닝 자세 영상을 촬영하기 위해 카메라를 사용합니다.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-notifications"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiBaseUrl": "https://140.238.0.197/api"
+    }
+  }
+}

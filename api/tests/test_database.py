@@ -19,6 +19,7 @@ from app.database import (
     delete_user_data,
     find_active_guest_user,
     get_job,
+    get_model_quality_summary,
     list_jobs,
     list_user_artifacts,
     link_kakao_account,
@@ -123,6 +124,8 @@ class GuestSessionDatabaseTests(TestCase):
             input_object_name="uploads/input.mp4",
             user_id=user_id,
             height_snapshot_m=1.78,
+            model_id="sehyeon-dcc2d7d",
+            model_release="sha-test",
         )
 
         connection = connect.return_value.__enter__.return_value
@@ -130,7 +133,10 @@ class GuestSessionDatabaseTests(TestCase):
         query, parameters = cursor.execute.call_args.args
         self.assertIn("user_id", query)
         self.assertIn("height_snapshot_m", query)
-        self.assertEqual(parameters[-2:], (user_id, 1.78))
+        self.assertEqual(
+            parameters[-4:],
+            (user_id, 1.78, "sehyeon-dcc2d7d", "sha-test"),
+        )
 
     @patch("app.database.psycopg.connect")
     def test_get_job_scopes_query_to_owner(self, connect) -> None:
@@ -150,6 +156,33 @@ class GuestSessionDatabaseTests(TestCase):
         self.assertEqual(
             parameters,
             ("8e9f1ecb-7181-46ee-a8d4-243f5af650da", user_id),
+        )
+
+    @patch("app.database.psycopg.connect")
+    def test_model_quality_is_scoped_to_immutable_release(
+        self,
+        connect,
+    ) -> None:
+        connection = connect.return_value.__enter__.return_value
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = {"completed_count": 0}
+
+        result = get_model_quality_summary(
+            window_minutes=60,
+            max_processing_seconds=3600,
+            model_id="sehyeon-dcc2d7d",
+            model_release="sha-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+
+        self.assertEqual(result, {"completed_count": 0})
+        query, parameters = cursor.execute.call_args.args
+        self.assertIn("WHERE model_id = %s", query)
+        self.assertIn("AND model_release = %s", query)
+        self.assertIn("artifact_validation_status = 'INVALID'", query)
+        self.assertEqual(parameters[0], "sehyeon-dcc2d7d")
+        self.assertEqual(
+            parameters[1],
+            "sha-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         )
 
     @patch("app.database.psycopg.connect")

@@ -14,7 +14,12 @@ def _database_url() -> str:
     return os.environ["DATABASE_URL"]
 
 
-def mark_job_processing(job_id: str) -> None:
+def mark_job_processing(
+    job_id: str,
+    *,
+    model_id: str,
+    model_release: str,
+) -> None:
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -25,10 +30,13 @@ def mark_job_processing(job_id: str) -> None:
                     completed_at = NULL,
                     error_code = NULL,
                     error_message = NULL,
+                    model_id = %s,
+                    model_release = %s,
+                    artifact_validation_status = NULL,
                     updated_at = NOW()
                 WHERE job_id = %s
                 """,
-                (job_id,),
+                (model_id, model_release, job_id),
             )
 
 
@@ -47,6 +55,7 @@ def mark_job_success(
                     result_report_object = %s,
                     result_skeleton_object = %s,
                     result_video_object = %s,
+                    artifact_validation_status = 'VALID',
                     completed_at = NOW(),
                     updated_at = NOW()
                 WHERE job_id = %s
@@ -62,7 +71,12 @@ def mark_job_success(
             )
 
 
-def mark_job_failed(job_id: str, error: Exception) -> None:
+def mark_job_failed(
+    job_id: str,
+    error: Exception,
+    *,
+    artifact_invalid: bool = False,
+) -> None:
     error_message = str(error)[-2000:]
 
     with psycopg.connect(_database_url()) as connection:
@@ -73,6 +87,10 @@ def mark_job_failed(job_id: str, error: Exception) -> None:
                 SET status = 'FAILED',
                     error_code = %s,
                     error_message = %s,
+                    artifact_validation_status = CASE
+                        WHEN %s THEN 'INVALID'
+                        ELSE artifact_validation_status
+                    END,
                     completed_at = NOW(),
                     updated_at = NOW()
                 WHERE job_id = %s
@@ -80,6 +98,7 @@ def mark_job_failed(job_id: str, error: Exception) -> None:
                 (
                     type(error).__name__,
                     error_message,
+                    artifact_invalid,
                     job_id,
                 ),
             )

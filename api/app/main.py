@@ -1,6 +1,7 @@
 import os
 import hmac
 import logging
+import math
 import secrets
 from contextlib import asynccontextmanager
 from typing import Literal
@@ -10,8 +11,8 @@ import oci
 import psycopg
 from celery import Celery
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field, field_validator, model_validator
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from redis import Redis
 from starlette.concurrency import run_in_threadpool
 
@@ -19,9 +20,17 @@ from app.database import (
     create_account_session,
     create_guest_session,
     create_job,
+    create_mobile_auth_exchange,
+    create_mobile_oauth_transaction,
     delete_account_session,
+    delete_guest_session,
     delete_user_data,
+    consume_mobile_auth_exchange,
+    consume_mobile_oauth_transaction,
     get_job as get_persisted_job,
+    get_job_stages,
+    get_model_quality_summary,
+    get_user_profile,
     initialize_database,
     link_kakao_account,
     list_jobs as list_persisted_jobs,
@@ -29,6 +38,7 @@ from app.database import (
     mark_job_dispatch_failed,
     renew_active_account_session,
     renew_active_guest_session,
+    update_user_profile,
 )
 from app.account_identity import (
     ACCOUNT_COOKIE_NAME,
@@ -44,9 +54,18 @@ from app.account_identity import (
 )
 from app.guest_identity import (
     GUEST_COOKIE_NAME,
+    hash_guest_token,
     issue_guest_identity,
     renew_guest_identity,
     set_guest_cookie,
+)
+from app.mobile_identity import (
+    hash_mobile_value,
+    issue_mobile_exchange,
+    issue_mobile_state,
+    mobile_kakao_login_configured,
+    mobile_kakao_redirect_uri,
+    mobile_redirect,
 )
 from app.object_storage import ObjectStorageGateway, load_oci_config
 
@@ -69,6 +88,14 @@ SUPPORTED_VIDEO_CONTENT_TYPES = {
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
 }
+
+
+def _model_id() -> str:
+    return os.getenv("COACH_MODEL_ID", "sehyeon-dcc2d7d").strip()
+
+
+def _model_release() -> str:
+    return os.getenv("MODEL_RELEASE", "local").strip()
 
 
 def _video_suffix(filename: str) -> str | None:
@@ -95,9 +122,17 @@ app = FastAPI(
 )
 
 
+def _bearer_token(request: Request) -> str | None:
+    authorization = request.headers.get("Authorization", "").strip()
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer" or not token.strip():
+        return None
+    return token.strip()
+
+
 @app.middleware("http")
 async def require_api_key(request: Request, call_next):
-    if request.url.path == "/health" or request.method == "OPTIONS":
+    if request.url.path in {"/health", "/metrics"} or request.method == "OPTIONS":
         return await call_next(request)
 
     expected_key = os.getenv("API_KEY")
@@ -119,11 +154,15 @@ async def require_api_key(request: Request, call_next):
     if request.url.path.startswith("/health"):
         return await call_next(request)
 
-    account_token = request.cookies.get(ACCOUNT_COOKIE_NAME)
+    is_mobile = request.url.path.startswith("/mobile/v1")
+    bearer_token = _bearer_token(request)
+    account_cookie_token = request.cookies.get(ACCOUNT_COOKIE_NAME)
+    account_token = account_cookie_token or bearer_token
     user_id = None
     account = None
     account_identity = None
     clear_invalid_account_cookie = False
+    invalid_bearer = False
     if account_token:
         try:
             account_identity = renew_account_identity(account_token)
@@ -136,38 +175,64 @@ async def require_api_key(request: Request, call_next):
                 user_id = account["user_id"]
             else:
                 account_identity = None
-                clear_invalid_account_cookie = True
+                if bearer_token and account_token == bearer_token:
+                    invalid_bearer = True
+                else:
+                    clear_invalid_account_cookie = True
         except ValueError:
             account_identity = None
-            clear_invalid_account_cookie = True
+            if bearer_token and account_token == bearer_token:
+                invalid_bearer = True
+            else:
+                clear_invalid_account_cookie = True
 
-    guest_token = request.cookies.get(GUEST_COOKIE_NAME)
+    guest_cookie_token = request.cookies.get(GUEST_COOKIE_NAME)
+    guest_token = guest_cookie_token or (
+        bearer_token if user_id is None else None
+    )
     response_identity = None
     if user_id is None and guest_token:
         try:
             response_identity = renew_guest_identity(guest_token)
-            user_id = await run_in_threadpool(
+            guest_user_id = await run_in_threadpool(
                 renew_active_guest_session,
                 token_hash=response_identity.token_hash,
                 expires_at=response_identity.expires_at,
             )
+            if guest_user_id is not None:
+                user_id = guest_user_id
+            elif bearer_token and guest_token == bearer_token:
+                invalid_bearer = True
         except ValueError:
             # Replace malformed or oversized cookies with a valid identity.
             user_id = None
             response_identity = None
 
     if user_id is None:
-        response_identity = issue_guest_identity()
-        user_id = await run_in_threadpool(
-            create_guest_session,
-            token_hash=response_identity.token_hash,
-            expires_at=response_identity.expires_at,
-        )
+        if invalid_bearer:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid mobile session"},
+            )
+        if not is_mobile:
+            response_identity = issue_guest_identity()
+            user_id = await run_in_threadpool(
+                create_guest_session,
+                token_hash=response_identity.token_hash,
+                expires_at=response_identity.expires_at,
+            )
     request.state.user_id = user_id
     request.state.account = account
     request.state.account_token_hash = (
         account_identity.token_hash if account_identity is not None else None
     )
+    request.state.guest_token_hash = (
+        hash_guest_token(guest_token)
+        if guest_token and user_id is not None and account is None
+        else None
+    )
+    request.state.mobile_bearer = bool(bearer_token)
+    request.state.bearer_token = bearer_token
     response = await call_next(request)
     delete_identity_cookies = getattr(
         request.state, "delete_identity_cookies", False
@@ -175,6 +240,8 @@ async def require_api_key(request: Request, call_next):
     delete_guest_cookie = getattr(
         request.state, "delete_guest_cookie", False
     )
+    if is_mobile or bearer_token:
+        return response
     if delete_identity_cookies:
         response.delete_cookie(
             key=GUEST_COOKIE_NAME,
@@ -240,6 +307,20 @@ def _max_upload_bytes() -> int:
     if max_bytes <= 0:
         raise ValueError("MAX_UPLOAD_BYTES must be positive")
     return max_bytes
+
+
+def _quality_int(name: str, default: int) -> int:
+    value = int(os.getenv(name, str(default)))
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    return value
+
+
+def _quality_float(name: str, default: float) -> float:
+    value = float(os.getenv(name, str(default)))
+    if not 0 <= value <= 1:
+        raise ValueError(f"{name} must be between 0 and 1")
+    return value
 
 
 @app.get("/auth/kakao/start")
@@ -458,6 +539,8 @@ def _serialize_job(job: dict) -> dict:
         "case_id": job["case_id"],
         "input_object_name": job["input_object_name"],
         "height_snapshot_m": job["height_snapshot_m"],
+        "model_id": job.get("model_id"),
+        "model_release": job.get("model_release"),
         "status": job["status"],
         "created_at": job["created_at"],
         "started_at": job["started_at"],
@@ -492,9 +575,682 @@ def _get_owned_job_or_404(job_id: str, user_id: UUID) -> dict:
     return job
 
 
+class MobileJobRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    input_object_name: str = Field(
+        min_length=1,
+        max_length=128,
+        alias="inputObjectName",
+    )
+    user_height_cm: float | None = Field(
+        default=None,
+        ge=50,
+        le=250,
+        alias="userHeightCm",
+    )
+    case_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+        alias="caseId",
+    )
+
+    @field_validator("input_object_name")
+    @classmethod
+    def require_mobile_video_object(cls, value: str) -> str:
+        normalized = value.strip()
+        if _video_suffix(normalized) is None:
+            raise ValueError("inputObjectName must reference an MP4 or MOV")
+        return normalized
+
+
+class MobileProfileRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    height_cm: float | None = Field(
+        default=None,
+        ge=50,
+        le=250,
+        alias="heightCm",
+    )
+
+
+class MobileExchangeRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=512)
+
+
+def _require_mobile_user(request: Request) -> UUID:
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None or not getattr(request.state, "mobile_bearer", False):
+        raise HTTPException(
+            status_code=401,
+            detail="A mobile bearer session is required",
+        )
+    return user_id
+
+
+def _mobile_profile(request: Request, user_id: UUID) -> dict:
+    profile = get_user_profile(user_id)
+    if profile is None:
+        raise HTTPException(status_code=401, detail="User session is invalid")
+    is_account = request.state.account is not None
+    return {
+        "userId": str(profile["user_id"]),
+        "sessionType": "account" if is_account else "guest",
+        "authenticated": is_account,
+        "provider": profile.get("provider"),
+        "email": profile.get("email"),
+        "displayName": profile.get("display_name"),
+        "heightCm": (
+            round(float(profile["profile_height_m"]) * 100, 1)
+            if profile.get("profile_height_m") is not None
+            else None
+        ),
+        "kakaoLoginEnabled": mobile_kakao_login_configured(),
+    }
+
+
+def _mobile_stage(job: dict) -> tuple[str, float | None]:
+    status = job["status"]
+    if status == "QUEUED":
+        return "queue", 0.0
+    if status == "FAILED":
+        return "validation", None
+    if status == "SUCCESS":
+        return "result", 100.0
+
+    stages = get_job_stages(str(job["job_id"]))
+    if not stages:
+        return "queue", None
+
+    stage_name = {
+        "input_download": "keypoints",
+        "video_analysis": "keypoints",
+        "feature_extract": "features",
+        "report_generate": "validation",
+        "result_upload": "result",
+        "workspace_cleanup": "result",
+    }
+    running = next(
+        (stage for stage in stages if stage["status"] == "RUNNING"),
+        None,
+    )
+    selected = running or next(
+        (
+            stage
+            for stage in reversed(stages)
+            if stage["status"] == "SUCCESS"
+        ),
+        stages[0],
+    )
+    completed = sum(stage["status"] == "SUCCESS" for stage in stages)
+    progress = round(completed / len(stages) * 100, 1)
+    return stage_name.get(selected["stage_key"], "validation"), progress
+
+
+def _mobile_job(job: dict) -> dict:
+    stage, progress = _mobile_stage(job)
+    status = job["status"]
+    return {
+        "jobId": str(job["job_id"]),
+        "title": job["case_id"],
+        "caseId": job["case_id"],
+        "status": status,
+        "stage": stage,
+        "progressPct": progress,
+        "estimatedCompletionSeconds": None,
+        "createdAt": job["created_at"],
+        "startedAt": job["started_at"],
+        "completedAt": job["completed_at"],
+        "updatedAt": job["updated_at"],
+        "heightCm": (
+            round(float(job["height_snapshot_m"]) * 100, 1)
+            if job.get("height_snapshot_m") is not None
+            else None
+        ),
+        "modelId": job.get("model_id"),
+        "modelRelease": job.get("model_release"),
+        "error": (
+            job.get("error_code") or "coach_failed"
+            if status == "FAILED"
+            else None
+        ),
+    }
+
+
+def _mobile_result(job: dict, report: dict) -> dict:
+    raw_features = report.get("features", {})
+    metrics = report.get("metrics", [])
+    features = []
+    for metric in metrics:
+        feature_id = metric.get("id")
+        if not isinstance(feature_id, str):
+            continue
+        raw = raw_features.get(feature_id, {})
+        raw = raw if isinstance(raw, dict) else {}
+        value = metric.get("value")
+        confidence = raw.get("confidence_pct")
+        reference = raw.get("reference_range")
+        if (
+            isinstance(reference, dict)
+            and isinstance(reference.get("min"), (int, float))
+            and isinstance(reference.get("max"), (int, float))
+            and math.isfinite(float(reference["min"]))
+            and math.isfinite(float(reference["max"]))
+        ):
+            reference_range = {
+                "kind": reference.get("kind", "reference"),
+                "min": reference.get("min"),
+                "max": reference.get("max"),
+                "unit": reference.get("unit", metric.get("unit", "")),
+                "criterionVersion": reference.get(
+                    "criterion_version", "unversioned"
+                ),
+                "evidenceIds": reference.get("evidence_ids", []),
+            }
+        else:
+            reference_range = None
+        raw_series = raw.get("series", [])
+        series = []
+        if isinstance(raw_series, list):
+            for point in raw_series:
+                if not isinstance(point, dict):
+                    continue
+                frame_index = point.get("frame_index", point.get("frameIndex"))
+                timestamp_ms = point.get("timestamp_ms", point.get("timestampMs"))
+                value = point.get("value")
+                confidence_pct = point.get(
+                    "confidence_pct", point.get("confidencePct")
+                )
+                if not isinstance(frame_index, int):
+                    continue
+                series.append(
+                    {
+                        "frameIndex": frame_index,
+                        "timestampMs": (
+                            float(timestamp_ms)
+                            if isinstance(timestamp_ms, (int, float))
+                            else 0
+                        ),
+                        "value": (
+                            float(value)
+                            if isinstance(value, (int, float))
+                            and math.isfinite(float(value))
+                            else None
+                        ),
+                        "confidencePct": (
+                            float(confidence_pct)
+                            if isinstance(confidence_pct, (int, float))
+                            and math.isfinite(float(confidence_pct))
+                            else None
+                        ),
+                    }
+                )
+        features.append(
+            {
+                "featureId": feature_id,
+                "label": metric.get("label", feature_id),
+                "priority": raw.get("priority"),
+                "verdict": raw.get("verdict", "review"),
+                "representativeValue": value,
+                "unit": metric.get("unit", ""),
+                "aggregation": raw.get("aggregation", "reported"),
+                "referenceRange": reference_range,
+                "series": series,
+                "interpretation": raw.get("interpretation", ""),
+                "coachingAction": raw.get("coaching_action"),
+                "confidencePct": confidence,
+                "confidenceLevel": raw.get(
+                    "confidence_level",
+                    "excluded" if confidence is None else "review",
+                ),
+                "limitation": raw.get(
+                    "limitation",
+                    report.get("notice", "측정 조건에 따라 결과가 달라질 수 있습니다."),
+                ),
+                "evidenceIds": raw.get("evidence_ids", []),
+            }
+        )
+
+    raw_narrative = report.get("narrative", {})
+    narrative_status = (
+        "success"
+        if raw_narrative.get("status") == "success"
+        and isinstance(raw_narrative.get("priority_actions"), list)
+        else "unavailable"
+    )
+    narrative = {
+        "status": narrative_status,
+        "model": raw_narrative.get("model"),
+        "priorityActions": raw_narrative.get("priority_actions", []),
+        "maintainActions": raw_narrative.get("maintain_actions", []),
+        "disclaimer": raw_narrative.get(
+            "disclaimer",
+            "이 내용은 러닝 동작 참고용이며 의료 진단이나 부상 예측이 아닙니다.",
+        ),
+        "validatorVersion": raw_narrative.get(
+            "validator_version", "unvalidated"
+        ),
+    }
+    video = report.get("video", {})
+    tracking = report.get("tracking", {})
+    return {
+        "jobId": str(job["job_id"]),
+        "modelId": job.get("model_id"),
+        "modelRelease": job.get("model_release"),
+        "createdAt": job["created_at"],
+        "completedAt": job["completed_at"],
+        "analyzedFrameCount": tracking.get("tracked_frames", 0),
+        "totalFrameCount": tracking.get(
+            "total_frames", video.get("frame_count", 0)
+        ),
+        "features": features,
+        "evidence": [
+            {
+                "evidenceId": (
+                    item.get("evidence_id")
+                    or item.get("evidenceId")
+                    or item.get("id")
+                    or f"evidence-{index + 1}"
+                ),
+                "frameIndex": item.get("frame_index", item.get("frameIndex")),
+                "timestampMs": item.get(
+                    "timestamp_ms", item.get("timestampMs")
+                ),
+                "type": item.get("type", "source"),
+                "label": item.get("label") or item.get("title", "근거"),
+                "description": item.get("description")
+                or item.get("excerpt_summary", ""),
+                "uri": item.get("uri") or item.get("url"),
+                "metadata": item,
+            }
+            for index, item in enumerate(report.get("evidence", []))
+            if isinstance(item, dict)
+        ],
+        "narrative": narrative,
+    }
+
+
+@app.post("/mobile/v1/sessions/guest")
+def create_mobile_guest_session(request: Request):
+    existing_user_id = getattr(request.state, "user_id", None)
+    existing_token = getattr(request.state, "bearer_token", None)
+    if (
+        existing_user_id is not None
+        and existing_token
+        and request.state.guest_token_hash is not None
+    ):
+        identity = renew_guest_identity(existing_token)
+        return {
+            "accessToken": existing_token,
+            "tokenType": "Bearer",
+            "sessionType": "guest",
+            "expiresAt": identity.expires_at,
+        }
+    identity = issue_guest_identity()
+    user_id = create_guest_session(
+        token_hash=identity.token_hash,
+        expires_at=identity.expires_at,
+    )
+    return {
+        "accessToken": identity.token,
+        "tokenType": "Bearer",
+        "sessionType": "guest",
+        "userId": str(user_id),
+        "expiresAt": identity.expires_at,
+    }
+
+
+@app.post("/mobile/v1/auth/kakao/start")
+def start_mobile_kakao_login(request: Request):
+    user_id = _require_mobile_user(request)
+    if not mobile_kakao_login_configured():
+        raise HTTPException(status_code=503, detail="Mobile Kakao login is not configured")
+    try:
+        state = issue_mobile_state()
+        create_mobile_oauth_transaction(
+            state_hash=state.value_hash,
+            user_id=user_id,
+            expires_at=state.expires_at,
+        )
+        authorization_url = kakao_authorization_url(
+            state.value,
+            redirect_uri=mobile_kakao_redirect_uri(),
+        )
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Mobile Kakao login is not configured") from error
+    return {
+        "authorizationUrl": authorization_url,
+        "expiresAt": state.expires_at,
+    }
+
+
+@app.get("/mobile/v1/auth/kakao/callback")
+async def finish_mobile_kakao_login(
+    code: str | None = Query(default=None, max_length=2048),
+    state: str | None = Query(default=None, max_length=512),
+    error: str | None = Query(default=None, max_length=255),
+):
+    if error or not code or not state:
+        return RedirectResponse(mobile_redirect(error="kakao_login_failed"), status_code=302)
+    current_user_id = await run_in_threadpool(
+        consume_mobile_oauth_transaction,
+        hash_mobile_value(state),
+    )
+    if current_user_id is None:
+        return RedirectResponse(mobile_redirect(error="invalid_or_expired_state"), status_code=302)
+    try:
+        profile = await run_in_threadpool(
+            fetch_kakao_profile,
+            code,
+            redirect_uri=mobile_kakao_redirect_uri(),
+        )
+        account_user_id = await run_in_threadpool(
+            link_kakao_account,
+            current_user_id=current_user_id,
+            provider_user_id=profile.provider_user_id,
+            email=profile.email,
+            display_name=profile.display_name,
+        )
+        exchange = issue_mobile_exchange()
+        await run_in_threadpool(
+            create_mobile_auth_exchange,
+            code_hash=exchange.value_hash,
+            user_id=account_user_id,
+            expires_at=exchange.expires_at,
+        )
+    except Exception:
+        LOGGER.exception("Mobile Kakao login callback failed")
+        return RedirectResponse(mobile_redirect(error="kakao_login_failed"), status_code=302)
+    return RedirectResponse(mobile_redirect(code=exchange.value), status_code=302)
+
+
+@app.post("/mobile/v1/auth/kakao/exchange")
+def exchange_mobile_kakao_code(payload: MobileExchangeRequest):
+    user_id = consume_mobile_auth_exchange(hash_mobile_value(payload.code))
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired exchange code")
+    identity = issue_account_identity()
+    create_account_session(
+        token_hash=identity.token_hash,
+        user_id=user_id,
+        expires_at=identity.expires_at,
+    )
+    return {
+        "accessToken": identity.token,
+        "tokenType": "Bearer",
+        "sessionType": "account",
+        "expiresAt": identity.expires_at,
+    }
+
+
+@app.get("/mobile/v1/me")
+def mobile_me(request: Request):
+    return _mobile_profile(request, _require_mobile_user(request))
+
+
+@app.patch("/mobile/v1/me/profile")
+def update_mobile_profile(
+    payload: MobileProfileRequest,
+    request: Request,
+):
+    user_id = _require_mobile_user(request)
+    profile_height_m = (
+        payload.height_cm / 100 if payload.height_cm is not None else None
+    )
+    update_user_profile(
+        user_id=user_id,
+        profile_height_m=profile_height_m,
+    )
+    return _mobile_profile(request, user_id)
+
+
+@app.post("/mobile/v1/auth/logout")
+def mobile_logout(request: Request):
+    _require_mobile_user(request)
+    if request.state.account_token_hash is not None:
+        delete_account_session(request.state.account_token_hash)
+    if request.state.guest_token_hash is not None:
+        delete_guest_session(request.state.guest_token_hash)
+    return {"status": "logged_out"}
+
+
+@app.get("/mobile/v1/dashboard")
+def mobile_dashboard(request: Request):
+    user_id = _require_mobile_user(request)
+    jobs = list_persisted_jobs(user_id=user_id, limit=20)
+    active = next(
+        (job for job in jobs if job["status"] in {"QUEUED", "PROCESSING"}),
+        None,
+    )
+    return {
+        "profile": _mobile_profile(request, user_id),
+        "activeJob": _mobile_job(active) if active else None,
+        "jobs": [_mobile_job(job) for job in jobs],
+        "prioritySignals": [],
+        "trend": [],
+    }
+
+
+@app.post("/mobile/v1/uploads", status_code=201)
+def create_mobile_upload(payload: CreateUploadRequest, request: Request):
+    _require_mobile_user(request)
+    return create_upload(payload)
+
+
+@app.post("/mobile/v1/uploads/complete")
+def complete_mobile_upload(
+    payload: CompleteUploadRequest,
+    request: Request,
+):
+    _require_mobile_user(request)
+    return complete_upload(payload)
+
+
+@app.post("/mobile/v1/jobs", status_code=202)
+def create_mobile_job(payload: MobileJobRequest, request: Request):
+    user_id = _require_mobile_user(request)
+    profile = get_user_profile(user_id)
+    height_cm = payload.user_height_cm
+    if height_cm is None and profile is not None:
+        stored_height = profile.get("profile_height_m")
+        height_cm = float(stored_height) * 100 if stored_height is not None else None
+    if height_cm is None:
+        raise HTTPException(status_code=422, detail="userHeightCm is required")
+    raw_job = create_coach_job(
+        CreateCoachJobRequest(
+            case_id=payload.case_id or f"analysis-{uuid4().hex[:12]}",
+            input_object_name=payload.input_object_name,
+            user_height_m=height_cm / 100,
+        ),
+        request,
+    )
+    job = get_persisted_job(job_id=raw_job["job_id"], user_id=user_id)
+    if job is None:
+        raise HTTPException(status_code=500, detail="Mobile job was not persisted")
+    return _mobile_job(job)
+
+
+@app.get("/mobile/v1/jobs")
+def list_mobile_jobs(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    user_id = _require_mobile_user(request)
+    jobs = list_persisted_jobs(user_id=user_id, limit=limit)
+    return {"jobs": [_mobile_job(job) for job in jobs], "nextCursor": None}
+
+
+@app.get("/mobile/v1/jobs/{job_id}")
+def get_mobile_job(job_id: str, request: Request):
+    job = _get_owned_job_or_404(job_id, _require_mobile_user(request))
+    return _mobile_job(job)
+
+
+@app.post("/mobile/v1/jobs/{job_id}/result-video-url")
+def create_mobile_result_url(job_id: str, request: Request):
+    _require_mobile_user(request)
+    result = create_result_url(job_id, request)
+    return {
+        "jobId": result["job_id"],
+        "renderedVideoUrl": result["rendered_video_url"],
+        "expiresAt": result["expires_at"],
+    }
+
+
+@app.get("/mobile/v1/jobs/{job_id}/result")
+def get_mobile_result(job_id: str, request: Request):
+    user_id = _require_mobile_user(request)
+    job = _get_owned_job_or_404(job_id, user_id)
+    if job["status"] != "SUCCESS":
+        raise HTTPException(status_code=409, detail="Result is not available yet")
+    report_object = job["result_report_object"]
+    if not report_object:
+        raise HTTPException(status_code=404, detail="Analysis result is unavailable")
+    try:
+        report = ObjectStorageGateway().load_result_json(report_object)
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Failed to load analysis result") from error
+    return _mobile_result(job, report)
+
+
+@app.delete("/mobile/v1/me/data")
+def delete_mobile_data(request: Request):
+    _require_mobile_user(request)
+    return delete_my_data(request)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def metrics():
+    try:
+        summary = get_model_quality_summary(
+            window_minutes=_quality_int("MODEL_QUALITY_WINDOW_MINUTES", 60),
+            max_processing_seconds=_quality_int(
+                "MODEL_QUALITY_MAX_PROCESSING_SECONDS", 3600
+            ),
+            model_id=_model_id(),
+            model_release=_model_release(),
+        )
+    except Exception:
+        LOGGER.exception("Failed to collect model metrics")
+        return PlainTextResponse(
+            "# HELP runners_feed_model_metrics_up Whether model metrics are available.\n"
+            "# TYPE runners_feed_model_metrics_up gauge\n"
+            "runners_feed_model_metrics_up 0\n",
+            status_code=503,
+        )
+
+    completed = int(summary.get("completed_count") or 0)
+    success = int(summary.get("success_count") or 0)
+    failure = int(summary.get("failure_count") or 0)
+    invalid = int(summary.get("invalid_result_count") or 0)
+    stale = int(summary.get("stale_processing_count") or 0)
+    success_rate = success / completed if completed else 1.0
+    failure_rate = failure / completed if completed else 0.0
+    average = summary.get("average_processing_seconds")
+    lines = [
+        "# HELP runners_feed_model_metrics_up Whether model metrics are available.",
+        "# TYPE runners_feed_model_metrics_up gauge",
+        "runners_feed_model_metrics_up 1",
+        "# HELP runners_feed_model_completed_count Completed jobs in the quality window.",
+        "# TYPE runners_feed_model_completed_count gauge",
+        f"runners_feed_model_completed_count {completed}",
+        "# HELP runners_feed_model_success_count Successful jobs in the quality window.",
+        "# TYPE runners_feed_model_success_count gauge",
+        f"runners_feed_model_success_count {success}",
+        "# HELP runners_feed_model_failure_count Failed jobs in the quality window.",
+        "# TYPE runners_feed_model_failure_count gauge",
+        f"runners_feed_model_failure_count {failure}",
+        "# HELP runners_feed_model_invalid_result_count Jobs rejected by artifact validation.",
+        "# TYPE runners_feed_model_invalid_result_count gauge",
+        f"runners_feed_model_invalid_result_count {invalid}",
+        "# HELP runners_feed_model_stale_processing_count Jobs exceeding the processing budget.",
+        "# TYPE runners_feed_model_stale_processing_count gauge",
+        f"runners_feed_model_stale_processing_count {stale}",
+        "# HELP runners_feed_model_success_rate Success rate in the quality window.",
+        "# TYPE runners_feed_model_success_rate gauge",
+        f"runners_feed_model_success_rate {success_rate}",
+        "# HELP runners_feed_model_failure_rate Failure rate in the quality window.",
+        "# TYPE runners_feed_model_failure_rate gauge",
+        f"runners_feed_model_failure_rate {failure_rate}",
+        "# HELP runners_feed_model_average_processing_seconds Average processing time in seconds.",
+        "# TYPE runners_feed_model_average_processing_seconds gauge",
+        f"runners_feed_model_average_processing_seconds {float(average or 0)}",
+    ]
+    return PlainTextResponse("\n".join(lines) + "\n")
+
+
+@app.get("/health/model-quality")
+def model_quality_health():
+    window_minutes = _quality_int("MODEL_QUALITY_WINDOW_MINUTES", 60)
+    min_sample_size = _quality_int("MODEL_QUALITY_MIN_SAMPLE_SIZE", 3)
+    max_processing_seconds = _quality_int(
+        "MODEL_QUALITY_MAX_PROCESSING_SECONDS", 3600
+    )
+    min_success_rate = _quality_float("MODEL_QUALITY_MIN_SUCCESS_RATE", 0.95)
+    max_failure_rate = _quality_float("MODEL_QUALITY_MAX_FAILURE_RATE", 0.10)
+    summary = get_model_quality_summary(
+        window_minutes=window_minutes,
+        max_processing_seconds=max_processing_seconds,
+        model_id=_model_id(),
+        model_release=_model_release(),
+    )
+    completed_count = int(summary.get("completed_count") or 0)
+    success_count = int(summary.get("success_count") or 0)
+    failure_count = int(summary.get("failure_count") or 0)
+    invalid_result_count = int(summary.get("invalid_result_count") or 0)
+    stale_processing_count = int(summary.get("stale_processing_count") or 0)
+    success_rate = success_count / completed_count if completed_count else None
+    failure_rate = failure_count / completed_count if completed_count else None
+    average_processing_seconds = summary.get("average_processing_seconds")
+    if average_processing_seconds is not None:
+        average_processing_seconds = float(average_processing_seconds)
+    conditions: list[str] = []
+    if stale_processing_count:
+        conditions.append("long_processing_detected")
+    if invalid_result_count:
+        conditions.append("invalid_result_artifact_detected")
+    if completed_count >= min_sample_size:
+        if success_rate is not None and success_rate < min_success_rate:
+            conditions.append("success_rate_below_threshold")
+        if failure_rate is not None and failure_rate > max_failure_rate:
+            conditions.append("failure_rate_above_threshold")
+    status = "rollback_required" if conditions else (
+        "insufficient_sample" if completed_count < min_sample_size else "ok"
+    )
+    payload = {
+        "status": status,
+        "modelId": _model_id(),
+        "modelRelease": _model_release(),
+        "rollbackConditionsTriggered": conditions,
+        "windowMinutes": window_minutes,
+        "thresholds": {
+            "minSampleSize": min_sample_size,
+            "maxProcessingSeconds": max_processing_seconds,
+            "minSuccessRate": min_success_rate,
+            "maxFailureRate": max_failure_rate,
+        },
+        "observed": {
+            "completedCount": completed_count,
+            "successCount": success_count,
+            "failureCount": failure_count,
+            "invalidResultCount": invalid_result_count,
+            "staleProcessingCount": stale_processing_count,
+            "successRate": success_rate,
+            "failureRate": failure_rate,
+            "averageProcessingSeconds": average_processing_seconds,
+        },
+    }
+    if conditions:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 @app.get("/health/dependencies")
@@ -594,6 +1350,8 @@ def create_coach_job(
         input_object_name=payload.input_object_name,
         user_id=request.state.user_id,
         height_snapshot_m=payload.user_height_m,
+        model_id=_model_id(),
+        model_release=_model_release(),
     )
 
     try:

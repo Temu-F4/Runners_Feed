@@ -14,6 +14,11 @@ on:
       - compose.backup.yaml
       - deploy/deploy_ghcr_release.sh
       - deploy/verify_release.sh
+      - deploy/verify_model_candidate.sh
+      - deploy/check_model_quality.sh
+      - deploy/test_model_quality_watchdog.sh
+      - deploy/ci_disk_guard.sh
+      - deploy/sync_systemd_units.sh
       - deploy/backup/**
       - deploy/run_database_backup.sh
       - deploy/test_database_backup_scripts.sh
@@ -53,6 +58,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Guard CI Docker disk capacity
+        run: bash deploy/ci_disk_guard.sh
+
       - name: Validate Compose configuration
         env:
           API_KEY: ci-placeholder
@@ -78,6 +86,14 @@ jobs:
           -v "$PWD/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"
           prom/alertmanager:v0.33.1
           check-config /etc/alertmanager/alertmanager.yml
+
+      - name: Run model contract and quality gate
+        run: |
+          python3 coach/scripts/model_contract/validate_plugin.py \
+            coach/model_plugins/sehyeon-dcc2d7d
+          python3 coach/scripts/model_contract/quality_gate.py \
+            coach/tests/fixtures/model-golden \
+            coach/scripts/model_contract/quality_baseline.example.json
 
       - name: Set build metadata
         run: |
@@ -199,6 +215,12 @@ jobs:
             done
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Prune dangling release build data
+        if: always()
+        run: |
+          docker image prune --force
+          docker builder prune --force --filter until=24h
+
   deploy:
     name: Deploy production
     needs: release
@@ -239,6 +261,14 @@ jobs:
         env:
           PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
           RUNNERS_FEED_ENV_FILE: /etc/runners-feed/prod.env
+          COACH_MODEL_ID: ${{ vars.COACH_MODEL_ID }}
+          COACH_AGENT_ENABLED: ${{ vars.COACH_AGENT_ENABLED }}
+          COACH_LLM_MODEL: ${{ vars.COACH_LLM_MODEL }}
+          MODEL_CANARY_REQUIRED: ${{ vars.MODEL_CANARY_REQUIRED }}
+          MODEL_GOLDEN_DIR: ${{ vars.MODEL_GOLDEN_DIR }}
+          MODEL_QUALITY_WATCHDOG_SECONDS: ${{ vars.MODEL_QUALITY_WATCHDOG_SECONDS }}
+          KAKAO_MOBILE_REDIRECT_URI: ${{ vars.KAKAO_MOBILE_REDIRECT_URI }}
+          MOBILE_APP_REDIRECT_URI: ${{ vars.MOBILE_APP_REDIRECT_URI }}
         run: bash "/opt/runners-feed/releases/${GITHUB_SHA}/deploy/deploy_ghcr_release.sh" "${IMAGE_TAG}"
 
       - name: Promote successful production checkout
@@ -248,3 +278,7 @@ jobs:
           next_link=/opt/runners-feed/current.next
           ln -sfn "/opt/runners-feed/releases/${GITHUB_SHA}" "${next_link}"
           mv -Tf "${next_link}" /opt/runners-feed/current
+
+      - name: Synchronize operational systemd units
+        if: success()
+        run: bash /opt/runners-feed/current/deploy/sync_systemd_units.sh

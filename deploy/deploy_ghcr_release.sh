@@ -8,9 +8,12 @@ readonly ENV_FILE="${RUNNERS_FEED_ENV_FILE:-/etc/runners-feed/prod.env}"
 readonly BASE_URL="${PRODUCTION_BASE_URL:-https://140.238.0.197}"
 readonly STATE_DIR="${RUNNERS_FEED_DEPLOY_STATE_DIR:-/var/lib/runners-feed-cd}"
 readonly STATE_FILE="${STATE_DIR}/last-successful.env"
+readonly CANDIDATE_STATE_FILE="${STATE_DIR}/model-candidate.env"
+readonly WATCHDOG_SECONDS="${MODEL_QUALITY_WATCHDOG_SECONDS:-3600}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly PROJECT_ROOT
 readonly RELEASE_VERIFIER="${RELEASE_VERIFIER:-${PROJECT_ROOT}/deploy/verify_release.sh}"
+readonly MODEL_CANDIDATE_VERIFIER="${MODEL_CANDIDATE_VERIFIER:-${PROJECT_ROOT}/deploy/verify_model_candidate.sh}"
 readonly COMPOSE_FILES=(
   -f "${PROJECT_ROOT}/compose.yaml"
   -f "${PROJECT_ROOT}/compose.coach.yaml"
@@ -34,6 +37,15 @@ if [[ ! -r "${RELEASE_VERIFIER}" ]]; then
   echo "Release verifier is not readable: ${RELEASE_VERIFIER}" >&2
   exit 2
 fi
+if [[ ! -r "${MODEL_CANDIDATE_VERIFIER}" ]]; then
+  echo "Model candidate verifier is not readable: ${MODEL_CANDIDATE_VERIFIER}" >&2
+  exit 2
+fi
+
+if [[ ! "${WATCHDOG_SECONDS}" =~ ^[0-9]+$ ]] || [[ "${WATCHDOG_SECONDS}" -lt 60 ]]; then
+  echo "MODEL_QUALITY_WATCHDOG_SECONDS must be an integer of at least 60" >&2
+  exit 2
+fi
 
 mkdir -p "${STATE_DIR}"
 
@@ -48,6 +60,7 @@ compose() {
 
 verify_release() {
   local target_tag="$1"
+  local allow_legacy_quality="${2:-0}"
 
   env \
     IMAGE_PREFIX="${IMAGE_PREFIX}" \
@@ -55,15 +68,26 @@ verify_release() {
     RUNNERS_FEED_ENV_FILE="${ENV_FILE}" \
     RUNNERS_FEED_PROJECT_DIR="${PROJECT_ROOT}" \
     RUNNERS_FEED_DEPLOY_STATE_DIR="${STATE_DIR}" \
+    ALLOW_LEGACY_MODEL_QUALITY="${allow_legacy_quality}" \
     bash "${RELEASE_VERIFIER}" "${target_tag}"
 }
 
 deploy_tag() {
+  local run_canary="${2:-1}"
+  local allow_legacy_quality="${3:-0}"
   IMAGE_TAG="$1"
   export IMAGE_TAG
 
   compose config --quiet || return 1
   compose pull "${SERVICES[@]}" "${SUPPORT_SERVICES[@]}" || return 1
+  if [[ "${run_canary}" == "1" ]] \
+    && [[ "${DISABLE_MODEL_CANARY:-0}" != "1" ]]; then
+    env \
+      IMAGE_PREFIX="${IMAGE_PREFIX}" \
+      RUNNERS_FEED_ENV_FILE="${ENV_FILE}" \
+      RUNNERS_FEED_PROJECT_DIR="${PROJECT_ROOT}" \
+      bash "${MODEL_CANDIDATE_VERIFIER}" "$1" || return 1
+  fi
   compose up \
     --detach \
     --no-build \
@@ -71,7 +95,7 @@ deploy_tag() {
     --wait \
     --wait-timeout 180 \
     "${SERVICES[@]}" "${SUPPORT_SERVICES[@]}" || return 1
-  verify_release "$1" || return 1
+  verify_release "$1" "${allow_legacy_quality}" || return 1
 }
 
 previous_tag=""
@@ -81,11 +105,31 @@ if [[ -r "${STATE_FILE}" ]]; then
 fi
 
 echo "Deploying ${TARGET_TAG}"
-if deploy_tag "${TARGET_TAG}"; then
+if deploy_tag \
+  "${TARGET_TAG}" \
+  1 \
+  "${ALLOW_LEGACY_MODEL_QUALITY:-0}"; then
   temporary_state="$(mktemp "${STATE_DIR}/last-successful.XXXXXX")"
   printf 'IMAGE_TAG=%s\n' "${TARGET_TAG}" >"${temporary_state}"
   chmod 0640 "${temporary_state}"
   mv "${temporary_state}" "${STATE_FILE}"
+  if [[ "${DISABLE_MODEL_WATCHDOG_ARM:-0}" != "1" ]] \
+    && [[ "${previous_tag}" =~ ^sha-[0-9a-f]{40}$ ]] \
+    && [[ "${previous_tag}" != "${TARGET_TAG}" ]]; then
+    armed_at="$(date +%s)"
+    expires_at="$((armed_at + WATCHDOG_SECONDS))"
+    temporary_candidate="$(mktemp "${STATE_DIR}/model-candidate.XXXXXX")"
+    {
+      printf 'TARGET_TAG=%s\n' "${TARGET_TAG}"
+      printf 'PREVIOUS_TAG=%s\n' "${previous_tag}"
+      printf 'MODEL_ID=%s\n' "${COACH_MODEL_ID:-sehyeon-dcc2d7d}"
+      printf 'ARMED_AT_EPOCH=%s\n' "${armed_at}"
+      printf 'EXPIRES_AT_EPOCH=%s\n' "${expires_at}"
+    } >"${temporary_candidate}"
+    chmod 0640 "${temporary_candidate}"
+    mv "${temporary_candidate}" "${CANDIDATE_STATE_FILE}"
+    echo "Model quality watchdog armed for ${WATCHDOG_SECONDS} seconds"
+  fi
   echo "Deployment succeeded: ${TARGET_TAG}"
   exit 0
 fi
@@ -96,7 +140,7 @@ compose logs --no-color --tail 150 "${SERVICES[@]}" "${SUPPORT_SERVICES[@]}" || 
 
 if [[ "${previous_tag}" =~ ^sha-[0-9a-f]{40}$ ]] && [[ "${previous_tag}" != "${TARGET_TAG}" ]]; then
   echo "Rolling back to ${previous_tag}" >&2
-  if deploy_tag "${previous_tag}"; then
+  if deploy_tag "${previous_tag}" 0 1; then
     echo "Rollback succeeded: ${previous_tag}" >&2
   else
     echo "Rollback failed: ${previous_tag}" >&2

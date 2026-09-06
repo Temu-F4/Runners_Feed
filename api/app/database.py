@@ -245,6 +245,147 @@ def delete_account_session(token_hash: str) -> None:
             )
 
 
+def delete_guest_session(token_hash: str) -> None:
+    _validate_token_hash(token_hash)
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM guest_sessions WHERE token_hash = %s",
+                (token_hash,),
+            )
+
+
+def create_mobile_oauth_transaction(
+    *,
+    state_hash: str,
+    user_id: UUID,
+    expires_at: datetime,
+) -> None:
+    _validate_token_hash(state_hash)
+    if expires_at.tzinfo is None:
+        raise ValueError("Mobile OAuth expiry must include a timezone")
+
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO mobile_oauth_transactions
+                    (state_hash, user_id, expires_at)
+                VALUES (%s, %s, %s)
+                """,
+                (state_hash, user_id, expires_at),
+            )
+
+
+def consume_mobile_oauth_transaction(state_hash: str) -> UUID | None:
+    _validate_token_hash(state_hash)
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM mobile_oauth_transactions
+                WHERE state_hash = %s
+                  AND expires_at > NOW()
+                RETURNING user_id
+                """,
+                (state_hash,),
+            )
+            row = cursor.fetchone()
+    return row[0] if row is not None else None
+
+
+def create_mobile_auth_exchange(
+    *,
+    code_hash: str,
+    user_id: UUID,
+    expires_at: datetime,
+) -> None:
+    _validate_token_hash(code_hash)
+    if expires_at.tzinfo is None:
+        raise ValueError("Mobile exchange expiry must include a timezone")
+
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO mobile_auth_exchanges
+                    (code_hash, user_id, expires_at)
+                VALUES (%s, %s, %s)
+                """,
+                (code_hash, user_id, expires_at),
+            )
+
+
+def consume_mobile_auth_exchange(code_hash: str) -> UUID | None:
+    _validate_token_hash(code_hash)
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE mobile_auth_exchanges
+                SET consumed_at = NOW()
+                WHERE code_hash = %s
+                  AND expires_at > NOW()
+                  AND consumed_at IS NULL
+                RETURNING user_id
+                """,
+                (code_hash,),
+            )
+            row = cursor.fetchone()
+    return row[0] if row is not None else None
+
+
+def get_user_profile(user_id: UUID) -> dict[str, Any] | None:
+    with psycopg.connect(
+        _database_url(),
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT u.user_id,
+                       u.user_type,
+                       u.profile_height_m,
+                       i.provider,
+                       i.email,
+                       i.display_name
+                FROM app_users AS u
+                LEFT JOIN oauth_identities AS i
+                  ON i.user_id = u.user_id
+                 AND i.provider = 'kakao'
+                WHERE u.user_id = %s
+                """,
+                (user_id,),
+            )
+            return cursor.fetchone()
+
+
+def update_user_profile(
+    *,
+    user_id: UUID,
+    profile_height_m: float | None,
+) -> dict[str, Any] | None:
+    if profile_height_m is not None and not 0.5 <= profile_height_m <= 2.5:
+        raise ValueError("profile_height_m must be between 0.5 and 2.5")
+
+    with psycopg.connect(
+        _database_url(),
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE app_users
+                SET profile_height_m = %s,
+                    updated_at = NOW()
+                WHERE user_id = %s
+                RETURNING user_id, user_type, profile_height_m
+                """,
+                (profile_height_m, user_id),
+            )
+            return cursor.fetchone()
+
+
 def link_kakao_account(
     *,
     current_user_id: UUID,
@@ -395,6 +536,8 @@ def create_job(
     input_object_name: str,
     user_id: UUID,
     height_snapshot_m: float,
+    model_id: str,
+    model_release: str,
 ) -> None:
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
@@ -406,9 +549,11 @@ def create_job(
                     input_object_name,
                     user_id,
                     height_snapshot_m,
+                    model_id,
+                    model_release,
                     status
                 )
-                VALUES (%s, %s, %s, %s, %s, 'QUEUED')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'QUEUED')
                 """,
                 (
                     job_id,
@@ -416,6 +561,8 @@ def create_job(
                     input_object_name,
                     user_id,
                     height_snapshot_m,
+                    model_id,
+                    model_release,
                 ),
             )
 
@@ -453,6 +600,9 @@ def get_job(
                        case_id,
                        input_object_name,
                        height_snapshot_m,
+                       model_id,
+                       model_release,
+                       artifact_validation_status,
                        status,
                        result_details_object,
                        result_predictions_object,
@@ -492,6 +642,9 @@ def list_jobs(
                        case_id,
                        input_object_name,
                        height_snapshot_m,
+                       model_id,
+                       model_release,
+                       artifact_validation_status,
                        status,
                        result_details_object,
                        result_predictions_object,
@@ -511,6 +664,112 @@ def list_jobs(
                 (user_id, limit),
             )
             return list(cursor.fetchall())
+
+
+def get_job_stages(job_id: str) -> list[dict[str, Any]]:
+    with psycopg.connect(
+        _database_url(),
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT stage_key,
+                       stage_order,
+                       status,
+                       started_at,
+                       completed_at,
+                       duration_seconds,
+                       error_code
+                FROM inference_job_stages
+                WHERE job_id = %s
+                ORDER BY stage_order
+                """,
+                (job_id,),
+            )
+            return list(cursor.fetchall())
+
+
+def get_model_quality_summary(
+    *,
+    window_minutes: int,
+    max_processing_seconds: int,
+    model_id: str,
+    model_release: str,
+) -> dict[str, Any]:
+    if window_minutes <= 0 or max_processing_seconds <= 0:
+        raise ValueError("quality window and processing limit must be positive")
+    if not model_id or not model_release:
+        raise ValueError("model ID and release must not be empty")
+
+    with psycopg.connect(
+        _database_url(),
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH release_jobs AS (
+                    SELECT *
+                    FROM inference_jobs
+                    WHERE model_id = %s
+                      AND model_release = %s
+                )
+                SELECT
+                    COUNT(*) FILTER (
+                        WHERE status IN ('SUCCESS', 'FAILED')
+                          AND completed_at >= NOW() - (%s * INTERVAL '1 minute')
+                    ) AS completed_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'SUCCESS'
+                          AND completed_at >= NOW() - (%s * INTERVAL '1 minute')
+                    ) AS success_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'FAILED'
+                          AND completed_at >= NOW() - (%s * INTERVAL '1 minute')
+                    ) AS failure_count,
+                    COUNT(*) FILTER (
+                        WHERE (
+                                artifact_validation_status = 'INVALID'
+                                OR (
+                                    status = 'SUCCESS'
+                                    AND (
+                                        artifact_validation_status IS DISTINCT FROM 'VALID'
+                                        OR result_report_object IS NULL
+                                    )
+                                )
+                              )
+                          AND completed_at >= NOW() - (%s * INTERVAL '1 minute')
+                    ) AS invalid_result_count,
+                    COUNT(*) FILTER (
+                        WHERE status IN ('QUEUED', 'PROCESSING')
+                          AND COALESCE(started_at, created_at)
+                              < NOW() - (%s * INTERVAL '1 second')
+                    ) AS stale_processing_count,
+                    AVG(
+                        EXTRACT(
+                            EPOCH FROM completed_at - COALESCE(started_at, created_at)
+                        )
+                    ) FILTER (
+                        WHERE status IN ('SUCCESS', 'FAILED')
+                          AND completed_at >= NOW() - (%s * INTERVAL '1 minute')
+                    ) AS average_processing_seconds
+                FROM release_jobs
+                """,
+                (
+                    model_id,
+                    model_release,
+                    window_minutes,
+                    window_minutes,
+                    window_minutes,
+                    window_minutes,
+                    max_processing_seconds,
+                    window_minutes,
+                ),
+            )
+            row = cursor.fetchone()
+
+    return dict(row or {})
 
 
 def list_user_artifacts(user_id: UUID) -> list[dict[str, Any]]:

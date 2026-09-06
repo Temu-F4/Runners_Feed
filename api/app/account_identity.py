@@ -128,11 +128,16 @@ def set_oauth_state_cookie(response, state: str) -> None:
     )
 
 
-def kakao_authorization_url(state: str) -> str:
+def kakao_authorization_url(
+    state: str,
+    *,
+    redirect_uri: str | None = None,
+) -> str:
     query = urllib.parse.urlencode(
         {
             "client_id": _required_setting("KAKAO_REST_API_KEY"),
-            "redirect_uri": _required_setting("KAKAO_REDIRECT_URI"),
+            "redirect_uri": redirect_uri
+            or _required_setting("KAKAO_REDIRECT_URI"),
             "response_type": "code",
             "state": state,
         }
@@ -154,11 +159,16 @@ def _json_request(
     return payload
 
 
-def fetch_kakao_profile(code: str) -> KakaoProfile:
+def fetch_kakao_profile(
+    code: str,
+    *,
+    redirect_uri: str | None = None,
+) -> KakaoProfile:
     token_fields = {
         "grant_type": "authorization_code",
         "client_id": _required_setting("KAKAO_REST_API_KEY"),
-        "redirect_uri": _required_setting("KAKAO_REDIRECT_URI"),
+        "redirect_uri": redirect_uri
+        or _required_setting("KAKAO_REDIRECT_URI"),
         "code": code,
     }
     client_secret = os.getenv("KAKAO_CLIENT_SECRET", "").strip()

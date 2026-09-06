@@ -46,6 +46,45 @@ jobs:
       - name: Run deterministic worker unit tests
         run: python -m unittest discover -s worker -p 'test_*.py'
 
+  model-quality-gate:
+    name: Model contract and quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Validate golden model fixture
+        run: >-
+          python coach/scripts/model_contract/quality_gate.py
+          coach/tests/fixtures/model-golden
+          coach/scripts/model_contract/quality_baseline.example.json
+      - name: Validate model plugin manifest and Python syntax
+        run: |
+          python coach/scripts/model_contract/validate_plugin.py \
+            coach/model_plugins/sehyeon-dcc2d7d
+          python -m compileall -q \
+            coach/model_plugins/sehyeon-dcc2d7d \
+            coach/scripts/model_contract
+
+  mobile-typecheck:
+    name: Mobile Expo typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - run: npm run typecheck
+
   frontend-build:
     name: Frontend build
     runs-on: ubuntu-latest
@@ -100,5 +139,7 @@ jobs:
         run: bash deploy/test_deploy_ghcr_release.sh
       - name: Test release verification behavior
         run: bash deploy/test_verify_release.sh
+      - name: Test model quality watchdog behavior
+        run: bash deploy/test_model_quality_watchdog.sh
       - name: Test database backup image selection
         run: bash deploy/test_database_backup_scripts.sh

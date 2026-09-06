@@ -1,0 +1,10 @@
+{
+  "frames": [
+    {
+      "people": [
+        {"track_id": 0, "keypoint_scores": [0.9], "observed": [true]}
+      ]
+    },
+    {"people": []}
+  ]
+}
