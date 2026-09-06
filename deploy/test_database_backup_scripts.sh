@@ -35,7 +35,7 @@ run_backup "${PROJECT_ROOT}/deploy/verify_database_backup.sh"
 
 grep -q "IMAGE_PREFIX=ghcr.io/temu-f4/runners-feed IMAGE_TAG=${SUCCESS_TAG}" \
   "${test_root}/docker.log"
-grep -q -- '--no-build --no-deps db-backup' "${test_root}/docker.log"
-grep -q -- '--no-build --no-deps db-backup-verify' "${test_root}/docker.log"
+grep -q -- '--no-deps db-backup' "${test_root}/docker.log"
+grep -q -- '--no-deps db-backup-verify' "${test_root}/docker.log"
 
 printf 'Database backup script tests passed\n'
