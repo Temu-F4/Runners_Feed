@@ -1,25 +1,25 @@
 # PostgreSQL backup operations
 
-The production PostgreSQL database is dumped once per day and uploaded to a
-dedicated private OCI Object Storage bucket. Backup objects use the prefix
-`postgres/YYYY/MM/` and are deleted after 30 days. Raw and rendered videos are
-not included because they already live in separate Object Storage buckets.
+The production PostgreSQL database is dumped once per day and uploaded to the
+private OCI results bucket. Backup objects use the isolated prefix
+`backups/postgres/YYYY/MM/` and are deleted by the backup job after 30 days.
+Raw and rendered videos are not included in the database dump.
 
 ## One-time OCI setup
 
-1. Create a private Standard-tier bucket, for example `bucket-t04-backups`.
-2. Do not enable public access.
-3. Grant the OCI API user used by `/home/ubuntu/.oci/config` permission to
-   inspect the bucket and create, read, list, and delete objects in that bucket.
-4. Add the exact bucket name to the server `.env`:
+1. Keep `bucket-t04-results` private.
+2. Confirm that the OCI API user used by `/home/ubuntu/.oci/config` can create,
+   read, list, and delete objects in that bucket.
+3. Configure the server `.env`:
 
    ```dotenv
-   OCI_BACKUP_BUCKET=bucket-t04-backups
+   OCI_BACKUP_BUCKET=bucket-t04-results
    DB_BACKUP_RETENTION_DAYS=30
    ```
 
-The service intentionally refuses to start when `OCI_BACKUP_BUCKET` is absent.
-This prevents a database dump from being written to a video bucket by mistake.
+The Compose default is also `bucket-t04-results`; the explicit environment
+value documents the production choice. Only objects below `backups/postgres/`
+are considered by backup verification and retention pruning.
 
 ## Manual verification before scheduling
 

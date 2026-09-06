@@ -11,7 +11,7 @@ from pathlib import Path
 from oci_storage import object_storage_client
 
 
-BACKUP_PREFIX = "postgres/"
+BACKUP_PREFIX = "backups/postgres/"
 
 
 def _required(name: str) -> str:

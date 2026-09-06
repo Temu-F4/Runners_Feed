@@ -22,7 +22,7 @@ class BackupPolicyTest(unittest.TestCase):
 
         self.assertEqual(
             _object_name(now),
-            "postgres/2026/09/runners-feed-20260904T030506Z.dump",
+            "backups/postgres/2026/09/runners-feed-20260904T030506Z.dump",
         )
 
     @patch.dict(os.environ, {}, clear=True)
