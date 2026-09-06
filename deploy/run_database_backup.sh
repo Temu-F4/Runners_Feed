@@ -31,4 +31,4 @@ docker compose \
   -f compose.yaml \
   -f compose.backup.yaml \
   --profile backup \
-  run --rm --no-build --no-deps db-backup
+  run --rm --no-deps db-backup
