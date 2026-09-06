@@ -5,6 +5,9 @@ private GHCR 기반 CI/CD를 구성하면서 실제로 수행한 작업과 검�
 순서대로 기록한다. 최종 운영 방법은 [OCI_GHCR_CICD_RUNBOOK.md](./OCI_GHCR_CICD_RUNBOOK.md)를
 참고한다.
 
+공개 저장소에 보관하기 위해 실제 호스트 주소, 운영 계정과 서버 경로는
+비식별화했다. 실제 환경값과 인증정보는 이 문서에 기록하지 않는다.
+
 ## 1. 작업 목표와 기준 구조
 
 작업 시작일: 2026-09-04 (Asia/Seoul)
@@ -30,7 +33,7 @@ Production 배포를 분리했다. OCI Runner는 보호된 `main`의 Release 작
 ### 2.1 기존 프로젝트와 OCI 상태 확인
 
 - OCI Production VM의 프로젝트 기준 경로를 확인했다.
-- 로컬 프로젝트에는 OCI의 `/home/ubuntu/runners-feed-poc-deploy` 전체 구조를
+- 로컬 프로젝트에는 OCI Production 프로젝트의 전체 구조를
   동기화했다.
 - 동기화 과정에서 파일 내용 변경이 아니라 실행 권한 차이로 많은 파일이 변경된
   것처럼 보이는 상태가 있었다.
@@ -45,7 +48,7 @@ Production 배포를 분리했다. OCI Runner는 보호된 `main`의 Release 작
 
 | 항목 | 결과 |
 | --- | --- |
-| Public IP | `130.162.148.169` |
+| Public IP | `<CI_VM_PUBLIC_IP>` |
 | Shape | `VM.Standard.E4.Flex` |
 | OCPU / Memory | 2 OCPU / 16GB |
 | OS / Architecture | Ubuntu 22.04 LTS / x86_64 |
@@ -60,9 +63,9 @@ Production 배포를 분리했다. OCI Runner는 보호된 `main`의 Release 작
 
 - Docker Engine과 Docker Compose를 설치했다.
 - 설치 후 버전은 Docker `29.8.0`, Compose `5.5.1`, buildx `0.37.0`이었다.
-- GitHub Actions Runner `v2.337.0`을 `/opt/actions-runner-ci`에 설치했다.
-- 별도 OS 계정 `github-ci`를 만들고 Docker 실행 권한을 부여했다.
-- Runner 이름은 `oci-ci-e4`, label은 `oci-ci`로 등록했다.
+- GitHub Actions Runner `v2.337.0`을 `<CI_RUNNER_DIR>`에 설치했다.
+- 별도 CI Runner OS 계정을 만들고 Docker 실행 권한을 부여했다.
+- Runner 이름은 `<CI_RUNNER_NAME>`, label은 `oci-ci`로 등록했다.
 - systemd 서비스가 등록되어 재부팅 후에도 자동 실행되도록 했다.
 - GitHub API에서 Runner 상태가 `online`, `busy=false`임을 확인했다.
 
@@ -72,16 +75,16 @@ Runner 의존성 설치 중 일부 Ubuntu 패키지의 `t64` 버전을 먼저 �
 
 ### 2.4 Production 배포 Runner 구성
 
-기존 Production VM `140.238.0.197`에는 다음을 구성했다.
+기존 Production VM `<PRODUCTION_VM_PUBLIC_IP>`에는 다음을 구성했다.
 
-- 별도 OS 계정 `github-deploy` 생성
+- 별도 Production Runner OS 계정 생성
 - Docker group 권한 부여
 - GitHub Actions Runner `v2.337.0` 설치
-- Runner 경로 `/opt/actions-runner-deploy`
-- Runner 이름 및 label `oci-prod-deploy`
-- 배포 상태 경로 `/var/lib/runners-feed-cd`
-- 자동 배포용 환경변수 파일 `/etc/runners-feed/prod.env`
-- 환경변수 파일 권한 `root:github-deploy`, mode `0640`
+- Runner 경로 `<PRODUCTION_RUNNER_DIR>`
+- Runner 이름 및 label `<PRODUCTION_RUNNER_NAME>`, `oci-prod-deploy`
+- 배포 상태 경로 `<DEPLOY_STATE_DIR>`
+- 자동 배포용 환경변수 파일 `<PRODUCTION_ENV_FILE>`
+- 환경변수 파일 권한 `root:<PRODUCTION_RUNNER_ACCOUNT>`, mode `0640`
 
 기존 Production `.env`를 안전한 경로에 복사했으며, 비밀번호나 키 값은 로그에
 출력하지 않았다. 기존 PostgreSQL, Redis, Object Storage, 인증서와 모델 파일은
@@ -149,7 +152,7 @@ ghcr.io/temu-f4/runners-feed-coach-worker:sha-<commit>
 ### 2.8 GitHub Environment와 보호 규칙
 
 - `production` Environment를 만들었다.
-- `PRODUCTION_BASE_URL=https://140.238.0.197` 변수를 등록했다.
+- `PRODUCTION_BASE_URL=https://<PRODUCTION_HOST>` 형식의 변수를 등록했다.
 - Environment는 보호된 branch에서만 배포되도록 설정했다.
 - `main`에 PR 필수 규칙을 적용했다.
 - API tests, Worker tests, Frontend build, Compose config를 필수 체크로 지정했다.
