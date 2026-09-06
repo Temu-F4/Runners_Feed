@@ -3,8 +3,11 @@
 이 문서는 Grafana의 `Runners Feed / OCI Overview` 대시보드에서 각 수치를
 읽고 호스트 또는 컨테이너 이상 여부를 판단하는 방법을 설명한다.
 
+공개 저장소용 문서이므로 실제 접속 주소와 호스트 경로는 비식별화했다. 실제
+Grafana URL과 서버 경로는 환경별 운영 설정에서 확인한다.
+
 ```text
-접속 주소: https://140.238.0.197/grafana/
+접속 주소: https://<PRODUCTION_HOST>/grafana/
 Dashboard: Runners Feed / OCI Overview
 기본 표시 범위: 최근 1시간
 Dashboard 갱신: 1초
@@ -138,22 +141,22 @@ OCI VM의 물리 network interface별 초당 전송량이다.
 아래 경로에서 용량이 큰 디렉터리 상위 20개를 표시한다.
 
 ```text
-/home/ubuntu
+<HOST_HOME>
 /var/lib/docker
 /var/log
 /tmp
 ```
 
 5분마다 갱신한다. 부모 디렉터리 용량에는 자식 디렉터리 용량이 포함되므로 여러
-막대 값을 서로 더하면 안 된다. 예를 들어 `/home/ubuntu`와
-`/home/ubuntu/runners-feed-runtime`은 포함 관계일 수 있다.
+막대 값을 서로 더하면 안 된다. 예를 들어 `<HOST_HOME>`와
+`<RUNTIME_ROOT>`는 포함 관계일 수 있다.
 
 ### Largest Host Files (>= 10 MiB)
 
 다음 범위에서 10MiB 이상인 파일의 상위 20개를 5분마다 표시한다.
 
 ```text
-/home/ubuntu
+<HOST_HOME>
 /var/log
 /var/lib/docker/volumes
 ```
@@ -288,7 +291,7 @@ page cache 차이일 가능성이 높다. 호스트 memory가 80% 미만이고 w
 서비스와 metric을 확인한다.
 
 ```bash
-cd /home/ubuntu/runners-feed-poc-deploy
+cd <PROJECT_ROOT>
 
 docker compose \
   -f compose.yaml \
