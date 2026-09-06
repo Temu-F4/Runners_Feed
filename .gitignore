@@ -53,3 +53,6 @@ redis_data/
 
 # macOS
 .DS_Store
+
+# Retired design artifacts
+/opendesign/
