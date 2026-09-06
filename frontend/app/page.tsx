@@ -28,12 +28,13 @@ interface JobListResponse {
 }
 
 type ViewerResponse =
-  | { authenticated: false; provider: null }
+  | { authenticated: false; provider: null; kakao_login_enabled: boolean }
   | {
       authenticated: true;
       provider: "kakao";
       email: string | null;
       display_name: string | null;
+      kakao_login_enabled: boolean;
     };
 
 interface ReportMetric {
@@ -300,7 +301,7 @@ export default function Home() {
       try {
         setViewer(await api<ViewerResponse>("/me"));
       } catch {
-        setViewer({ authenticated: false, provider: null });
+        setViewer({ authenticated: false, provider: null, kakao_login_enabled: false });
       }
       await loadHistory();
     })();
@@ -500,8 +501,10 @@ export default function Home() {
               <span className="account-chip">{viewer.display_name || "카카오 사용자"}</span>
               <button className="logout-button" type="button" onClick={() => void logout()}>로그아웃</button>
             </>
-          ) : (
+          ) : viewer?.kakao_login_enabled ? (
             <a className="kakao-login" href="/api/auth/kakao/start">카카오 로그인</a>
+          ) : (
+            <span className="guest-chip">비회원 모드</span>
           )}
         </nav>
       </header>

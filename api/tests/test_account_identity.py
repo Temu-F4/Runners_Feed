@@ -10,11 +10,24 @@ from app.account_identity import (
     hash_account_token,
     issue_account_identity,
     kakao_authorization_url,
+    kakao_login_configured,
     set_account_cookie,
 )
 
 
 class AccountIdentityTests(TestCase):
+    @patch.dict("os.environ", {}, clear=True)
+    def test_login_is_disabled_until_required_settings_exist(self) -> None:
+        self.assertFalse(kakao_login_configured())
+
+    @patch.dict(
+        "os.environ",
+        {"KAKAO_REST_API_KEY": "key", "KAKAO_REDIRECT_URI": "https://example.com/callback"},
+        clear=True,
+    )
+    def test_login_is_enabled_when_required_settings_exist(self) -> None:
+        self.assertTrue(kakao_login_configured())
+
     def test_account_token_is_hashed_and_never_stored_raw(self) -> None:
         digest = hash_account_token("account-token")
         self.assertEqual(len(digest), 64)

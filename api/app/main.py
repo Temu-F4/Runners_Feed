@@ -36,6 +36,7 @@ from app.account_identity import (
     fetch_kakao_profile,
     issue_account_identity,
     kakao_authorization_url,
+    kakao_login_configured,
     new_oauth_state,
     renew_account_identity,
     set_account_cookie,
@@ -319,12 +320,17 @@ async def finish_kakao_login(
 def get_me(request: Request):
     account = request.state.account
     if account is None:
-        return {"authenticated": False, "provider": None}
+        return {
+            "authenticated": False,
+            "provider": None,
+            "kakao_login_enabled": kakao_login_configured(),
+        }
     return {
         "authenticated": True,
         "provider": account["provider"],
         "email": account["email"],
         "display_name": account["display_name"],
+        "kakao_login_enabled": kakao_login_configured(),
     }
 
 

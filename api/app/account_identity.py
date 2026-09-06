@@ -41,6 +41,13 @@ def _required_setting(name: str) -> str:
     return value
 
 
+def kakao_login_configured() -> bool:
+    return bool(
+        os.getenv("KAKAO_REST_API_KEY", "").strip()
+        and os.getenv("KAKAO_REDIRECT_URI", "").strip()
+    )
+
+
 def hash_account_token(token: str) -> str:
     if not token or len(token) > MAX_SESSION_TOKEN_LENGTH:
         raise ValueError("Invalid account session token")
