@@ -2,10 +2,14 @@ services:
   coach-manual:
     profiles:
       - manual-coach
+    image: ${IMAGE_PREFIX:-runners-feed}-coach-worker:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: worker/Dockerfile.coach
       args:
+        BUILD_CREATED: ${BUILD_CREATED:-unknown}
+        BUILD_REVISION: ${BUILD_REVISION:-unknown}
+        BUILD_SOURCE: ${BUILD_SOURCE:-https://github.com/Temu-F4/Runners_Feed}
         COACH_UID: ${COACH_UID:-1000}
         COACH_GID: ${COACH_GID:-1000}
     user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
@@ -26,10 +30,14 @@ services:
     profiles:
       - coach
     restart: unless-stopped
+    image: ${IMAGE_PREFIX:-runners-feed}-coach-worker:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: worker/Dockerfile.coach
       args:
+        BUILD_CREATED: ${BUILD_CREATED:-unknown}
+        BUILD_REVISION: ${BUILD_REVISION:-unknown}
+        BUILD_SOURCE: ${BUILD_SOURCE:-https://github.com/Temu-F4/Runners_Feed}
         COACH_UID: ${COACH_UID:-1000}
         COACH_GID: ${COACH_GID:-1000}
     user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
