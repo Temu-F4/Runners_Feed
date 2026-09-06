@@ -31,4 +31,11 @@ docker compose \
   -f compose.yaml \
   -f compose.backup.yaml \
   --profile backup \
+  pull db-backup-verify
+docker compose \
+  --env-file "${ENV_FILE}" \
+  --project-name runners-feed \
+  -f compose.yaml \
+  -f compose.backup.yaml \
+  --profile backup \
   run --rm --no-deps db-backup-verify
