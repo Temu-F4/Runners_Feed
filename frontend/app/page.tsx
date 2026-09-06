@@ -275,8 +275,8 @@ export default function Home() {
     try {
       const response = await api<JobListResponse>("/jobs");
       setHistory(response.jobs);
-    } catch (caught) {
-      setHistoryError(caught instanceof Error ? caught.message : "분석 기록을 불러오지 못했습니다.");
+    } catch {
+      setHistoryError("분석 기록을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.");
     } finally {
       setHistoryLoading(false);
     }
