@@ -173,6 +173,10 @@ health_response="${response_dir}/health.json"
 fetch_http "/api/health" "${health_response}"
 assert_json_fields "${health_response}" "status=ok"
 
+quality_response="${response_dir}/model-quality.json"
+fetch_http "/api/health/model-quality" "${quality_response}"
+assert_json_fields "${quality_response}" "status=ok"
+
 dependencies_response="${response_dir}/dependencies.json"
 fetch_http "/api/health/dependencies" "${dependencies_response}"
 assert_json_fields \

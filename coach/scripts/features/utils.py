@@ -85,7 +85,8 @@ class PoseSequence:
             if len(extremum) < 4:
                 print("러닝 리듬 분석에 실패했습니다.")
                 alpha -= 0.02
-                distance -= 1
+                # sehyeon 원본의 스트라이드 탐색 보정값을 유지한다.
+                distance = max(1, distance - 2)
                 continue
 
             flag = False
@@ -98,13 +99,33 @@ class PoseSequence:
                         f"예외: {i-1}, {i}행의 값이 {previous}, {current}입니다.\n올바른 스트라이드가 검출되지 않았습니다. 검출 파라미터 변경 필요."
                     )
                     alpha += 0.02
-                    distance += 1
+                    # 잘못된 교대 패턴이면 원본처럼 peak 간격을 줄인다.
+                    distance = max(1, distance - 1)
                     flag = True
                     break
             if flag:
                 continue
-            
-            extremum.index = np.resize(extremum.iloc[:4]['value'].rank(method="dense", ascending=False).astype(int).values, len(extremum)).tolist()
+
+            start_index = (
+                0
+                if y_smooth[max_indices[0]] > y_smooth[max_indices[1]]
+                else 1
+            )
+            for i in range(len(max_indices) // 2 - 1):
+                if not y_smooth[
+                    max_indices[2 * i + start_index]
+                ] > y_smooth[max_indices[2 * i + 1 + start_index]]:
+                    raise RuntimeError("무릎 각도에서 예상치 못한 예외 발생.")
+
+            start_frame = max_indices[start_index]
+            start_position = np.flatnonzero(
+                extremum["frame"].to_numpy() == start_frame
+            )[0]
+
+            # 원본의 스트라이드 순번(1~4)을 계산한다.
+            extremum.index = (
+                (np.arange(len(extremum)) - start_position) % 4
+            ) + 1
             self.strides = extremum
 
             return extremum
@@ -120,7 +141,7 @@ class PoseSequence:
             return np.linalg.norm(a - b, axis=0)
         
         # 사용할 이미지 선택
-        image = self.df.loc[np.asarray(self.strides.loc[4]['frame']).reshape(-1)[0]]
+        image = self.df.loc[np.asarray(self.strides.loc[2]['frame']).reshape(-1)[0]]
 
         ankle = _point(image, f"{self.direction}_ankle")
         knee = _point(image, f"{self.direction}_knee")
@@ -144,26 +165,30 @@ class PoseSequence:
         return height_px
     
 
-    def gct(self, next: int = 0):
+    def gct(self):
         """
         {side}의 heel이 지면에 접촉하고 big_toe가 지면에서 떼어지는 순간까지의 인덱스 출력
         next는 스트라이드의 구간을 한 단계 미뤄야 할 가능성이 있기 때문에 그 때의 설계를 위해 남긴 더미.
         """
 
-        _df = self.strides.loc[[3, 4]].sort_values('frame')
-        start_4 = 0 if _df.index[0] == 4 else 1
-        if start_4:
-            _df = _df.iloc[start_4:]
+        _df = self.strides.loc[[2, 4]].sort_values("frame")
+        if _df.index[0] == 4:
+            _df = _df.iloc[1:]
+        if len(_df) % 2:
+            _df = _df.iloc[:-1]
 
-        steps = []
-        for i in range(len(_df) // 2):
-            steps.append(_df.iloc[2 * i : 2 * i + 2]['frame'].to_list())
+        steps = [
+            _df.iloc[i : i + 2]["frame"].to_list()
+            for i in range(0, len(_df), 2)
+        ]
+
+        if self.m_per_pixel is None:
+            self.pixel2m()
 
         res = []
-        for step in steps:
-            start, end = step
-
-            df = self.df.loc[start:end+5]   # 무릎 각도와 y값을 동시 반영, end는 3프레임의 여유를 두었다.
+        for start, end in steps:
+            # 원본의 이벤트 탐색 범위와 키 단위 임계값을 유지한다.
+            df = self.df.loc[start : end + 10]
 
             heel = f"{self.direction}_heel"
             td = int(df[f"{heel}_y"].idxmin())
@@ -171,7 +196,10 @@ class PoseSequence:
             toe = f"{self.direction}_big_toe"
             min_value = df[f"{toe}_y"].min()
 
-            inside = df[f"{toe}_y"].between(min_value, min_value + 5)
+            inside = df[f"{toe}_y"].between(
+                min_value,
+                min_value + 0.01 / self.m_per_pixel,
+            )
             _to = df.index[~inside & inside.shift(1, fill_value=False)].to_numpy()
             # 최소값 도달 이후 첫 번째 프레임
             to = int(_to[_to > df[f"{toe}_y"].idxmin()][0])

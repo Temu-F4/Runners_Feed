@@ -8,6 +8,9 @@ if [[ $# -lt 1 ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CODE_COACH_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$CODE_COACH_DIR}"
+PYTHON_BIN="${PYTHON_BIN:-$CODE_COACH_DIR/.venv/bin/python}"
 
 RUN_FOLDER="$1"
 shift
@@ -23,6 +26,9 @@ fi
 "$SCRIPT_DIR/hpe/hpe.sh" "$RUN_FOLDER" "$@"
 echo "COACH_STAGE_START=feature_extract"
 "$SCRIPT_DIR/features/features.sh" "$RUN_FOLDER"
+"$PYTHON_BIN" \
+    "$SCRIPT_DIR/model_contract/validate_artifacts.py" \
+    "${WORKSPACE_ROOT}/run/${RUN_FOLDER}"
 echo "COACH_STAGE_SUCCESS=feature_extract"
 echo "COACH_STAGE_START=report_generate"
 if [[ "$RUN_AGENT" == "true" ]]; then

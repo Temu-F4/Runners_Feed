@@ -29,6 +29,9 @@ api_key = (
     or os.environ.get("OPENAI_KEY")
     or os.environ.get("_OPENAI_API_KEY")
 )
+llm_model = os.environ.get("COACH_LLM_MODEL", "gpt-5.6-luna").strip()
+if not llm_model:
+    raise RuntimeError("COACH_LLM_MODEL must not be empty")
 
 
 
@@ -61,7 +64,7 @@ def main(features_path: Path):
 
     # 4. LLM
     model = ChatOpenAI(
-        model="gpt-5.6-luna",
+        model=llm_model,
         temperature=0,
         api_key=api_key
     )

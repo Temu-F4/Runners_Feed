@@ -99,6 +99,9 @@ case "$path" in
   "/api/health/dependencies")
     printf '{"status":"ok","dependencies":{"postgres":"ok","redis":"ok"}}\n' >"$output_file"
     ;;
+  "/api/health/model-quality")
+    printf '{"status":"ok","rollbackConditionsTriggered":[]}\n' >"$output_file"
+    ;;
   "/api/health/storage")
     printf '{"status":"ok","storage":"oci_object_storage","buckets":{"raw":"raw","results":"results"}}\n' >"$output_file"
     ;;

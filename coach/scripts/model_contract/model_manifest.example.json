@@ -1,0 +1,33 @@
+{
+  "contract_version": "coach-model-1.0",
+  "model_id": "replace-with-model-id",
+  "algorithm_version": "replace-with-semver-or-git-sha",
+  "source": "replace-with-modeler-repository-and-commit",
+  "entrypoints": {
+    "pose": "coach/scripts/hpe/hpe.py",
+    "features": "coach/scripts/features/feature_extract.py",
+    "narrative": "coach/scripts/Agent/Running_coach.py"
+  },
+  "input": {
+    "video_extensions": [".mp4", ".mov"],
+    "user_info_file": "user_info.json",
+    "height_key": "user.height",
+    "height_unit": "meters"
+  },
+  "outputs": {
+    "details": "outputs/details.json",
+    "predictions": "outputs/pose_predictions.json",
+    "features": "outputs/feature_results.json",
+    "rendered_video": "outputs/output.mp4"
+  },
+  "weights": [
+    {
+      "path": "runtime/models/replace-me.onnx",
+      "sha256": "replace-with-sha256"
+    }
+  ],
+  "quality": {
+    "golden_manifest": "private-oci-object-storage://replace-me",
+    "approved_by": "replace-with-review-reference"
+  }
+}

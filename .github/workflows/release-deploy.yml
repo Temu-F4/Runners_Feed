@@ -79,6 +79,12 @@ jobs:
           prom/alertmanager:v0.33.1
           check-config /etc/alertmanager/alertmanager.yml
 
+      - name: Run model contract and quality gate
+        run: >-
+          python3 coach/scripts/model_contract/quality_gate.py
+          coach/tests/fixtures/model-golden
+          coach/scripts/model_contract/quality_baseline.example.json
+
       - name: Set build metadata
         run: |
           {
