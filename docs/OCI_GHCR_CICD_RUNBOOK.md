@@ -9,6 +9,10 @@ OCI Production 반영과 실패 시 롤백 절차를 설명한다.
 [OCI_GHCR_CICD_IMPLEMENTATION_LOG.md](./OCI_GHCR_CICD_IMPLEMENTATION_LOG.md)에
 기록되어 있다.
 
+이 문서는 공개 저장소에 둘 수 있도록 실제 호스트 주소, 운영 계정과 서버 경로를
+비식별화한 공개용 가이드다. 실제 환경값은 Production 환경변수와 OCI 내부 운영
+설정에서 확인한다.
+
 CI와 CD는 서로 다른 OCI VM에서 실행한다.
 
 ```text
@@ -22,13 +26,13 @@ GitHub-hosted Runner
   - Compose validation
         |
         v main merge
-OCI CI VM: 130.162.148.169
+OCI CI VM: <CI_VM_PUBLIC_IP>
   - Docker image build
   - Built-image test
   - Private GHCR push
         |
         v
-OCI Production VM: 140.238.0.197
+OCI Production VM: <PRODUCTION_VM_PUBLIC_IP>
   - SHA image pull
   - Docker Compose deployment
   - Health check
@@ -45,18 +49,18 @@ GitHub-hosted Runner에서만 검사하고, OCI Runner는 보호된 `main`에 �
 
 | 항목 | 값 |
 | --- | --- |
-| Hostname | `vnic-t04-build` |
-| Public IP | `130.162.148.169` |
+| Hostname | `<CI_VM_HOSTNAME>` |
+| Public IP | `<CI_VM_PUBLIC_IP>` |
 | OS | Ubuntu 22.04 LTS x86_64 |
 | Shape | VM.Standard.E4.Flex |
 | CPU / Memory | 2 OCPU(4 vCPU) / 16GB |
 | Boot Volume | 50GB |
 | Docker | 29.8.0 |
 | Docker Compose | 5.5.1 |
-| Runner name | `oci-ci-e4` |
+| Runner name | `<CI_RUNNER_NAME>` |
 | Runner label | `oci-ci` |
-| Runner account | `github-ci` |
-| Runner directory | `/opt/actions-runner-ci` |
+| Runner account | `<CI_RUNNER_ACCOUNT>` |
+| Runner directory | `<CI_RUNNER_DIR>` |
 
 CI VM에는 Production `.env`, OCI Private Key와 모델 파일을 저장하지 않는다.
 모델 파일은 Docker build context에서 제외되며 CI에서 실제 영상 추론을 실행하지
@@ -66,17 +70,17 @@ CI VM에는 Production `.env`, OCI Private Key와 모델 파일을 저장하지 
 
 | 항목 | 값 |
 | --- | --- |
-| Hostname | `vnic-t04-mvp` |
-| Public IP | `140.238.0.197` |
+| Hostname | `<PRODUCTION_VM_HOSTNAME>` |
+| Public IP | `<PRODUCTION_VM_PUBLIC_IP>` |
 | OS | Ubuntu 22.04 LTS x86_64 |
 | Docker | 29.7.2 |
 | Docker Compose | 5.5.0 |
-| Runner name | `oci-prod-deploy` |
+| Runner name | `<PRODUCTION_RUNNER_NAME>` |
 | Runner label | `oci-prod-deploy` |
-| Runner account | `github-deploy` |
-| Runner directory | `/opt/actions-runner-deploy` |
-| Deployment state | `/var/lib/runners-feed-cd` |
-| Production environment | `/etc/runners-feed/prod.env` |
+| Runner account | `<PRODUCTION_RUNNER_ACCOUNT>` |
+| Runner directory | `<PRODUCTION_RUNNER_DIR>` |
+| Deployment state | `<DEPLOY_STATE_DIR>` |
+| Production environment | `<PRODUCTION_ENV_FILE>` |
 
 Production Runner는 이미지 빌드와 PR 테스트를 수행하지 않는다. GHCR 이미지를
 Pull하고 기존 Compose 서비스를 갱신하는 작업만 담당한다.
@@ -106,7 +110,7 @@ Private으로 유지한다.
 `production` Environment에는 다음 변수가 설정되어 있다.
 
 ```text
-PRODUCTION_BASE_URL=https://140.238.0.197
+PRODUCTION_BASE_URL=https://<PRODUCTION_HOST>
 ```
 
 Production 비밀번호와 OCI Key는 GitHub Secret으로 복사하지 않는다. GHCR 인증은
@@ -330,21 +334,21 @@ Production 배포 중에는 다음 문제가 발생할 수 있다.
 자동 배포는 다음 파일을 읽는다.
 
 ```text
-/etc/runners-feed/prod.env
+<PRODUCTION_ENV_FILE>
 ```
 
-권한은 `root:github-deploy`, mode `0640`으로 유지한다. 현재 파일은 기존
-`/home/ubuntu/runners-feed-poc-deploy/.env`의 안전한 사본이다.
+권한은 `root:<PRODUCTION_RUNNER_ACCOUNT>`, mode `0640`으로 유지한다. 현재 파일은
+Production 호스트에 보관된 원본 환경파일의 안전한 사본이다.
 
 기존 `.env`를 수정했다면 자동 배포용 파일도 명시적으로 동기화한다.
 
 ```bash
 sudo install \
   -o root \
-  -g github-deploy \
+  -g <PRODUCTION_RUNNER_ACCOUNT> \
   -m 0640 \
-  /home/ubuntu/runners-feed-poc-deploy/.env \
-  /etc/runners-feed/prod.env
+  <PROJECT_ROOT>/.env \
+  <PRODUCTION_ENV_FILE>
 ```
 
 파일 내용을 터미널, GitHub Actions 로그 또는 문서에 출력하지 않는다.
@@ -389,7 +393,7 @@ PostgreSQL, Redis, Grafana, Prometheus와 Volume은 삭제하거나 재생성 �
 마지막 성공 SHA는 다음 파일에 기록된다.
 
 ```text
-/var/lib/runners-feed-cd/last-successful.env
+<DEPLOY_STATE_DIR>/last-successful.env
 ```
 
 신규 배포 또는 Health Check가 실패하면 스크립트가 직전 SHA 이미지를 Pull하고
@@ -419,7 +423,7 @@ CI VM:
 
 ```bash
 sudo systemctl status \
-  actions.runner.Temu-F4-Runners_Feed.oci-ci-e4.service
+  <CI_RUNNER_SYSTEMD_SERVICE>
 docker version
 docker compose version
 df -h /
@@ -429,7 +433,7 @@ Production VM:
 
 ```bash
 sudo systemctl status \
-  actions.runner.Temu-F4-Runners_Feed.oci-prod-deploy.service
+  <PRODUCTION_RUNNER_SYSTEMD_SERVICE>
 docker version
 docker compose version
 docker ps
@@ -504,12 +508,12 @@ docker exec runners-feed-web-1 nginx -s reload
 - [x] OCI에서 운영 중인 코드 변경을 검토하고 GitHub branch에 커밋
 - [x] CI/CD Workflow와 Compose 이미지 설정을 PR로 `main`에 병합
 - [x] PR의 네 개 필수 Check 통과
-- [x] `oci-ci-e4`, `oci-prod-deploy` Runner Online 확인
+- [x] `<CI_RUNNER_NAME>`, `<PRODUCTION_RUNNER_NAME>` Runner Online 확인
 - [x] `production` Environment 변수 확인
-- [x] `/etc/runners-feed/prod.env` 권한과 최신 상태 확인
+- [x] `<PRODUCTION_ENV_FILE>` 권한과 최신 상태 확인
 - [x] 첫 GHCR Package 네 개에 SHA 이미지 Push 확인
 - [x] 첫 SHA 배포와 Health Check 통과
-- [x] `/var/lib/runners-feed-cd/last-successful.env` 생성 확인
+- [x] `<DEPLOY_STATE_DIR>/last-successful.env` 생성 확인
 - [x] 실행 컨테이너의 이미지 SHA 확인
 - [ ] 영상 한 건의 업로드, 분석, 결과 조회 E2E 확인
 - [x] 배포 SHA, Job ID, 수행 시각과 결과 기록
