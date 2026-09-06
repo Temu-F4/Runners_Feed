@@ -2,9 +2,14 @@ services:
   db-backup:
     profiles:
       - backup
+    image: ${IMAGE_PREFIX:-runners-feed}-db-backup:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: deploy/backup/Dockerfile
+      args:
+        BUILD_CREATED: ${BUILD_CREATED:-unknown}
+        BUILD_REVISION: ${BUILD_REVISION:-unknown}
+        BUILD_SOURCE: ${BUILD_SOURCE:-https://github.com/Temu-F4/Runners_Feed}
     user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -24,9 +29,14 @@ services:
   db-backup-verify:
     profiles:
       - backup
+    image: ${IMAGE_PREFIX:-runners-feed}-db-backup-verify:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: deploy/backup/Dockerfile
+      args:
+        BUILD_CREATED: ${BUILD_CREATED:-unknown}
+        BUILD_REVISION: ${BUILD_REVISION:-unknown}
+        BUILD_SOURCE: ${BUILD_SOURCE:-https://github.com/Temu-F4/Runners_Feed}
     user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
     entrypoint:
       - python3

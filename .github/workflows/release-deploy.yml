@@ -11,7 +11,13 @@ on:
       - coach/**
       - compose.yaml
       - compose.coach.yaml
+      - compose.backup.yaml
       - deploy/deploy_ghcr_release.sh
+      - deploy/backup/**
+      - deploy/run_database_backup.sh
+      - deploy/test_database_backup_scripts.sh
+      - deploy/verify_database_backup.sh
+      - deploy/systemd/**
       - frontend/**
       - nginx/**
       - worker/**
@@ -58,7 +64,9 @@ jobs:
           docker compose
           -f compose.yaml
           -f compose.coach.yaml
+          -f compose.backup.yaml
           --profile coach
+          --profile backup
           config --quiet
 
       - name: Set build metadata
@@ -81,9 +89,11 @@ jobs:
           docker compose
           -f compose.yaml
           -f compose.coach.yaml
+          -f compose.backup.yaml
           --profile coach
+          --profile backup
           build --pull
-          api frontend web coach-worker
+          api frontend web coach-worker maintenance db-backup db-backup-verify
 
       - name: Test built API image
         run: >-
@@ -99,6 +109,15 @@ jobs:
           --entrypoint python
           -v "$PWD/worker:/tests:ro"
           "${IMAGE_PREFIX}-coach-worker:${IMAGE_TAG}"
+          -m unittest discover -s /tests -p 'test_*.py'
+
+      - name: Test built backup image
+        run: >-
+          docker run --rm
+          --entrypoint python
+          -e PYTHONPATH=/app:/tests
+          -v "$PWD/deploy/backup:/tests:ro"
+          "${IMAGE_PREFIX}-db-backup:${IMAGE_TAG}"
           -m unittest discover -s /tests -p 'test_*.py'
 
       - name: Push immutable images
@@ -128,9 +147,11 @@ jobs:
           push_with_retry docker compose \
             -f compose.yaml \
             -f compose.coach.yaml \
+            -f compose.backup.yaml \
             --profile coach \
+            --profile backup \
             push \
-            api frontend web coach-worker
+            api frontend web coach-worker maintenance db-backup db-backup-verify
 
       - name: Publish main aliases
         run: |
@@ -149,7 +170,7 @@ jobs:
             done
           }
 
-          for service in api frontend web coach-worker; do
+          for service in api frontend web coach-worker maintenance db-backup db-backup-verify; do
             docker tag \
               "${IMAGE_PREFIX}-${service}:${IMAGE_TAG}" \
               "${IMAGE_PREFIX}-${service}:main"
@@ -163,7 +184,7 @@ jobs:
             echo
             echo "Tag: \`${IMAGE_TAG}\`"
             echo
-            for service in api frontend web coach-worker; do
+            for service in api frontend web coach-worker maintenance db-backup db-backup-verify; do
               echo "- \`${IMAGE_PREFIX}-${service}:${IMAGE_TAG}\`"
             done
           } >> "$GITHUB_STEP_SUMMARY"
@@ -182,6 +203,21 @@ jobs:
         with:
           clean: true
 
+      - name: Stage immutable production checkout
+        env:
+          PRODUCTION_RELEASE_ROOT: /opt/runners-feed/releases/${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${PRODUCTION_RELEASE_ROOT}"
+          tar \
+            --exclude=.git \
+            --exclude=.env \
+            --exclude='.env.before-*' \
+            --exclude=runtime \
+            -C "${GITHUB_WORKSPACE}" \
+            -cf - . \
+            | tar -C "${PRODUCTION_RELEASE_ROOT}" -xf -
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -193,4 +229,12 @@ jobs:
         env:
           PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
           RUNNERS_FEED_ENV_FILE: /etc/runners-feed/prod.env
-        run: bash deploy/deploy_ghcr_release.sh "${IMAGE_TAG}"
+        run: bash "/opt/runners-feed/releases/${GITHUB_SHA}/deploy/deploy_ghcr_release.sh" "${IMAGE_TAG}"
+
+      - name: Promote successful production checkout
+        if: success()
+        run: |
+          set -euo pipefail
+          next_link=/opt/runners-feed/current.next
+          ln -sfn "/opt/runners-feed/releases/${GITHUB_SHA}" "${next_link}"
+          mv -Tf "${next_link}" /opt/runners-feed/current
