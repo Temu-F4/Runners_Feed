@@ -2,6 +2,8 @@
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 
+import { getApiErrorMessage } from "../lib/api-error";
+
 type Stage = "idle" | "upload" | "queue" | "analysis" | "result";
 type JobStatus = "IDLE" | "QUEUED" | "PROCESSING" | "SUCCESS" | "FAILED" | "ERROR";
 
@@ -221,7 +223,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers: { "Content-Type": "application/json", ...options.headers },
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.detail || `요청에 실패했습니다. (${response.status})`);
+  if (!response.ok) throw new Error(getApiErrorMessage(payload, response.status));
   return payload as T;
 }
 
