@@ -1,8 +1,9 @@
 global:
   resolve_timeout: 5m
+  slack_api_url_file: /run/secrets/slack_webhook_url
 
 route:
-  receiver: dashboard-only
+  receiver: slack-notifications
   group_by:
     - alertname
     - severity
@@ -12,4 +13,17 @@ route:
   repeat_interval: 4h
 
 receivers:
-  - name: dashboard-only
+  - name: slack-notifications
+    slack_configs:
+      - channel: "#모니터링"
+        send_resolved: true
+        username: Runners Feed Alerts
+        title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+        text: |-
+          *Severity:* {{ .CommonLabels.severity }}
+          *Service:* {{ .CommonLabels.service }}
+          *Instance:* {{ .CommonLabels.instance }}
+          {{ range .Alerts }}
+          *Summary:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}

@@ -35,7 +35,11 @@ if [[ "${1:-}" == "inspect" ]]; then
   service="${container_id#container-}"
   case "$format" in
     "{{.State.Status}}")
-      printf 'running\n'
+      if [[ "${MOCK_BAD_STATE_SERVICE:-}" == "$service" ]]; then
+        printf 'exited\n'
+      else
+        printf 'running\n'
+      fi
       ;;
     "{{.Config.Image}}")
       if [[ "${MOCK_BAD_IMAGE_SERVICE:-}" == "$service" ]]; then
@@ -129,6 +133,14 @@ if run_verify; then
   exit 1
 fi
 unset MOCK_BAD_IMAGE_SERVICE
+
+MOCK_BAD_STATE_SERVICE="alertmanager"
+export MOCK_BAD_STATE_SERVICE
+if run_verify; then
+  echo "Expected stopped Alertmanager to fail" >&2
+  exit 1
+fi
+unset MOCK_BAD_STATE_SERVICE
 
 MOCK_FAIL_PATH="/api/health/storage"
 export MOCK_FAIL_PATH

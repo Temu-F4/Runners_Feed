@@ -89,6 +89,13 @@ jobs:
           --profile coach
           --profile backup
           config --quiet
+      - name: Validate Alertmanager configuration
+        run: >-
+          docker run --rm
+          --entrypoint /bin/amtool
+          -v "$PWD/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"
+          prom/alertmanager:v0.33.1
+          check-config /etc/alertmanager/alertmanager.yml
       - name: Test deployment rollback behavior
         run: bash deploy/test_deploy_ghcr_release.sh
       - name: Test release verification behavior
