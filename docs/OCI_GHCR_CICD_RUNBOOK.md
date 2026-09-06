@@ -278,9 +278,9 @@ Release가 성공하면 `oci-prod-deploy`가 `deploy/deploy_ghcr_release.sh`를 
 2. API, Frontend, Web, Coach Worker, Maintenance의 해당 SHA 이미지를 Pull한다.
 3. Compose 설정을 검증한다.
 4. 대상 서비스만 `--no-build --no-deps --wait`로 갱신한다.
-5. `/`, `/api/health`, `/api/health/dependencies`, `/api/health/storage`를
-   확인한다.
-6. 네 검사가 모두 성공하면 `last-successful.env`를 새 SHA로 원자적으로 갱신한다.
+5. 각 서비스가 실행 중이고 대상 SHA 이미지를 사용하는지 확인한다.
+6. Frontend와 API 응답 및 PostgreSQL, Redis, OCI Object Storage 상태를 확인한다.
+7. 모든 검사가 성공하면 `last-successful.env`를 새 SHA로 원자적으로 갱신한다.
 
 Production 배포 중에는 다음 문제가 발생할 수 있다.
 
@@ -387,6 +387,8 @@ timer 스크립트는 `last-successful.env`의 SHA를 읽고 `--no-build`로 실
 docker compose config --quiet
 GHCR image pull
 docker compose up --no-build --wait
+target SHA image identity for every runtime service
+running/healthy state for every runtime service
 GET /
 GET /api/health
 GET /api/health/dependencies
@@ -406,6 +408,9 @@ profile: backup (timer가 db-backup, db-backup-verify를 on-demand 실행)
 PostgreSQL, Redis, Grafana, Prometheus와 Volume은 삭제하거나 재생성 대상으로
 지정하지 않으며 `--no-deps`로 의존 서비스의 암묵적 재생성도 막는다. API의
 `/health`가 Healthy가 되기 전에 시작 시점 SQL migration이 완료되어야 한다.
+
+실제 공통 검증은 `deploy/verify_release.sh`가 수행하며 배포와 롤백에 동일하게
+사용한다. PR CI는 이미지 불일치, health 실패, 롤백 후 재검증 실패를 모의 테스트한다.
 
 ## 8. 롤백
 

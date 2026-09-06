@@ -10,6 +10,7 @@ readonly STATE_DIR="${RUNNERS_FEED_DEPLOY_STATE_DIR:-/var/lib/runners-feed-cd}"
 readonly STATE_FILE="${STATE_DIR}/last-successful.env"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly PROJECT_ROOT
+readonly RELEASE_VERIFIER="${RELEASE_VERIFIER:-${PROJECT_ROOT}/deploy/verify_release.sh}"
 readonly COMPOSE_FILES=(
   -f "${PROJECT_ROOT}/compose.yaml"
   -f "${PROJECT_ROOT}/compose.coach.yaml"
@@ -28,6 +29,11 @@ if [[ ! -r "${ENV_FILE}" ]]; then
   exit 2
 fi
 
+if [[ ! -r "${RELEASE_VERIFIER}" ]]; then
+  echo "Release verifier is not readable: ${RELEASE_VERIFIER}" >&2
+  exit 2
+fi
+
 mkdir -p "${STATE_DIR}"
 
 compose() {
@@ -39,12 +45,16 @@ compose() {
     "$@"
 }
 
-check_release() {
-  compose ps || return 1
-  curl --fail --silent --show-error --max-time 15 "${BASE_URL}/" >/dev/null || return 1
-  curl --fail --silent --show-error --max-time 15 "${BASE_URL}/api/health" >/dev/null || return 1
-  curl --fail --silent --show-error --max-time 15 "${BASE_URL}/api/health/dependencies" >/dev/null || return 1
-  curl --fail --silent --show-error --max-time 20 "${BASE_URL}/api/health/storage" >/dev/null || return 1
+verify_release() {
+  local target_tag="$1"
+
+  env \
+    IMAGE_PREFIX="${IMAGE_PREFIX}" \
+    PRODUCTION_BASE_URL="${BASE_URL}" \
+    RUNNERS_FEED_ENV_FILE="${ENV_FILE}" \
+    RUNNERS_FEED_PROJECT_DIR="${PROJECT_ROOT}" \
+    RUNNERS_FEED_DEPLOY_STATE_DIR="${STATE_DIR}" \
+    bash "${RELEASE_VERIFIER}" "${target_tag}"
 }
 
 deploy_tag() {
@@ -60,7 +70,7 @@ deploy_tag() {
     --wait \
     --wait-timeout 180 \
     "${SERVICES[@]}" || return 1
-  check_release || return 1
+  verify_release "$1" || return 1
 }
 
 previous_tag=""

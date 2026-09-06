@@ -13,6 +13,7 @@ on:
       - compose.coach.yaml
       - compose.backup.yaml
       - deploy/deploy_ghcr_release.sh
+      - deploy/verify_release.sh
       - deploy/backup/**
       - deploy/run_database_backup.sh
       - deploy/test_database_backup_scripts.sh
