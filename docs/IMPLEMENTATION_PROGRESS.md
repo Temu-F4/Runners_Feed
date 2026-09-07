@@ -2,9 +2,9 @@
 
 최종 업데이트: 2026-09-07
 
-브랜치: `feat/model-mobile-v1`
+작업 기준 브랜치: GitHub `main`
 
-기준 브랜치: GitHub `main`
+현재 기준 커밋: `6743f3534519c93b2e6a96b6ed44f91ac0fb6cbf`
 
 ## 확정된 방향
 
@@ -144,19 +144,45 @@ GitHub에 올리지 않고 `/opt/runners-feed/model-golden/<model_id>/`에 둔�
 - Expo Doctor: 21/21 통과
 - Production dependency audit: high/critical 없음, Expo transitive dependency의
   moderate 13건은 강제 수정 시 SDK 호환성이 깨져 현재 버전을 유지
+- GitHub Actions release run `34067514565`: 이미지 build/test/push 및 Production
+  immutable deploy/current promote 통과
+- Production smoke: health, dependency, storage, model-quality endpoint와 게스트
+  session 발급 통과; 현재 품질 상태는 표본 부족에 따른 `insufficient_sample`이며
+  rollback condition은 없음
 
-## 배포 전에 남은 항목
+## 실제 Production 상태 (2026-09-07)
+
+Production은 `sha-6743f3534519c93b2e6a96b6ed44f91ac0fb6cbf` 릴리스로 전환됐다.
+Release workflow 전체가 실패로 표시된 이유는 앱 배포 실패가 아니라 마지막
+`Synchronize operational systemd units` 단계에서 `github-deploy`의
+passwordless `sudo`가 없어 systemd unit 설치가 거부됐기 때문이다.
+
+따라서 모델 품질 watchdog 코드와 unit 파일은 릴리스에 포함되어 있으나,
+Production에서 timer가 실제 활성화됐다고 아직 확정할 수 없다. 관리자 권한으로
+다음 명령을 실행한 뒤 활성 상태를 확인해야 한다.
+
+```bash
+sudo install -o root -g root -m 0644 /opt/runners-feed/current/deploy/systemd/runners-feed-model-quality-watchdog.service /etc/systemd/system/
+sudo install -o root -g root -m 0644 /opt/runners-feed/current/deploy/systemd/runners-feed-model-quality-watchdog.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now runners-feed-model-quality-watchdog.timer
+systemctl is-active runners-feed-model-quality-watchdog.timer
+```
+
+Android preview APK는 저장소 설정까지 완료했지만, 현재 Expo 계정 인증 정보가
+없어 EAS build를 실행하지 않았다. 프로젝트 소유자가 `mobile/`에서 로그인 후
+`eas init`과 `eas build --platform android --profile preview`를 실행해야 한다.
+
+## 배포 후/운영에 남은 항목
 
 - 모델러가 golden 영상·반복 실행 기준값을 승인하고
   `quality_baseline.json`의 `approval_status`를 `approved`로 변경
 - Kakao Developers에 mobile server callback URI 등록
 - Expo 소유자 계정으로 `eas init` 후 preview APK build
-- GitHub required checks에 `Model contract and quality gate`,
-  `Mobile Expo typecheck` 추가
-- Production 환경변수와 systemd sudo 권한 점검
-- 새 migration 적용 전 DB backup 실행
+- Production에서 model-quality watchdog systemd timer 활성화
+- DB backup/restore 실제 검증 결과와 보관 위치를 운영 runbook에 기록
 
-배포 후에는 14일 안정성 관찰을 새 배포일부터 다시 계산한다. 그 기간에는
+배포일 기준 14일 안정성 관찰은 2026-09-20까지 진행한다. 그 기간에는
 레거시 경로, 오래된 release, 로컬 Docker image를 삭제하지 않는다.
 
 상세 모델 전달 규격은 [`MODEL_HANDOFF.md`](MODEL_HANDOFF.md), 모바일 endpoint와
