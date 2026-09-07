@@ -80,6 +80,45 @@ run/<RUN_ID>/outputs/feature_results.json
 `value`와 비어 있지 않은 `unit`을 포함해야 한다. 숫자에는 `NaN`과
 `Infinity`를 사용할 수 없으며 측정 불가는 `null`로 표현한다.
 
+앱에서 feature 카드와 근거 상세를 표시하려면 `feature_results.json`의 각
+feature에 다음 선택 필드를 추가할 수 있다. 모델이 제공하지 않는 필드는
+adapter가 임의로 만들지 않고 앱에서 미제공 상태로 표시한다.
+
+```json
+{
+  "feature1": {
+    "value": 0.046,
+    "unit": "ratio",
+    "representative_value": 0.046,
+    "aggregation": "stance-phase median",
+    "reference_range": {
+      "kind": "reference",
+      "min": 0.03,
+      "max": 0.06,
+      "unit": "ratio",
+      "criterion_version": "criterion-1",
+      "evidence_ids": ["evidence-1"]
+    },
+    "series": [
+      {"frame_index": 1, "timestamp_ms": 33, "value": 0.045, "confidence_pct": 91}
+    ],
+    "verdict": "review",
+    "confidence_pct": 91,
+    "confidence_level": "medium",
+    "interpretation": "측정값이 일부 구간에서 관찰됩니다.",
+    "coaching_action": null,
+    "limitation": "측면 촬영 기준입니다.",
+    "evidence_ids": ["evidence-1"]
+  }
+}
+```
+
+코칭 문장은 자유 Markdown만으로 전달하지 말고 가능하면
+`outputs/running_report.json`으로 전달한다. `status`, `model`, `summary`,
+`priority_actions`, `maintain_actions`, `disclaimer`, `validator_version`를
+포함하며, 각 action은 `feature_id`와 `text`를 반드시 가져야 한다. 기존
+`running_report.md`는 요약 문장 호환용으로 계속 지원한다.
+
 ## manifest와 baseline
 
 `model_manifest.json`에 반드시 기록할 내용:

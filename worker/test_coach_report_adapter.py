@@ -80,6 +80,29 @@ class CoachReportAdapterTest(unittest.TestCase):
         self.assertEqual(report["narrative"]["status"], "success")
         self.assertEqual(report["narrative"]["overall_summary"], coaching)
 
+    def test_reads_structured_narrative_without_requiring_model_source_changes(self) -> None:
+        (self.output_dir / "running_report.json").write_text(
+            json.dumps(
+                {
+                    "status": "success",
+                    "model": "coach-model",
+                    "summary": "측정 결과 요약",
+                    "priority_actions": [
+                        {"feature_id": "feature1", "text": "현재 값을 확인해 보세요."}
+                    ],
+                    "maintain_actions": [],
+                    "validator_version": "validator-1",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        report = build_report(self.run_dir)
+
+        self.assertEqual(report["narrative"]["status"], "success")
+        self.assertEqual(report["narrative"]["overall_summary"], "측정 결과 요약")
+        self.assertEqual(report["narrative"]["priority_actions"][0]["feature_id"], "feature1")
+
     def test_writes_api_compatible_report_json(self) -> None:
         output_path = write_report(self.run_dir)
 
