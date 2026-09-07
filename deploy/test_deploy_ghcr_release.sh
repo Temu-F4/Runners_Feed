@@ -65,6 +65,7 @@ run_deploy() {
 
 run_deploy "${SUCCESS_TAG}"
 grep -qx "IMAGE_TAG=${SUCCESS_TAG}" "${test_root}/state/last-successful.env"
+grep -q "gpu-dispatch-worker" "${test_root}/docker.log"
 
 printf 'IMAGE_TAG=%s\n' "${PREVIOUS_TAG}" >"${test_root}/state/last-successful.env"
 run_deploy "${SUCCESS_TAG}"

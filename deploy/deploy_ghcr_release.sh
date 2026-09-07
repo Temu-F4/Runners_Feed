@@ -18,7 +18,7 @@ readonly COMPOSE_FILES=(
   -f "${PROJECT_ROOT}/compose.yaml"
   -f "${PROJECT_ROOT}/compose.coach.yaml"
 )
-readonly SERVICES=(api frontend web coach-worker maintenance)
+readonly SERVICES=(api frontend web coach-worker gpu-dispatch-worker maintenance)
 readonly SUPPORT_SERVICES=(alertmanager)
 
 export IMAGE_PREFIX
