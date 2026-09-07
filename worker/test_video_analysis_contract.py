@@ -87,6 +87,11 @@ class RunPodClientTests(unittest.TestCase):
         payload = {"job_id": "job", "attempt_id": "attempt", "result_prefix": "jobs/job/video-analysis/attempt"}
         with self.assertRaisesRegex(RuntimeError, "job_id"):
             client.submit(payload)
+        sent_request = opener.call_args.args[0]
+        self.assertEqual(
+            sent_request.get_header("User-agent"),
+            "Runners-Feed-OCI-Dispatcher/1.0",
+        )
 
 
 if __name__ == "__main__":
