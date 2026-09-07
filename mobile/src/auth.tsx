@@ -23,6 +23,7 @@ interface AuthContextValue {
   token: string | null;
   profile: MobileProfile | null;
   signInWithKakao: () => Promise<void>;
+  completeKakaoLogin: (code: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   retry: () => Promise<void>;
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<MobileProfile | null>(null);
+  const kakaoExchangePromises = React.useRef(new Map<string, Promise<void>>());
 
   const saveToken = async (nextToken: string) => {
     await SecureStore.setItemAsync(TOKEN_KEY, nextToken);
@@ -71,22 +73,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (token) setProfile(await getMe(token));
   };
 
+  const completeKakaoLogin = async (code: string) => {
+    const existing = kakaoExchangePromises.current.get(code);
+    if (existing) return existing;
+
+    const pending = (async () => {
+      const account = await exchangeKakaoCode(code);
+      await saveToken(account.accessToken);
+      setProfile(await getMe(account.accessToken));
+    })();
+    kakaoExchangePromises.current.set(code, pending);
+    try {
+      await pending;
+    } catch (cause) {
+      if (kakaoExchangePromises.current.get(code) === pending) {
+        kakaoExchangePromises.current.delete(code);
+      }
+      throw cause;
+    }
+    setTimeout(() => {
+      if (kakaoExchangePromises.current.get(code) === pending) {
+        kakaoExchangePromises.current.delete(code);
+      }
+    }, 60_000);
+  };
+
   const signInWithKakao = async () => {
     if (!token) return;
     const { authorizationUrl } = await startKakaoLogin(token);
-    const result = await WebBrowser.openAuthSessionAsync(
-      authorizationUrl,
-      NATIVE_REDIRECT_URI,
-    );
-    if (result.type !== "success") return;
-    const parsed = Linking.parse(result.url);
-    const code = typeof parsed.queryParams?.code === "string"
-      ? parsed.queryParams.code
-      : null;
-    if (!code) throw new Error("Kakao login did not return an exchange code");
-    const account = await exchangeKakaoCode(code);
-    await saveToken(account.accessToken);
-    setProfile(await getMe(account.accessToken));
+    let redirectUrl: string | null = null;
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      if (!url.startsWith(NATIVE_REDIRECT_URI)) return;
+      redirectUrl = url;
+      void WebBrowser.dismissBrowser().catch(() => undefined);
+    });
+
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(
+        authorizationUrl,
+        NATIVE_REDIRECT_URI,
+      );
+      const callbackUrl =
+        redirectUrl || (result.type === "success" ? result.url : null);
+      if (!callbackUrl) return;
+      const parsed = Linking.parse(callbackUrl);
+      const code = typeof parsed.queryParams?.code === "string"
+        ? parsed.queryParams.code
+        : null;
+      if (!code) throw new Error("Kakao login did not return an exchange code");
+      await completeKakaoLogin(code);
+    } finally {
+      subscription.remove();
+    }
   };
 
   const signOut = async () => {
@@ -98,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const value = useMemo(
-    () => ({ ready, error, token, profile, signInWithKakao, signOut, refreshProfile, retry: bootstrap }),
+    () => ({ ready, error, token, profile, signInWithKakao, completeKakaoLogin, signOut, refreshProfile, retry: bootstrap }),
     [ready, error, token, profile],
   );
 

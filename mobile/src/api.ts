@@ -62,8 +62,19 @@ export function getMe(token: string) {
   return request<MobileProfile>("/mobile/v1/me", token);
 }
 
-export function getDashboard(token: string) {
-  return request<DashboardResponse>("/mobile/v1/dashboard", token);
+export async function getDashboard(token: string): Promise<DashboardResponse> {
+  const payload = await request<Partial<DashboardResponse> & Pick<DashboardResponse, "profile" | "activeJob" | "jobs">>(
+    "/mobile/v1/dashboard",
+    token,
+  );
+  return {
+    profile: payload.profile,
+    activeJob: payload.activeJob,
+    jobs: payload.jobs ?? [],
+    prioritySignals: Array.isArray(payload.prioritySignals) ? payload.prioritySignals : [],
+    latestSignals: Array.isArray(payload.latestSignals) ? payload.latestSignals : [],
+    trend: payload.trend && !Array.isArray(payload.trend) ? payload.trend : null,
+  };
 }
 
 export function updateProfile(token: string, heightCm: number | null) {

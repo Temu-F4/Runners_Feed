@@ -654,40 +654,48 @@ def _mobile_profile(request: Request, user_id: UUID) -> dict:
 
 def _mobile_stage(job: dict) -> tuple[str, float | None]:
     status = job["status"]
-    if status == "QUEUED":
-        return "queue", 0.0
-    if status == "FAILED":
-        return "validation", None
     if status == "SUCCESS":
         return "result", 100.0
+    if status == "QUEUED":
+        return "queue", 0.0
 
     stages = get_job_stages(str(job["job_id"]))
     if not stages:
         return "queue", None
 
     stage_name = {
-        "input_download": "keypoints",
+        "input_download": "upload",
         "video_analysis": "keypoints",
         "feature_extract": "features",
         "report_generate": "validation",
         "result_upload": "result",
         "workspace_cleanup": "result",
     }
-    running = next(
-        (stage for stage in stages if stage["status"] == "RUNNING"),
-        None,
-    )
-    selected = running or next(
+    failed = next(
         (
             stage
             for stage in reversed(stages)
-            if stage["status"] == "SUCCESS"
+            if stage.get("status") in {"FAILED", "ERROR"}
+        ),
+        None,
+    )
+    running = next(
+        (stage for stage in stages if stage.get("status") == "RUNNING"),
+        None,
+    )
+    selected = failed or running or next(
+        (
+            stage
+            for stage in reversed(stages)
+            if stage.get("status") == "SUCCESS"
         ),
         stages[0],
     )
-    completed = sum(stage["status"] == "SUCCESS" for stage in stages)
+    if status in {"FAILED", "ERROR"}:
+        return stage_name.get(selected.get("stage_key"), "validation"), None
+    completed = sum(stage.get("status") == "SUCCESS" for stage in stages)
     progress = round(completed / len(stages) * 100, 1)
-    return stage_name.get(selected["stage_key"], "validation"), progress
+    return stage_name.get(selected.get("stage_key"), "validation"), progress
 
 
 def _mobile_job(job: dict) -> dict:
@@ -720,122 +728,176 @@ def _mobile_job(job: dict) -> dict:
     }
 
 
+def _finite_number(value: object) -> float | None:
+    if isinstance(value, (int, float)) and math.isfinite(float(value)):
+        return float(value)
+    return None
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item.strip()]
+
+
+def _mobile_reference_range(reference: object, unit: str) -> dict | None:
+    if not isinstance(reference, dict):
+        return None
+    minimum = _finite_number(reference.get("min"))
+    maximum = _finite_number(reference.get("max"))
+    if minimum is None or maximum is None or maximum <= minimum:
+        return None
+    kind = reference.get("kind")
+    if kind not in {"recommended", "reference"}:
+        kind = "reference"
+    criterion_version = reference.get("criterion_version", reference.get("criterionVersion"))
+    return {
+        "kind": kind,
+        "min": minimum,
+        "max": maximum,
+        "unit": reference.get("unit") if isinstance(reference.get("unit"), str) else unit,
+        "criterionVersion": criterion_version if isinstance(criterion_version, str) else None,
+        "evidenceIds": _string_list(reference.get("evidence_ids", reference.get("evidenceIds", []))),
+    }
+
+
+def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
+    feature_id = metric.get("id")
+    if not isinstance(feature_id, str) or not feature_id.strip():
+        return None
+    unit = metric.get("unit") if isinstance(metric.get("unit"), str) else ""
+    metric_value = _finite_number(metric.get("value"))
+    raw_value = _finite_number(raw.get("representative_value", raw.get("value")))
+    representative_value = metric_value if metric_value is not None else raw_value
+    confidence_pct = _finite_number(raw.get("confidence_pct", raw.get("confidencePct")))
+    confidence_level = raw.get("confidence_level", raw.get("confidenceLevel"))
+    if confidence_level not in {"high", "medium", "low", "excluded"}:
+        confidence_level = "excluded"
+    verdict = raw.get("verdict")
+    if verdict not in {"improve", "maintain", "review", "excluded"}:
+        verdict = "review"
+    priority = raw.get("priority")
+    if not isinstance(priority, int) or priority < 1:
+        priority = None
+    series = []
+    raw_series = raw.get("series", [])
+    if isinstance(raw_series, list):
+        for point in raw_series:
+            if not isinstance(point, dict) or not isinstance(point.get("frame_index", point.get("frameIndex")), int):
+                continue
+            series.append(
+                {
+                    "frameIndex": point.get("frame_index", point.get("frameIndex")),
+                    "timestampMs": _finite_number(point.get("timestamp_ms", point.get("timestampMs"))),
+                    "value": _finite_number(point.get("value")),
+                    "confidencePct": _finite_number(point.get("confidence_pct", point.get("confidencePct"))),
+                }
+            )
+    interpretation = raw.get("interpretation")
+    coaching_action = raw.get("coaching_action", raw.get("coachingAction"))
+    limitation = raw.get("limitation")
+    return {
+        "featureId": feature_id,
+        "label": metric.get("label") if isinstance(metric.get("label"), str) else feature_id,
+        "priority": priority,
+        "verdict": verdict,
+        "representativeValue": representative_value,
+        "unit": unit,
+        "aggregation": raw.get("aggregation") if isinstance(raw.get("aggregation"), str) else "reported",
+        "referenceRange": _mobile_reference_range(raw.get("reference_range", raw.get("referenceRange")), unit),
+        "series": series,
+        "interpretation": interpretation if isinstance(interpretation, str) else "",
+        "coachingAction": coaching_action if isinstance(coaching_action, str) else None,
+        "confidencePct": confidence_pct,
+        "confidenceLevel": confidence_level,
+        "limitation": limitation if isinstance(limitation, str) else notice,
+        "evidenceIds": _string_list(raw.get("evidence_ids", raw.get("evidenceIds", []))),
+    }
+
+
+def _mobile_action(action: object, kind: str) -> dict | None:
+    if not isinstance(action, dict) or not isinstance(action.get("text"), str):
+        return None
+    feature_id = action.get("feature_id", action.get("featureId"))
+    if not isinstance(feature_id, str):
+        return None
+    reference = action.get("measurement_reference", action.get("measurementReference"))
+    measurement = None
+    if isinstance(reference, dict):
+        measurement = {
+            "value": _finite_number(reference.get("value")),
+            "unit": reference.get("unit") if isinstance(reference.get("unit"), str) else "",
+            "referenceMin": _finite_number(reference.get("reference_min", reference.get("referenceMin"))),
+            "referenceMax": _finite_number(reference.get("reference_max", reference.get("referenceMax"))),
+        }
+    return {"featureId": feature_id, "kind": kind, "text": action["text"], "measurementReference": measurement}
+
+
+def _mobile_evidence(item: object, index: int) -> dict | None:
+    if not isinstance(item, dict):
+        return None
+    source = item.get("source") if isinstance(item.get("source"), dict) else {}
+    evidence_id = item.get("evidence_id", item.get("evidenceId", item.get("id")))
+    if not isinstance(evidence_id, str) or not evidence_id:
+        evidence_id = f"evidence-{index + 1}"
+    year = source.get("year", item.get("year"))
+    media_uri = item.get("uri", item.get("frame_uri", item.get("frameUri")))
+    source_url = source.get("url") or item.get("url")
+    doi = source.get("doi") or item.get("doi")
+    return {
+        "evidenceId": evidence_id,
+        "frameIndex": item.get("frame_index", item.get("frameIndex")) if isinstance(item.get("frame_index", item.get("frameIndex")), int) else None,
+        "timestampMs": _finite_number(item.get("timestamp_ms", item.get("timestampMs"))),
+        "uri": media_uri if isinstance(media_uri, str) else None,
+        "title": source.get("title") or item.get("title") or item.get("label") or "근거",
+        "authors": source.get("authors") or item.get("authors") or "",
+        "year": year if isinstance(year, int) else None,
+        "doi": doi if isinstance(doi, str) else None,
+        "url": source_url if isinstance(source_url, str) else None,
+        "page": item.get("page") if isinstance(item.get("page"), int) else source.get("page") if isinstance(source.get("page"), int) else None,
+        "section": item.get("section") or source.get("section"),
+        "criterionVersion": item.get("criterion_version", item.get("criterionVersion", source.get("criterion_version", source.get("criterionVersion")))) if isinstance(item.get("criterion_version", item.get("criterionVersion", source.get("criterion_version", source.get("criterionVersion")))), str) else None,
+        "excerptSummary": item.get("excerpt_summary") or item.get("description") or item.get("text") or "",
+        "caveat": item.get("caveat") or source.get("caveat") or "",
+        "metadata": item,
+    }
+
+
 def _mobile_result(job: dict, report: dict) -> dict:
     raw_features = report.get("features", {})
+    raw_features = raw_features if isinstance(raw_features, dict) else {}
     metrics = report.get("metrics", [])
     features = []
-    for metric in metrics:
-        feature_id = metric.get("id")
-        if not isinstance(feature_id, str):
-            continue
-        raw = raw_features.get(feature_id, {})
-        raw = raw if isinstance(raw, dict) else {}
-        value = metric.get("value")
-        confidence = raw.get("confidence_pct")
-        reference = raw.get("reference_range")
-        if (
-            isinstance(reference, dict)
-            and isinstance(reference.get("min"), (int, float))
-            and isinstance(reference.get("max"), (int, float))
-            and math.isfinite(float(reference["min"]))
-            and math.isfinite(float(reference["max"]))
-        ):
-            reference_range = {
-                "kind": reference.get("kind", "reference"),
-                "min": reference.get("min"),
-                "max": reference.get("max"),
-                "unit": reference.get("unit", metric.get("unit", "")),
-                "criterionVersion": reference.get(
-                    "criterion_version", "unversioned"
-                ),
-                "evidenceIds": reference.get("evidence_ids", []),
-            }
-        else:
-            reference_range = None
-        raw_series = raw.get("series", [])
-        series = []
-        if isinstance(raw_series, list):
-            for point in raw_series:
-                if not isinstance(point, dict):
-                    continue
-                frame_index = point.get("frame_index", point.get("frameIndex"))
-                timestamp_ms = point.get("timestamp_ms", point.get("timestampMs"))
-                value = point.get("value")
-                confidence_pct = point.get(
-                    "confidence_pct", point.get("confidencePct")
-                )
-                if not isinstance(frame_index, int):
-                    continue
-                series.append(
-                    {
-                        "frameIndex": frame_index,
-                        "timestampMs": (
-                            float(timestamp_ms)
-                            if isinstance(timestamp_ms, (int, float))
-                            else 0
-                        ),
-                        "value": (
-                            float(value)
-                            if isinstance(value, (int, float))
-                            and math.isfinite(float(value))
-                            else None
-                        ),
-                        "confidencePct": (
-                            float(confidence_pct)
-                            if isinstance(confidence_pct, (int, float))
-                            and math.isfinite(float(confidence_pct))
-                            else None
-                        ),
-                    }
-                )
-        features.append(
-            {
-                "featureId": feature_id,
-                "label": metric.get("label", feature_id),
-                "priority": raw.get("priority"),
-                "verdict": raw.get("verdict", "review"),
-                "representativeValue": value,
-                "unit": metric.get("unit", ""),
-                "aggregation": raw.get("aggregation", "reported"),
-                "referenceRange": reference_range,
-                "series": series,
-                "interpretation": raw.get("interpretation", ""),
-                "coachingAction": raw.get("coaching_action"),
-                "confidencePct": confidence,
-                "confidenceLevel": raw.get(
-                    "confidence_level",
-                    "excluded" if confidence is None else "review",
-                ),
-                "limitation": raw.get(
-                    "limitation",
-                    report.get("notice", "측정 조건에 따라 결과가 달라질 수 있습니다."),
-                ),
-                "evidenceIds": raw.get("evidence_ids", []),
-            }
-        )
+    if isinstance(metrics, list):
+        for metric in metrics:
+            if not isinstance(metric, dict):
+                continue
+            metric_id = metric.get("id")
+            raw = raw_features.get(metric_id, {}) if isinstance(metric_id, str) else {}
+            notice = report.get("notice", "측정 조건에 따라 결과가 달라질 수 있습니다.")
+            feature = _mobile_feature(metric, raw if isinstance(raw, dict) else {}, notice if isinstance(notice, str) else "측정 조건에 따라 결과가 달라질 수 있습니다.")
+            if feature is not None:
+                features.append(feature)
 
     raw_narrative = report.get("narrative", {})
-    narrative_status = (
-        "success"
-        if raw_narrative.get("status") == "success"
-        and isinstance(raw_narrative.get("priority_actions"), list)
-        else "unavailable"
-    )
+    raw_narrative = raw_narrative if isinstance(raw_narrative, dict) else {}
+    raw_priority = raw_narrative.get("priority_actions", raw_narrative.get("priorityActions", []))
+    raw_maintain = raw_narrative.get("maintain_actions", raw_narrative.get("maintainActions", []))
+    priority_actions = [_mobile_action(action, "improve") for action in raw_priority] if isinstance(raw_priority, list) else []
+    maintain_actions = [_mobile_action(action, "maintain") for action in raw_maintain] if isinstance(raw_maintain, list) else []
+    narrative_status = "success" if raw_narrative.get("status") == "success" else "unavailable"
     narrative = {
         "status": narrative_status,
-        "model": raw_narrative.get("model"),
-        "priorityActions": raw_narrative.get("priority_actions", []),
-        "maintainActions": raw_narrative.get("maintain_actions", []),
-        "disclaimer": raw_narrative.get(
-            "disclaimer",
-            "이 내용은 러닝 동작 참고용이며 의료 진단이나 부상 예측이 아닙니다.",
-        ),
-        "validatorVersion": raw_narrative.get(
-            "validator_version", "unvalidated"
-        ),
+        "model": raw_narrative.get("model") if isinstance(raw_narrative.get("model"), str) else None,
+        "summary": raw_narrative.get("overall_summary", raw_narrative.get("summary")) if isinstance(raw_narrative.get("overall_summary", raw_narrative.get("summary")), str) else None,
+        "priorityActions": [action for action in priority_actions if action is not None],
+        "maintainActions": [action for action in maintain_actions if action is not None],
+        "disclaimer": raw_narrative.get("disclaimer", "이 내용은 러닝 동작 참고용이며 의료 진단이나 부상 예측이 아닙니다."),
+        "validatorVersion": raw_narrative.get("validator_version", raw_narrative.get("validatorVersion", "unvalidated")),
     }
-    video = report.get("video", {})
-    tracking = report.get("tracking", {})
+    video = report.get("video", {}) if isinstance(report.get("video", {}), dict) else {}
+    tracking = report.get("tracking", {}) if isinstance(report.get("tracking", {}), dict) else {}
+    evidence = [_mobile_evidence(item, index) for index, item in enumerate(report.get("evidence", []) if isinstance(report.get("evidence", []), list) else [])]
     return {
         "jobId": str(job["job_id"]),
         "modelId": job.get("model_id"),
@@ -843,34 +905,70 @@ def _mobile_result(job: dict, report: dict) -> dict:
         "createdAt": job["created_at"],
         "completedAt": job["completed_at"],
         "analyzedFrameCount": tracking.get("tracked_frames", 0),
-        "totalFrameCount": tracking.get(
-            "total_frames", video.get("frame_count", 0)
-        ),
+        "totalFrameCount": tracking.get("total_frames", video.get("frame_count", 0)),
         "features": features,
-        "evidence": [
-            {
-                "evidenceId": (
-                    item.get("evidence_id")
-                    or item.get("evidenceId")
-                    or item.get("id")
-                    or f"evidence-{index + 1}"
-                ),
-                "frameIndex": item.get("frame_index", item.get("frameIndex")),
-                "timestampMs": item.get(
-                    "timestamp_ms", item.get("timestampMs")
-                ),
-                "type": item.get("type", "source"),
-                "label": item.get("label") or item.get("title", "근거"),
-                "description": item.get("description")
-                or item.get("excerpt_summary", ""),
-                "uri": item.get("uri") or item.get("url"),
-                "metadata": item,
-            }
-            for index, item in enumerate(report.get("evidence", []))
-            if isinstance(item, dict)
-        ],
+        "evidence": [item for item in evidence if item is not None],
         "narrative": narrative,
     }
+
+
+def _mobile_signals(features: list[dict]) -> list[dict]:
+    return [
+        {
+            "featureId": feature["featureId"],
+            "label": feature["label"],
+            "priority": feature["priority"],
+            "verdict": feature["verdict"],
+            "value": feature["representativeValue"],
+            "unit": feature["unit"],
+            "referenceRange": feature["referenceRange"],
+            "message": feature["interpretation"] or feature["limitation"],
+            "confidencePct": feature["confidencePct"],
+            "confidenceLevel": feature["confidenceLevel"],
+        }
+        for feature in features
+    ]
+
+
+def _mobile_dashboard_insights(jobs: list[dict]) -> tuple[list[dict], list[dict], dict | None]:
+    successful = [job for job in jobs if job.get("status") == "SUCCESS" and job.get("result_report_object")]
+    successful.sort(key=lambda job: str(job.get("completed_at") or job.get("created_at") or ""))
+    results: list[tuple[dict, dict]] = []
+    for job in successful:
+        try:
+            report = ObjectStorageGateway().load_result_json(job["result_report_object"])
+            results.append((job, _mobile_result(job, report)))
+        except Exception:
+            LOGGER.warning("Unable to load mobile dashboard report for %s", job.get("job_id"), exc_info=True)
+    if not results:
+        return [], [], None
+    latest_features = results[-1][1]["features"]
+    latest_signals = _mobile_signals(latest_features)
+    priority = sorted(
+        [signal for signal in latest_signals if signal["verdict"] == "improve" and signal["priority"] is not None],
+        key=lambda signal: signal["priority"],
+    )
+    by_feature: dict[str, list[tuple[dict, dict]]] = {}
+    for job, result in results:
+        for feature in result["features"]:
+            if feature["representativeValue"] is not None:
+                by_feature.setdefault(feature["featureId"], []).append((job, feature))
+    trend = None
+    candidates = sorted(by_feature.items(), key=lambda item: len(item[1]), reverse=True)
+    if candidates and len(candidates[0][1]) >= 8:
+        feature_id, points = candidates[0]
+        first = points[0][1]["representativeValue"]
+        last = points[-1][1]["representativeValue"]
+        delta = None if first in {None, 0} or last is None else round((last - first) / abs(first) * 100, 2)
+        trend = {
+            "featureId": feature_id,
+            "label": points[-1][1]["label"],
+            "unit": points[-1][1]["unit"],
+            "points": [{"recordedAt": job.get("completed_at") or job.get("created_at"), "value": feature["representativeValue"]} for job, feature in points],
+            "deltaPct": delta,
+            "summary": None,
+        }
+    return priority, latest_signals, trend
 
 
 @app.post("/mobile/v1/sessions/guest")
@@ -1025,12 +1123,14 @@ def mobile_dashboard(request: Request):
         (job for job in jobs if job["status"] in {"QUEUED", "PROCESSING"}),
         None,
     )
+    priority_signals, latest_signals, trend = _mobile_dashboard_insights(jobs)
     return {
         "profile": _mobile_profile(request, user_id),
         "activeJob": _mobile_job(active) if active else None,
         "jobs": [_mobile_job(job) for job in jobs],
-        "prioritySignals": [],
-        "trend": [],
+        "prioritySignals": priority_signals,
+        "latestSignals": latest_signals,
+        "trend": trend,
     }
 
 

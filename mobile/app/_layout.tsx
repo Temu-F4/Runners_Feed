@@ -27,7 +27,7 @@ function ApplicationShell() {
   }
 
   return (
-    <SafeAreaView edges={["top"]} style={styles.screen}>
+    <SafeAreaView edges={["top", "bottom"]} style={styles.screen}>
       <Stack screenOptions={{ animation: "fade", contentStyle: { backgroundColor: colors.background }, headerShown: false }} />
       <BottomNavigation />
     </SafeAreaView>

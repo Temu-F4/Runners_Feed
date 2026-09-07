@@ -132,6 +132,34 @@ def _metrics(features: dict) -> list[dict[str, Any]]:
 
 
 def _narrative(output_dir: Path) -> dict[str, Any]:
+    structured_path = output_dir / "running_report.json"
+    if structured_path.is_file():
+        structured = _load_json(structured_path)
+        status = structured.get("status")
+        if status not in {"success", "unavailable", "disabled"}:
+            raise ValueError(
+                "running_report.json status must be success, unavailable, or disabled"
+            )
+        return {
+            "status": status,
+            "model": structured.get("model"),
+            "overall_summary": structured.get(
+                "overall_summary", structured.get("summary")
+            ),
+            "priority_actions": structured.get(
+                "priority_actions", structured.get("priorityActions", [])
+            ),
+            "maintain_actions": structured.get(
+                "maintain_actions", structured.get("maintainActions", [])
+            ),
+            "disclaimer": structured.get(
+                "disclaimer",
+                "이 내용은 러닝 동작 참고용이며 의료 진단이나 부상 예측이 아닙니다.",
+            ),
+            "validator_version": structured.get(
+                "validator_version", structured.get("validatorVersion", "unvalidated")
+            ),
+        }
     report_path = output_dir / "running_report.md"
     if not report_path.is_file():
         return {

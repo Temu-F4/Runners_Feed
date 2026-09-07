@@ -51,11 +51,65 @@ export interface FeatureAnalysis {
   evidenceIds: string[];
 }
 
+export interface PostureSignal {
+  featureId: string;
+  label: string;
+  priority: number | null;
+  verdict: FeatureVerdict;
+  value: number | null;
+  unit: string;
+  referenceRange: ReferenceRange | null;
+  message: string;
+  confidencePct: number | null;
+  confidenceLevel: ConfidenceLevel;
+}
+
+export interface TrendPoint {
+  recordedAt: string;
+  value: number | null;
+}
+
+export interface TrendSummary {
+  featureId: string;
+  label: string;
+  unit: string;
+  points: TrendPoint[];
+  deltaPct: number | null;
+  summary: string | null;
+}
+
+export interface EvidenceSource {
+  evidenceId: string;
+  title: string;
+  authors: string;
+  year: number | null;
+  doi: string | null;
+  url: string | null;
+  page: number | null;
+  section: string | null;
+  criterionVersion: string | null;
+  excerptSummary: string;
+  caveat: string;
+}
+
+export interface CoachingAction {
+  featureId: string;
+  kind: "improve" | "maintain";
+  text: string;
+  measurementReference: {
+    value: number | null;
+    unit: string;
+    referenceMin: number | null;
+    referenceMax: number | null;
+  } | null;
+}
+
 export interface ValidatedNarrative {
   status: "success" | "unavailable";
   model: string | null;
-  priorityActions: Array<Record<string, unknown>>;
-  maintainActions: Array<Record<string, unknown>>;
+  summary: string | null;
+  priorityActions: CoachingAction[];
+  maintainActions: CoachingAction[];
   disclaimer: string;
   validatorVersion: string;
 }
@@ -73,13 +127,10 @@ export interface AnalysisResult {
   narrative: ValidatedNarrative;
 }
 
-export interface EvidenceItem {
+export interface EvidenceItem extends EvidenceSource {
   evidenceId: string;
   frameIndex: number | null;
   timestampMs: number | null;
-  type: string;
-  label: string;
-  description: string;
   uri: string | null;
   metadata: Record<string, unknown>;
 }
@@ -117,6 +168,7 @@ export interface DashboardResponse {
   profile: MobileProfile;
   activeJob: ActiveAnalysisJob | null;
   jobs: ActiveAnalysisJob[];
-  prioritySignals: Array<Record<string, unknown>>;
-  trend: Array<Record<string, unknown>>;
+  prioritySignals: PostureSignal[];
+  latestSignals: PostureSignal[];
+  trend: TrendSummary | null;
 }

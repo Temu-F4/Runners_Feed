@@ -11,11 +11,14 @@ import {
   JobCard,
   LoadingState,
   Panel,
+  PostureSignalRow,
+  PrioritySignals,
   Screen,
   TextField,
+  TrendChart,
 } from "../src/components";
 import { useAuth } from "../src/auth";
-import type { DashboardResponse, ActiveAnalysisJob } from "../src/contracts";
+import type { ActiveAnalysisJob, DashboardResponse } from "../src/contracts";
 import { colors, spacing, styles } from "../src/theme";
 
 function jobPath(job: ActiveAnalysisJob) {
@@ -26,12 +29,14 @@ function jobPath(job: ActiveAnalysisJob) {
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { token, profile, refreshProfile, signInWithKakao } = useAuth();
+  const { token, profile, signInWithKakao, signOut } = useAuth();
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [height, setHeight] = useState(profile?.heightCm ? String(profile.heightCm) : "");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -72,8 +77,9 @@ export default function DashboardScreen() {
     setError(null);
     try {
       await updateProfile(token, numericHeight);
-      await refreshProfile();
-      await load(true);
+      const response = await getDashboard(token);
+      setDashboard(response);
+      setHeight(response.profile.heightCm ? String(response.profile.heightCm) : "");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "프로필을 저장하지 못했습니다.");
     } finally {
@@ -82,57 +88,110 @@ export default function DashboardScreen() {
   };
 
   const login = async () => {
+    setLoggingIn(true);
     setLoginError(null);
     try {
       await signInWithKakao();
-      await load(true);
     } catch (cause) {
       setLoginError(cause instanceof Error ? cause.message : "Kakao 로그인을 완료하지 못했습니다.");
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const logout = async () => {
+    setLoggingOut(true);
+    setError(null);
+    try {
+      await signOut();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "로그아웃하지 못했습니다.");
+    } finally {
+      setLoggingOut(false);
     }
   };
 
   return (
     <Screen refreshControl={<RefreshControl onRefresh={() => void load(true)} refreshing={refreshing} tintColor={colors.lime} />}>
       <AppHeader title="오늘의 러닝" right={<Text style={styles.eyebrow}>{profile?.sessionType === "account" ? "ACCOUNT" : "GUEST"}</Text>} />
+
       {profile?.sessionType === "guest" ? (
         <Panel style={{ borderColor: colors.lime, gap: spacing.md, marginBottom: spacing.lg }}>
           <Text style={{ color: colors.primary, fontSize: 17, fontWeight: "700" }}>기록을 안전하게 이어가세요</Text>
           <Text style={styles.body}>비회원으로도 분석할 수 있습니다. Kakao 로그인 후 다른 기기에서도 기록을 이어갈 수 있습니다.</Text>
-          <Button label="Kakao 로그인" onPress={() => void login()} loading={false} />
+          {profile.kakaoLoginEnabled ? <Button label="Kakao 로그인" loading={loggingIn} onPress={() => void login()} /> : <Text style={styles.caption}>Kakao 로그인이 아직 설정되지 않았습니다.</Text>}
           {loginError ? <Text style={{ color: colors.red, fontSize: 12 }}>{loginError}</Text> : null}
         </Panel>
-      ) : null}
+      ) : (
+        <Panel style={{ gap: spacing.md, marginBottom: spacing.lg }}>
+          <Text style={styles.eyebrow}>SIGNED-IN RUNNER</Text>
+          <Text style={{ color: colors.primary, fontSize: 17, fontWeight: "700" }}>{profile?.displayName || "Kakao 계정"}</Text>
+          {profile?.email ? <Text style={styles.caption}>{profile.email}</Text> : null}
+          <Button label="로그아웃" kind="secondary" loading={loggingOut} onPress={() => void logout()} />
+        </Panel>
+      )}
+
+      <Panel style={{ gap: spacing.md, marginBottom: spacing.lg }}>
+        <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+          <View style={{ flex: 1, gap: spacing.xs }}>
+            <Text style={styles.eyebrow}>RUNNER PROFILE</Text>
+            <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "700" }}>내 프로필 키</Text>
+          </View>
+          <Text style={{ color: colors.lime, fontFamily: styles.mono.fontFamily, fontSize: 16 }}>{height ? `${height} cm` : "미입력"}</Text>
+        </View>
+        <Text style={styles.body}>키는 영상 분석의 정규화 기준으로 사용됩니다.</Text>
+        <TextField keyboardType="decimal-pad" label="키 변경 (cm)" onChangeText={setHeight} value={height} placeholder="예: 175" />
+        <Button label="프로필 저장" onPress={() => void saveHeight()} loading={saving} />
+      </Panel>
+
+      {dashboard?.activeJob ? (
+        <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
+          <Text style={styles.eyebrow}>ACTIVE ANALYSIS</Text>
+          <JobCard job={dashboard.activeJob} onPress={() => router.push(jobPath(dashboard.activeJob!))} />
+          <Button label="새 분석" onPress={() => router.push("/upload")} />
+        </View>
+      ) : (
+        <Button label="＋  새 분석" onPress={() => router.push("/upload")} style={{ marginBottom: spacing.lg }} />
+      )}
+
       {loading && !dashboard ? <LoadingState message="최근 분석을 불러오는 중입니다." /> : null}
       {error && !dashboard ? <ErrorState message={error} onRetry={() => void load()} /> : null}
+
       {dashboard ? (
         <>
-          {dashboard.activeJob ? (
+          {dashboard.trend ? (
             <Panel style={{ gap: spacing.md, marginBottom: spacing.lg }}>
-              <Text style={styles.eyebrow}>ACTIVE ANALYSIS</Text>
-              <JobCard job={dashboard.activeJob} onPress={() => router.push(jobPath(dashboard.activeJob!))} />
+              <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+                <View style={{ gap: spacing.xs }}>
+                  <Text style={styles.eyebrow}>FORM TREND</Text>
+                  <Text style={{ color: colors.primary, fontSize: 17, fontWeight: "700" }}>{dashboard.trend.label}</Text>
+                </View>
+                <Text style={styles.caption}>최근 기록</Text>
+              </View>
+              <TrendChart trend={dashboard.trend} />
             </Panel>
           ) : null}
+
+          <PrioritySignals signals={dashboard.prioritySignals} />
+
           <Panel style={{ gap: spacing.md, marginBottom: spacing.lg }}>
-            <Text style={styles.eyebrow}>RUNNER PROFILE</Text>
-            <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "700" }}>분석 대상 키</Text>
-            <Text style={styles.body}>키는 영상 분석의 정규화 기준으로 사용됩니다. 영상마다 다른 사람을 분석할 때는 분석 시작 화면에서 따로 바꿀 수 있습니다.</Text>
-            <TextField keyboardType="decimal-pad" label="키 (cm)" onChangeText={setHeight} value={height} placeholder="예: 175" />
-            <Button label="프로필 저장" onPress={() => void saveHeight()} loading={saving} />
+            <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+              <View style={{ gap: spacing.xs }}>
+                <Text style={styles.eyebrow}>LATEST POSTURE SIGNALS</Text>
+                <Text style={{ color: colors.primary, fontSize: 17, fontWeight: "700" }}>내 값과 좋은 범위</Text>
+              </View>
+              <Text style={styles.caption}>{dashboard.latestSignals.length ? `${dashboard.latestSignals.length}개` : "데이터 없음"}</Text>
+            </View>
+            {dashboard.latestSignals.length ? dashboard.latestSignals.map((signal) => <PostureSignalRow key={signal.featureId} signal={signal} />) : <Text style={styles.caption}>검증된 결과가 쌓이면 최근 자세 신호가 표시됩니다.</Text>}
           </Panel>
+
           <View style={{ gap: spacing.md, marginBottom: spacing.lg }}>
-            <Text style={styles.eyebrow}>PRIORITY SIGNALS</Text>
-            {dashboard.prioritySignals.length ? dashboard.prioritySignals.map((signal, index) => (
-              <Panel key={`${index}-${String(signal.featureId ?? "signal")}`}>
-                <Text style={{ color: colors.primary, fontWeight: "700" }}>{String(signal.label ?? signal.featureId ?? `신호 ${index + 1}`)}</Text>
-                <Text style={[styles.caption, { marginTop: spacing.sm }]}>{String(signal.message ?? "검증된 분석 결과가 준비되면 우선순위를 표시합니다.")}</Text>
-              </Panel>
-            )) : <EmptyState title="아직 우선 신호가 없습니다" message="검증된 분석 결과가 쌓이면 개선 우선순위를 이곳에 표시합니다." />}
-          </View>
-          <View style={{ gap: spacing.md }}>
-            <Text style={styles.eyebrow}>RECENT ANALYSIS</Text>
+            <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={styles.eyebrow}>RECENT ANALYSIS</Text>
+              <Text style={styles.caption}>{dashboard.jobs.length}건</Text>
+            </View>
             {dashboard.jobs.length ? dashboard.jobs.slice(0, 3).map((job) => <JobCard key={job.jobId} job={job} onPress={() => router.push(jobPath(job))} />) : <EmptyState title="첫 분석을 시작해 보세요" message="러닝 영상을 업로드하면 자세 추적과 지표 계산을 시작합니다." />}
           </View>
-          <Button label="새 분석 시작" onPress={() => router.push("/upload")} style={{ marginTop: spacing.xl }} />
           {error ? <Text style={{ color: colors.red, fontSize: 12, marginTop: spacing.md }}>{error}</Text> : null}
         </>
       ) : null}

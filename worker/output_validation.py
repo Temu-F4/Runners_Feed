@@ -39,3 +39,26 @@ def validate_completed_artifacts(artifacts: dict[str, Path]) -> None:
         raise ModelArtifactValidationError("report.metrics must be a list")
     if not isinstance(report.get("features"), dict):
         raise ModelArtifactValidationError("report.features must be an object")
+    narrative = report.get("narrative")
+    if narrative is not None:
+        if not isinstance(narrative, dict):
+            raise ModelArtifactValidationError("report.narrative must be an object")
+        for action_key in ("priority_actions", "maintain_actions"):
+            actions = narrative.get(action_key)
+            if actions is None:
+                continue
+            if not isinstance(actions, list):
+                raise ModelArtifactValidationError(f"report.narrative.{action_key} must be a list")
+            for index, action in enumerate(actions):
+                if not isinstance(action, dict):
+                    raise ModelArtifactValidationError(
+                        f"report.narrative.{action_key}[{index}] must be an object"
+                    )
+                if not isinstance(action.get("feature_id"), str) or not action["feature_id"].strip():
+                    raise ModelArtifactValidationError(
+                        f"report.narrative.{action_key}[{index}].feature_id is required"
+                    )
+                if not isinstance(action.get("text"), str) or not action["text"].strip():
+                    raise ModelArtifactValidationError(
+                        f"report.narrative.{action_key}[{index}].text is required"
+                    )

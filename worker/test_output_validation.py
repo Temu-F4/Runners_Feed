@@ -43,3 +43,17 @@ class OutputValidationTests(TestCase):
             artifacts["report"].write_text("{}", encoding="utf-8")
             with self.assertRaises(ModelArtifactValidationError):
                 validate_completed_artifacts(artifacts)
+
+    def test_rejects_unstructured_narrative_action(self) -> None:
+        with TemporaryDirectory() as directory:
+            artifacts = self._artifacts(Path(directory))
+            artifacts["report"].write_text(
+                json.dumps({
+                    "metrics": [],
+                    "features": {},
+                    "narrative": {"priority_actions": [{"text": "문장만 있음"}]},
+                }),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ModelArtifactValidationError):
+                validate_completed_artifacts(artifacts)

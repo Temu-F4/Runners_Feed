@@ -31,7 +31,7 @@ The app does not contain `API_KEY`. Production Nginx injects the internal
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/api/mobile/v1/dashboard` | Profile, active job, history summary |
+| GET | `/api/mobile/v1/dashboard` | Profile, active job, history summary, latest posture signals and trend when available |
 | POST | `/api/mobile/v1/uploads` | Get signed PUT URL for MP4/MOV |
 | POST | `/api/mobile/v1/uploads/complete` | Validate uploaded object |
 | POST | `/api/mobile/v1/jobs` | Start analysis with `inputObjectName` and `userHeightCm` |
@@ -45,6 +45,33 @@ If a feature has no reference range, series, confidence, or evidence, the app
 shows an explicit unavailable state instead of deriving one from the chart.
 Job and result responses include nullable `modelId` and `modelRelease` fields
 so an analysis can be traced to the exact model plugin and immutable image tag.
+
+The dashboard response uses these additional fields:
+
+```json
+{
+  "prioritySignals": [],
+  "latestSignals": [],
+  "trend": null
+}
+```
+
+`trend` is omitted (`null`) until at least eight comparable successful results
+exist for one feature. The API never creates a score, range, confidence, or
+coaching message from chart geometry. Missing model data remains missing in the
+mobile response.
+
+The result feature contract is populated from the model adapter. A model may
+provide `feature_results.json` entries with `representative_value`,
+`reference_range`, `series`, `verdict`, `confidence_pct`,
+`confidence_level`, `interpretation`, `coaching_action`, `limitation`, and
+`evidence_ids`. Legacy entries containing only `value` and `unit` remain
+readable, but the app shows unavailable states for the fields that were not
+provided.
+
+For failed jobs, `stage` is mapped from the actual failed pipeline stage. For
+example, a failure in `feature_extract` is shown as `자세 특성값 계산` rather
+than being incorrectly reported as `결과 검증`.
 
 ## Local configuration
 
