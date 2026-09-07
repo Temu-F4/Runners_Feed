@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock
+from uuid import UUID
 
 from runpod_client import RunPodVideoAnalysisClient
 from video_analysis_contract import build_request, validate_manifest
@@ -55,6 +56,19 @@ class VideoAnalysisContractTests(unittest.TestCase):
     def test_accepts_exact_request_and_manifest(self):
         expected = "jobs/job-1/video-analysis/attempt-1/pose_manifest.json"
         self.assertEqual(validate_manifest(manifest_for(self.request), self.request), expected)
+
+    def test_normalizes_database_uuids_to_json_contract_strings(self):
+        job_id = UUID("e903648a-6a3f-4bef-af64-40b330c24a35")
+        attempt_id = UUID("11111111-2222-4333-8444-555555555555")
+        request = build_request({
+            "job_id": job_id, "model_id": "model", "model_release": "sha-image",
+            "input_object_name": "uploads/input.mp4", "input_etag": "etag-1",
+            "input_size_bytes": 10,
+        }, attempt_id, Path(self.temp.name))
+
+        self.assertEqual(request["job_id"], str(job_id))
+        self.assertEqual(request["attempt_id"], str(attempt_id))
+        json.dumps(request)
 
     def test_rejects_artifact_from_another_attempt(self):
         manifest = manifest_for(self.request)
