@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Runners Feed",
-    "slug": "runners-feed",
+    "slug": "runners-eye",
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "runnersfeed",
@@ -28,7 +28,12 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiBaseUrl": "https://140.238.0.197/api"
-    }
+      "apiBaseUrl": "https://140.238.0.197/api",
+      "router": {},
+      "eas": {
+        "projectId": "21ca9ae5-1db1-47fd-b2b2-192adcd86225"
+      }
+    },
+    "owner": "zapfinos-team"
   }
 }
