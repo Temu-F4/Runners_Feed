@@ -73,7 +73,8 @@ def build_request(
     transfer: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     source_hashes, model_hashes = release_hashes(coach_root, snapshot["model_id"])
-    job_id = snapshot["job_id"]
+    job_id = str(snapshot["job_id"])
+    attempt_id = str(attempt_id)
     request = {
         "schema_version": REQUEST_SCHEMA,
         "job_id": job_id,
