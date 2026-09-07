@@ -1,4 +1,3 @@
-import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
@@ -12,6 +11,7 @@ import {
 } from "./api";
 import type { MobileProfile } from "./contracts";
 import { NATIVE_REDIRECT_URI } from "./config";
+import { deleteStoredToken, getStoredToken, setStoredToken } from "./token-storage";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -39,14 +39,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const kakaoExchangePromises = React.useRef(new Map<string, Promise<void>>());
 
   const saveToken = async (nextToken: string) => {
-    await SecureStore.setItemAsync(TOKEN_KEY, nextToken);
+    await setStoredToken(TOKEN_KEY, nextToken);
     setToken(nextToken);
   };
 
   const bootstrap = async () => {
     setError(null);
     try {
-      const stored = await SecureStore.getItemAsync(TOKEN_KEY);
+      const stored = await getStoredToken(TOKEN_KEY);
       if (stored) {
         try {
           const nextProfile = await getMe(stored);
@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(nextProfile);
           return;
         } catch {
-          await SecureStore.deleteItemAsync(TOKEN_KEY);
+          await deleteStoredToken(TOKEN_KEY);
         }
       }
       const guest = await createGuestSession();
@@ -129,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     if (token) await apiLogout(token).catch(() => undefined);
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await deleteStoredToken(TOKEN_KEY);
     const guest = await createGuestSession();
     await saveToken(guest.accessToken);
     setProfile(await getMe(guest.accessToken));
