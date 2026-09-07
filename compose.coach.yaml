@@ -19,7 +19,7 @@ services:
       XDG_CACHE_HOME: /tmp/.cache
       COACH_DEVICE: ${COACH_DEVICE:-cpu}
       COACH_MODEL_ID: ${COACH_MODEL_ID:-sehyeon-dcc2d7d}
-      MODEL_RELEASE: ${IMAGE_TAG:-local}
+      MODEL_RELEASE: ${MODEL_RELEASE:-${IMAGE_TAG:-local}}
       COACH_AGENT_ENABLED: ${COACH_AGENT_ENABLED:-auto}
       COACH_LLM_MODEL: ${COACH_LLM_MODEL:-gpt-5.6-luna}
       COACH_HPE_ENTRYPOINT: ${COACH_HPE_ENTRYPOINT:-/app/coach/scripts/hpe/hpe.py}
@@ -54,7 +54,7 @@ services:
       - worker
       - --loglevel=INFO
       - --concurrency=1
-      - --queues=coach
+      - --queues=postprocess,coach
     environment:
       HOME: /home/app
       MPLCONFIGDIR: /tmp/matplotlib
@@ -69,13 +69,14 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       COACH_DEVICE: ${COACH_DEVICE:-cpu}
       COACH_MODEL_ID: ${COACH_MODEL_ID:-sehyeon-dcc2d7d}
-      MODEL_RELEASE: ${IMAGE_TAG:-local}
+      MODEL_RELEASE: ${MODEL_RELEASE:-${IMAGE_TAG:-local}}
       COACH_AGENT_ENABLED: ${COACH_AGENT_ENABLED:-auto}
       COACH_LLM_MODEL: ${COACH_LLM_MODEL:-gpt-5.6-luna}
       COACH_HPE_ENTRYPOINT: ${COACH_HPE_ENTRYPOINT:-/app/coach/scripts/hpe/hpe.py}
       COACH_FEATURE_ENTRYPOINT: ${COACH_FEATURE_ENTRYPOINT:-/app/coach/scripts/features/feature_extract.py}
       COACH_AGENT_ENTRYPOINT: ${COACH_AGENT_ENTRYPOINT:-/app/coach/scripts/Agent/Running_coach.py}
       COACH_TIMEOUT_SECONDS: ${COACH_TIMEOUT_SECONDS:-3600}
+      COACH_POSTPROCESS_TIMEOUT_SECONDS: ${COACH_POSTPROCESS_TIMEOUT_SECONDS:-900}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       api:
@@ -87,6 +88,58 @@ services:
     volumes:
       - /home/ubuntu/.oci:/.oci:ro
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/models:/workspace/models:ro
+      - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
+    networks:
+      - backend
+
+  gpu-dispatch-worker:
+    profiles:
+      - coach
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-runners-feed}-coach-worker:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: worker/Dockerfile.coach
+      args:
+        BUILD_CREATED: ${BUILD_CREATED:-unknown}
+        BUILD_REVISION: ${BUILD_REVISION:-unknown}
+        BUILD_SOURCE: ${BUILD_SOURCE:-https://github.com/Temu-F4/Runners_Feed}
+        COACH_UID: ${COACH_UID:-1000}
+        COACH_GID: ${COACH_GID:-1000}
+    user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
+    entrypoint:
+      - celery
+      - -A
+      - coach_celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=${GPU_DISPATCH_CONCURRENCY:-1}
+      - --queues=gpu_dispatch
+    environment:
+      HOME: /home/app
+      OCI_CONFIG_FILE: /.oci/config
+      OCI_CONFIG_PROFILE: DEFAULT
+      OCI_REGION: ap-seoul-1
+      OCI_RAW_BUCKET: bucket-t04-raw
+      OCI_RESULTS_BUCKET: bucket-t04-results
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      COACH_MODEL_ID: ${COACH_MODEL_ID:-sehyeon-dcc2d7d}
+      MODEL_RELEASE: ${MODEL_RELEASE:-${IMAGE_TAG:-local}}
+      RUNPOD_VIDEO_ANALYSIS_ENDPOINT: ${RUNPOD_VIDEO_ANALYSIS_ENDPOINT:-}
+      RUNPOD_SHARED_TOKEN: ${RUNPOD_SHARED_TOKEN:-}
+      RUNPOD_REQUEST_TIMEOUT: ${RUNPOD_REQUEST_TIMEOUT:-3700}
+      RUNPOD_SIGNED_URL_TTL_SECONDS: ${RUNPOD_SIGNED_URL_TTL_SECONDS:-7200}
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /home/ubuntu/.oci:/.oci:ro
       - ${RUNNERS_FEED_RUNTIME_DIR:-./runtime}/run:/workspace/run
     networks:
       - backend

@@ -1,4 +1,6 @@
 import os
+from typing import Any
+from uuid import uuid4
 
 import psycopg
 
@@ -12,6 +14,129 @@ FINISHED_STAGE_STATUSES = {
 
 def _database_url() -> str:
     return os.environ["DATABASE_URL"]
+
+
+def create_gpu_attempt(job_id: str) -> dict[str, Any]:
+    """Atomically create the only active GPU attempt for one service job."""
+    attempt_id = str(uuid4())
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT job_id FROM inference_jobs WHERE job_id = %s FOR UPDATE",
+                (job_id,),
+            )
+            if cursor.fetchone() is None:
+                raise LookupError(f"Unknown job: {job_id}")
+            cursor.execute(
+                """
+                SELECT COALESCE(MAX(attempt_number), 0) + 1 AS attempt_number
+                FROM inference_gpu_attempts
+                WHERE job_id = %s
+                """,
+                (job_id,),
+            )
+            attempt_number = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                INSERT INTO inference_gpu_attempts (
+                    attempt_id, job_id, attempt_number, status
+                ) VALUES (%s, %s, %s, 'QUEUED')
+                """,
+                (attempt_id, job_id, attempt_number),
+            )
+    return {"attempt_id": attempt_id, "attempt_number": attempt_number}
+
+
+def start_gpu_attempt(job_id: str, attempt_id: str) -> dict[str, Any]:
+    """Claim one queued attempt and return its immutable dispatch snapshot."""
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE inference_gpu_attempts
+                SET status = 'RUNNING', started_at = NOW(), updated_at = NOW()
+                WHERE job_id = %s AND attempt_id = %s AND status = 'QUEUED'
+                """,
+                (job_id, attempt_id),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("GPU attempt is not the queued current attempt")
+            cursor.execute(
+                """
+                SELECT job_id, case_id, input_object_name, input_size_bytes,
+                       input_etag, height_snapshot_m, model_id, model_release
+                FROM inference_jobs WHERE job_id = %s
+                """,
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise LookupError(f"Unknown job: {job_id}")
+            return dict(zip(
+                ("job_id", "case_id", "input_object_name", "input_size_bytes",
+                 "input_etag", "height_snapshot_m", "model_id", "model_release"),
+                row,
+            ))
+
+
+def finish_gpu_attempt(job_id: str, attempt_id: str, manifest_object: str) -> bool:
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE inference_gpu_attempts
+                SET status = 'SUCCESS', manifest_object = %s,
+                    completed_at = NOW(), updated_at = NOW()
+                WHERE job_id = %s AND attempt_id = %s AND status = 'RUNNING'
+                """,
+                (manifest_object, job_id, attempt_id),
+            )
+            return cursor.rowcount == 1
+
+
+def fail_gpu_attempt(job_id: str, attempt_id: str, error: Exception) -> None:
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE inference_gpu_attempts
+                SET status = 'FAILED', error_code = %s, error_message = %s,
+                    completed_at = NOW(), updated_at = NOW()
+                WHERE job_id = %s AND attempt_id = %s
+                  AND status IN ('QUEUED', 'RUNNING')
+                """,
+                (type(error).__name__, str(error)[-2000:], job_id, attempt_id),
+            )
+
+
+def get_successful_gpu_attempt(job_id: str, attempt_id: str, manifest_object: str) -> dict[str, Any]:
+    """Return the postprocess snapshot only for the accepted successful attempt."""
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT jobs.job_id, jobs.case_id, jobs.input_object_name,
+                       jobs.input_size_bytes, jobs.input_etag,
+                       jobs.height_snapshot_m, jobs.model_id, jobs.model_release
+                FROM inference_jobs AS jobs
+                JOIN inference_gpu_attempts AS attempts
+                  ON attempts.job_id = jobs.job_id
+                WHERE jobs.job_id = %s
+                  AND attempts.attempt_id = %s
+                  AND attempts.status = 'SUCCESS'
+                  AND attempts.manifest_object = %s
+                  AND jobs.status = 'PROCESSING'
+                """,
+                (job_id, attempt_id, manifest_object),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise RuntimeError("GPU attempt is not the accepted postprocess input")
+            return dict(zip(
+                ("job_id", "case_id", "input_object_name", "input_size_bytes",
+                 "input_etag", "height_snapshot_m", "model_id", "model_release"),
+                row,
+            ))
 
 
 def mark_job_processing(

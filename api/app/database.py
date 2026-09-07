@@ -534,6 +534,8 @@ def create_job(
     job_id: str,
     case_id: str,
     input_object_name: str,
+    input_size_bytes: int,
+    input_etag: str,
     user_id: UUID,
     height_snapshot_m: float,
     model_id: str,
@@ -547,18 +549,22 @@ def create_job(
                     job_id,
                     case_id,
                     input_object_name,
+                    input_size_bytes,
+                    input_etag,
                     user_id,
                     height_snapshot_m,
                     model_id,
                     model_release,
                     status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'QUEUED')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'QUEUED')
                 """,
                 (
                     job_id,
                     case_id,
                     input_object_name,
+                    input_size_bytes,
+                    input_etag,
                     user_id,
                     height_snapshot_m,
                     model_id,
