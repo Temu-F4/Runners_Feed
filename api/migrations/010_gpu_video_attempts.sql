@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS inference_gpu_attempts (
     job_id UUID NOT NULL REFERENCES inference_jobs(job_id) ON DELETE CASCADE,
     attempt_number SMALLINT NOT NULL CHECK (attempt_number > 0),
     status VARCHAR(16) NOT NULL CHECK (status IN (
-        'QUEUED', 'RUNNING', 'SUCCESS', 'FAILED'
+        'QUEUED', 'RUNNING', 'GPU_SUCCESS', 'POSTPROCESSING',
+        'SUCCESS', 'FAILED'
     )),
     remote_job_id TEXT,
     manifest_object TEXT,
@@ -24,4 +25,4 @@ CREATE TABLE IF NOT EXISTS inference_gpu_attempts (
 
 CREATE UNIQUE INDEX IF NOT EXISTS inference_gpu_attempts_one_active_idx
 ON inference_gpu_attempts (job_id)
-WHERE status IN ('QUEUED', 'RUNNING');
+WHERE status IN ('QUEUED', 'RUNNING', 'GPU_SUCCESS', 'POSTPROCESSING');

@@ -76,6 +76,8 @@ class MobileContractTests(TestCase):
                     "confidence_level": "high",
                     "interpretation": "범위보다 큽니다.",
                     "coaching_action": "상체를 조금 더 세워 보세요.",
+                    "score": 42.5,
+                    "score_method": "reference-band frame compliance",
                     "evidence_ids": ["paper-1"],
                 }
             },
@@ -102,6 +104,11 @@ class MobileContractTests(TestCase):
         self.assertEqual(result["features"][0]["representativeValue"], 12)
         self.assertEqual(result["features"][0]["series"][1]["value"], 13)
         self.assertEqual(result["features"][0]["referenceRange"]["criterionVersion"], "v1")
+        self.assertEqual(result["features"][0]["score"], 42.5)
+        self.assertEqual(
+            result["features"][0]["scoreMethod"],
+            "reference-band frame compliance",
+        )
         self.assertEqual(result["evidence"][0]["evidenceId"], "paper-1")
         self.assertEqual(result["narrative"]["priorityActions"][0]["featureId"], "feature1")
 

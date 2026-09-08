@@ -17,6 +17,7 @@ from typing import Any
 REQUIRED_OUTPUTS = (
     "details.json",
     "pose_predictions.json",
+    "feature_results.json",
 )
 
 
@@ -46,13 +47,9 @@ def validate_run(run_dir: Path) -> dict[str, Any]:
         name: _load_json(output_dir / name)
         for name in REQUIRED_OUTPUTS
     }
-    feature_name = (
-        "feature_results.service.json"
-        if (output_dir / "feature_results.service.json").is_file()
-        else "feature_results.json"
-    )
-    artifacts[feature_name] = _load_json(output_dir / feature_name)
-
+    service_path = output_dir / "feature_results.service.json"
+    if service_path.is_file():
+        artifacts[service_path.name] = _load_json(service_path)
     for name, payload in artifacts.items():
         if not isinstance(payload, dict):
             raise ValueError(f"{name} must contain a JSON object")
@@ -73,7 +70,10 @@ def validate_run(run_dir: Path) -> dict[str, Any]:
     if not frames:
         raise ValueError("pose_predictions.json.frames must not be empty")
 
-    features = artifacts[feature_name]
+    features = artifacts.get(
+        "feature_results.service.json",
+        artifacts["feature_results.json"],
+    )
     for feature_id, feature in features.items():
         if not isinstance(feature, dict):
             raise ValueError(f"feature {feature_id} must be an object")

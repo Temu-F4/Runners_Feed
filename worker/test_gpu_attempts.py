@@ -9,6 +9,8 @@ except ModuleNotFoundError:
     sys.modules["psycopg"] = Mock()
 
 from job_repository import (
+    claim_postprocess_attempt,
+    complete_postprocess,
     create_gpu_attempt,
     finish_gpu_attempt,
     mark_job_failed,
@@ -39,7 +41,7 @@ class GPUAttemptTests(unittest.TestCase):
         cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
         cursor.fetchone.side_effect = [
             ("PROCESSING",),
-            ("attempt", 1, "RUNNING", True),
+            ("attempt", 1, "RUNNING", None, True),
         ]
         result = create_gpu_attempt("job", stale_after_seconds=60)
         self.assertEqual(result["status"], "QUEUED")
@@ -51,7 +53,7 @@ class GPUAttemptTests(unittest.TestCase):
         cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
         cursor.fetchone.side_effect = [
             ("PROCESSING",),
-            ("attempt", 1, "RUNNING", False),
+            ("attempt", 1, "RUNNING", None, False),
         ]
         result = create_gpu_attempt("job")
         self.assertEqual(result["status"], "RUNNING")
@@ -74,6 +76,65 @@ class GPUAttemptTests(unittest.TestCase):
         cursor.fetchone.return_value = None
         self.assertFalse(finish_gpu_attempt("job", "old", "manifest"))
         self.assertIn("status = 'RUNNING'", cursor.execute.call_args_list[0].args[0])
+
+    @patch("job_repository.psycopg.connect")
+    def test_reuses_completed_gpu_attempt_for_postprocess(self, connect):
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [
+            ("PROCESSING",),
+            ("attempt", 2, "GPU_SUCCESS", "manifest.json", False),
+        ]
+
+        result = create_gpu_attempt("job")
+
+        self.assertEqual(result["status"], "GPU_SUCCESS")
+        self.assertEqual(result["manifest_object"], "manifest.json")
+        self.assertEqual(cursor.execute.call_count, 2)
+
+    @patch("job_repository.psycopg.connect")
+    def test_claims_gpu_result_for_postprocess(self, connect):
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (
+            "job", "case", "uploads/input.mp4", 123, "etag", 1.75,
+            "model", "release", "PROCESSING", "GPU_SUCCESS", False,
+        )
+        cursor.rowcount = 1
+
+        result = claim_postprocess_attempt("job", "attempt", "manifest.json")
+
+        self.assertEqual(result["claim_status"], "CLAIMED")
+        self.assertIn("status = 'POSTPROCESSING'", cursor.execute.call_args_list[1].args[0])
+
+    @patch("job_repository.psycopg.connect")
+    def test_live_postprocess_claim_is_busy(self, connect):
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (
+            "job", "case", "uploads/input.mp4", 123, "etag", 1.75,
+            "model", "release", "PROCESSING", "POSTPROCESSING", False,
+        )
+
+        result = claim_postprocess_attempt("job", "attempt", "manifest.json")
+
+        self.assertEqual(result["claim_status"], "BUSY")
+        self.assertEqual(cursor.execute.call_count, 1)
+
+    @patch("job_repository.psycopg.connect")
+    def test_completes_attempt_and_job_in_one_connection(self, connect):
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.rowcount = 1
+
+        result = complete_postprocess("job", "attempt", {
+            "details": "details",
+            "predictions": "predictions",
+            "report": "report",
+            "skeleton": "skeleton",
+            "rendered_video": "video",
+        })
+
+        self.assertTrue(result)
+        self.assertEqual(cursor.execute.call_count, 2)
+        self.assertIn("status = 'SUCCESS'", cursor.execute.call_args_list[0].args[0])
+        self.assertIn("artifact_validation_status = 'VALID'", cursor.execute.call_args_list[1].args[0])
 
     @patch("job_repository.psycopg.connect")
     def test_success_cannot_overwrite_a_final_job(self, connect):

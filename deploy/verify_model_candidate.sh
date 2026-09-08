@@ -3,7 +3,7 @@
 set -euo pipefail
 
 readonly TARGET_TAG="${1:?usage: verify_model_candidate.sh sha-<commit>}"
-readonly REQUIRED="${MODEL_CANARY_REQUIRED:-0}"
+readonly REQUIRED="${MODEL_CANARY_REQUIRED:-1}"
 readonly MODEL_ID="${COACH_MODEL_ID:-sehyeon-e2fe43e}"
 readonly ENV_FILE="${RUNNERS_FEED_ENV_FILE:-/etc/runners-feed/prod.env}"
 readonly PROJECT_DIR="${RUNNERS_FEED_PROJECT_DIR:-/opt/runners-feed/current}"
@@ -29,8 +29,11 @@ if [[ "${REQUIRED}" == "0" ]]; then
   exit 0
 fi
 
-for path in "${ENV_FILE}" "${GOLDEN_DIR}/input.mp4" \
-  "${GOLDEN_DIR}/user_info.json" "${BASELINE_PATH}"; do
+for path in "${ENV_FILE}" "${GOLDEN_DIR}/user_info.json" \
+  "${GOLDEN_DIR}/outputs/details.json" \
+  "${GOLDEN_DIR}/outputs/pose_predictions.json" \
+  "${GOLDEN_DIR}/outputs/rendered.mp4" \
+  "${GOLDEN_DIR}/outputs/pose_manifest.json" "${BASELINE_PATH}"; do
   if [[ ! -r "${path}" ]]; then
     echo "Required model canary input is not readable: ${path}" >&2
     exit 1
@@ -91,19 +94,33 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${run_dir}"
-cp "${GOLDEN_DIR}/input.mp4" "${run_dir}/input.mp4"
+mkdir -p "${run_dir}/outputs"
 cp "${GOLDEN_DIR}/user_info.json" "${run_dir}/user_info.json"
+cp "${GOLDEN_DIR}/outputs/details.json" "${run_dir}/outputs/details.json"
+cp "${GOLDEN_DIR}/outputs/pose_predictions.json" \
+  "${run_dir}/outputs/pose_predictions.json"
+cp "${GOLDEN_DIR}/outputs/rendered.mp4" "${run_dir}/outputs/rendered.mp4"
+cp "${GOLDEN_DIR}/outputs/pose_manifest.json" \
+  "${run_dir}/outputs/pose_manifest.json"
 
-echo "Running approved model canary with ${IMAGE_PREFIX}-coach-worker:${TARGET_TAG}"
+echo "Running approved RunPod-output canary with ${IMAGE_PREFIX}-coach-worker:${TARGET_TAG}"
 compose run --rm \
   --entrypoint python \
   -e COACH_MODEL_ID="${MODEL_ID}" \
   coach-manual \
   /app/coach/scripts/model_contract/validate_plugin.py \
-  "/app/coach/model_plugins/${MODEL_ID}" \
-  --weights-root /workspace/models
+  "/app/coach/model_plugins/${MODEL_ID}"
 
 compose run --rm \
+  --entrypoint python \
+  -e COACH_MODEL_ID="${MODEL_ID}" \
+  coach-manual \
+  /app/coach/scripts/model_contract/validate_runpod_golden.py \
+  "/app/coach/model_plugins/${MODEL_ID}" \
+  "/workspace/run/${run_id}"
+
+compose run --rm \
+  --entrypoint /app/run_coach_postprocess.sh \
   -e COACH_MODEL_ID="${MODEL_ID}" \
   -e COACH_AGENT_ENABLED=false \
   coach-manual "${run_id}"

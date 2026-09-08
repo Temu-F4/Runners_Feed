@@ -87,6 +87,7 @@ def build_skeleton(run_dir: Path, target_fps: float = TARGET_FPS) -> dict:
                 if isinstance(observed, list) and index < len(observed)
                 else True
             )
+            used_imputed = False
             if (
                 not is_observed
                 and isinstance(imputed_keypoints, list)
@@ -95,6 +96,7 @@ def build_skeleton(run_dir: Path, target_fps: float = TARGET_FPS) -> dict:
                 and len(imputed_keypoints[index]) >= 2
             ):
                 keypoint = imputed_keypoints[index]
+                used_imputed = True
             if not isinstance(keypoint, list) or len(keypoint) < 2:
                 continue
             compact_keypoints.append(
@@ -104,7 +106,7 @@ def build_skeleton(run_dir: Path, target_fps: float = TARGET_FPS) -> dict:
                     round(min(1.0, max(0.0, float(score))), 4),
                 ]
             )
-            imputed_flags.append(not is_observed)
+            imputed_flags.append(used_imputed)
 
         if compact_keypoints:
             frames.append(

@@ -115,10 +115,12 @@ sequenceDiagram
     end
 ```
 
-모델러 승인 golden 영상이 준비되면 `MODEL_CANARY_REQUIRED=1`로 전환한다.
-배포기는 모델 image로 golden 영상을 실제 처리한 뒤 승인 baseline과 결과를
-비교하며, 실패하면 Production container 교체 전에 배포를 중단한다. 개인 영상은
-GitHub에 올리지 않고 `/opt/runners-feed/model-golden/<model_id>/`에 둔다.
+모델러 승인 RunPod golden 산출물을 준비하고 `MODEL_CANARY_REQUIRED=1`을 유지한다.
+배포기는 실제 CUDA RunPod가 만든 golden pose·details·rendered 산출물에 OCI
+manifest의 GPU·소스·가중치·산출물 해시를 검증하고 피처·Adapter 후처리를 실행한
+뒤 승인 baseline과 비교한다. 실패하면 Production
+container 교체 전에 배포를 중단한다. 개인 영상과 golden 산출물은 GitHub에
+올리지 않고 `/opt/runners-feed/model-golden/<model_id>/`에 둔다.
 
 ### CI와 운영 자동화
 

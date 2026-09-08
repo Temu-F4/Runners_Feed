@@ -6,6 +6,8 @@ RunPod performs only video download, HPE inference, primary-runner tracking, fiv
 
 The RunPod endpoint is a synchronous POST /v4/storage-video-analysis. It must authenticate the shared Bearer token and reject requests whose schema, model ID, source hashes, or weight hashes do not match the installed release. There is no serverless polling contract and no local OCI inference fallback.
 
+This repository contains the OCI client and the complete request/manifest contract, but not the RunPod HTTP server deployment. The RunPod owner must implement and deploy that endpoint from the exact plugin release below before production activation.
+
 ## Installed model release
 
 - Source: J-sehyeon/Oracle_Project
@@ -28,7 +30,7 @@ OCI sends a video-analysis-request-2.0 payload containing job/attempt identity, 
 
 Every object name must remain below jobs/{job_id}/video-analysis/{attempt_id}. The completed video-analysis-manifest-2.0 repeats the request identity and hashes, records each artifact SHA-256, byte size, and content type, and includes CUDA provider/GPU evidence plus download, analysis, encode, upload, and total timings.
 
-The same attempt_id may be submitted again after an OCI worker interruption. RunPod must treat this as an idempotent replay: return the already validated manifest or safely replace objects under the same attempt prefix. It must never redirect uploads to a new prefix.
+The same attempt_id may be submitted again after an OCI worker interruption. RunPod must treat this as an idempotent replay: return the already validated manifest or safely replace objects under the same attempt prefix. It must never redirect uploads to a new prefix. OCI persists `GPU_SUCCESS` before queueing postprocess, reuses that attempt after redelivery, and atomically claims `POSTPROCESSING` so only one worker may consume a result.
 
 ## OCI continuation
 
@@ -36,4 +38,4 @@ After validating the manifest and downloaded artifacts, OCI runs the source feat
 
 ## Release evidence still required
 
-Quality approval stays pending_modeler_approval until a real CUDA RunPod processes the agreed golden videos and OCI completes feature extraction, report generation, artifact upload, API result retrieval, and a deliberate redelivery of the same attempt.
+Quality approval stays pending_modeler_approval until a real CUDA RunPod processes the agreed golden videos and OCI completes feature extraction, report generation, artifact upload, API result retrieval, and a deliberate redelivery of the same attempt. The retained golden package must include `pose_manifest.json`; deployment rechecks its CUDA provider, source and weight identity, and every artifact checksum.

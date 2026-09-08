@@ -36,13 +36,23 @@ class FeatureNormalizerTests(unittest.TestCase):
         }
 
     def test_maps_raw_names_and_representative_values(self):
-        result = normalize(self._raw())
+        result = normalize(self._raw(), fps=20.0)
 
         self.assertEqual(list(result), ["feature1", "feature2", "feature3", "feature4"])
         self.assertEqual(result["feature1"]["value"], 0.046)
         self.assertEqual(result["feature2"]["value"], 80.0)
         self.assertEqual(result["feature2"]["unit"], "degree")
         self.assertEqual(result["feature1"]["coaching_action"], "리듬을 유지하세요.")
+        self.assertEqual(result["feature1"]["source_range"], {"section": "일반"})
+        self.assertNotIn("reference_range", result["feature1"])
+        self.assertEqual(result["feature2"]["reference_range"]["min"], 70.0)
+        self.assertEqual(result["feature2"]["score"], 100.0)
+        self.assertEqual(result["feature2"]["series"][1], {
+            "frame_index": 1,
+            "timestamp_ms": 50,
+            "value": 90.0,
+            "confidence_pct": None,
+        })
 
     def test_writes_separate_service_artifact_without_mutating_raw(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -51,11 +61,28 @@ class FeatureNormalizerTests(unittest.TestCase):
             raw_path = output_dir / "feature_results.json"
             original = json.dumps(self._raw(), ensure_ascii=False)
             raw_path.write_text(original, encoding="utf-8")
+            (output_dir / "details.json").write_text(
+                json.dumps({"video": {"fps": 25.0}}),
+                encoding="utf-8",
+            )
 
             service_path = write_normalized(Path(directory))
 
             self.assertEqual(raw_path.read_text(encoding="utf-8"), original)
             self.assertTrue(service_path.name.endswith(".service.json"))
+            service = json.loads(service_path.read_text(encoding="utf-8"))
+            self.assertEqual(service["feature2"]["series"][1]["timestamp_ms"], 40)
+
+    def test_filters_nonfinite_series_samples(self):
+        raw = self._raw()
+        raw["Elbow angle"]["value"] = [70.0, float("nan"), 90.0]
+
+        result = normalize(raw, fps=10.0)
+
+        self.assertEqual(
+            [point["frame_index"] for point in result["feature2"]["series"]],
+            [0, 2],
+        )
 
     def test_rejects_missing_representative_value(self):
         raw = self._raw()

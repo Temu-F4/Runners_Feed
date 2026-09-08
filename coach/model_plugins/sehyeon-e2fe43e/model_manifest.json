@@ -26,13 +26,14 @@
     "details": "outputs/details.json",
     "predictions": "outputs/pose_predictions.json",
     "features": "outputs/feature_results.json",
+    "service_features": "outputs/feature_results.service.json",
     "rendered_video": "outputs/output.mp4"
   },
   "features": [
-    {"id": "feature1", "raw_name": "Amplitude of pelvis oscillation", "unit": "ratio"},
-    {"id": "feature2", "raw_name": "Elbow angle", "unit": "degree"},
-    {"id": "feature3", "raw_name": "Trunk flexion angle", "unit": "degree"},
-    {"id": "feature4", "raw_name": "Postural lean angle", "unit": "degree"}
+    {"id": "feature1", "raw_name": "Amplitude of pelvis oscillation", "unit": "ratio", "description": "Pelvis vertical movement normalized by runner height"},
+    {"id": "feature2", "raw_name": "Elbow angle", "unit": "degree", "description": "Mean left elbow angle with the original frame series preserved"},
+    {"id": "feature3", "raw_name": "Trunk flexion angle", "unit": "degree", "description": "Mean trunk flexion angle during detected ground-contact phases"},
+    {"id": "feature4", "raw_name": "Postural lean angle", "unit": "degree", "description": "Mean postural lean angle during detected ground-contact phases"}
   ],
   "weights": [
     {"path": "detectors/rtmdet-nano-person-320x320/end2end.onnx", "sha256": "dae7d98b247441ec4e408381c72087be5bbf325df939704bb978e21725a948ea"},

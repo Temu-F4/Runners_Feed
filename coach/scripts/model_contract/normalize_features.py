@@ -10,11 +10,36 @@ from pathlib import Path
 from typing import Any
 
 
+CRITERION_VERSION = "sehyeon-e2fe43e"
+
 FEATURES = {
-    "Amplitude of pelvis oscillation": ("feature1", "ratio", "value"),
-    "Elbow angle": ("feature2", "degree", "range.mean"),
-    "Trunk flexion angle": ("feature3", "degree", "value"),
-    "Postural lean angle": ("feature4", "degree", "value"),
+    "Amplitude of pelvis oscillation": {
+        "id": "feature1",
+        "unit": "ratio",
+        "value_path": "value",
+        "aggregation": "mean across detected ground-contact phases",
+    },
+    "Elbow angle": {
+        "id": "feature2",
+        "unit": "degree",
+        "value_path": "range.mean",
+        "aggregation": "mean across valid frames",
+        "reference_range": (70.0, 90.0),
+    },
+    "Trunk flexion angle": {
+        "id": "feature3",
+        "unit": "degree",
+        "value_path": "value",
+        "aggregation": "mean across detected ground-contact phases",
+        "reference_range": (10.9, 18.9),
+    },
+    "Postural lean angle": {
+        "id": "feature4",
+        "unit": "degree",
+        "value_path": "value",
+        "aggregation": "mean across detected ground-contact phases",
+        "reference_range": (1.7, 4.3),
+    },
 }
 
 
@@ -36,29 +61,95 @@ def _value_at(feature: dict[str, Any], path: str, label: str) -> float:
     return _finite_number(value, f"{label}.{path}")
 
 
-def normalize(raw: dict[str, Any]) -> dict[str, Any]:
+def _verdict(feature: dict[str, Any]) -> str:
+    instruction = feature.get("instruction")
+    if isinstance(instruction, str) and (
+        instruction.lower().startswith("good") or "유지" in instruction
+    ):
+        return "maintain"
+    return "improve"
+
+
+def _series(values: object, fps: float | None) -> list[dict[str, Any]]:
+    if not isinstance(values, list):
+        return []
+    points = []
+    for frame_index, value in enumerate(values):
+        try:
+            number = _finite_number(value, f"Elbow angle.value[{frame_index}]")
+        except ValueError:
+            continue
+        points.append({
+            "frame_index": frame_index,
+            "timestamp_ms": (
+                round(frame_index / fps * 1000)
+                if isinstance(fps, (int, float)) and fps > 0
+                else None
+            ),
+            "value": number,
+            "confidence_pct": None,
+        })
+    return points
+
+
+def _score(item: dict[str, Any]) -> tuple[float | None, str | None]:
+    reference = item.get("reference_range")
+    if not isinstance(reference, dict):
+        return None, None
+    minimum = reference["min"]
+    maximum = reference["max"]
+    series = item.get("series")
+    if isinstance(series, list) and series:
+        values = [point["value"] for point in series]
+        passing = sum(minimum <= value <= maximum for value in values)
+        return round(passing / len(values) * 100, 2), "reference-band frame compliance"
+    value = item["value"]
+    return (100.0 if minimum <= value <= maximum else 0.0), "reference-band representative value"
+
+
+def normalize(raw: dict[str, Any], *, fps: float | None = None) -> dict[str, Any]:
     normalized: dict[str, Any] = {}
-    for raw_name, (feature_id, unit, value_path) in FEATURES.items():
+    for raw_name, definition in FEATURES.items():
         feature = raw.get(raw_name)
         if not isinstance(feature, dict):
             raise ValueError(f"raw feature is missing or invalid: {raw_name}")
+        feature_id = definition["id"]
+        unit = definition["unit"]
         item = {
-            "value": _value_at(feature, value_path, raw_name),
+            "value": _value_at(feature, definition["value_path"], raw_name),
             "unit": unit,
+            "representative_value": _value_at(
+                feature, definition["value_path"], raw_name
+            ),
+            "aggregation": definition["aggregation"],
             "measurement_source": "2d_pose",
             "source_feature": raw_name,
+            "verdict": _verdict(feature),
         }
         for source_key, target_key in (
-            ("range", "reference_range"),
-            ("boundary", "reference_range"),
+            ("range", "source_range"),
+            ("boundary", "source_boundary"),
             ("instruction", "coaching_action"),
             ("outcome", "interpretation"),
             ("description", "description"),
         ):
             if source_key in feature:
                 item[target_key] = feature[source_key]
+        reference_range = definition.get("reference_range")
+        if reference_range is not None:
+            item["reference_range"] = {
+                "kind": "reference",
+                "min": reference_range[0],
+                "max": reference_range[1],
+                "unit": unit,
+                "criterion_version": CRITERION_VERSION,
+                "evidence_ids": [],
+            }
         if feature_id == "feature2" and isinstance(feature.get("value"), list):
-            item["series"] = feature["value"]
+            item["series"] = _series(feature["value"], fps)
+        score, score_method = _score(item)
+        item["score"] = score
+        item["score_method"] = score_method
         normalized[feature_id] = item
     return normalized
 
@@ -69,9 +160,22 @@ def write_normalized(run_dir: Path) -> Path:
     raw = json.loads(raw_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("feature_results.json must contain an object")
+    fps = None
+    details_path = output_dir / "details.json"
+    if details_path.is_file():
+        details = json.loads(details_path.read_text(encoding="utf-8"))
+        if isinstance(details, dict) and isinstance(details.get("video"), dict):
+            value = details["video"].get("fps")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                fps = float(value)
     output_path = output_dir / "feature_results.service.json"
     output_path.write_text(
-        json.dumps(normalize(raw), ensure_ascii=False, indent=2, allow_nan=False),
+        json.dumps(
+            normalize(raw, fps=fps),
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        ),
         encoding="utf-8",
     )
     return output_path

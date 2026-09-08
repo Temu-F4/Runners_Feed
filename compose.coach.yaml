@@ -45,7 +45,7 @@ services:
         COACH_GID: ${COACH_GID:-1000}
     user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
     entrypoint:
-      - celery
+      - /app/start_coach_worker.sh
       - -A
       - coach_celery_app:celery_app
       - worker
@@ -76,6 +76,7 @@ services:
       RUNPOD_REQUEST_TIMEOUT: ${RUNPOD_REQUEST_TIMEOUT:-3700}
       RUNPOD_SIGNED_URL_TTL_SECONDS: ${RUNPOD_SIGNED_URL_TTL_SECONDS:-7200}
       GPU_ATTEMPT_STALE_SECONDS: ${GPU_ATTEMPT_STALE_SECONDS:-4200}
+      POSTPROCESS_ATTEMPT_STALE_SECONDS: ${POSTPROCESS_ATTEMPT_STALE_SECONDS:-1200}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       api:

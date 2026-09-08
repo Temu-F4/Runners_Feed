@@ -1,9 +1,6 @@
 import os
 
 from celery import Celery
-from celery.signals import worker_init
-
-from runpod_client import client_from_environment
 
 
 celery_app = Celery(
@@ -33,9 +30,3 @@ celery_app.conf.update(
         },
     },
 )
-
-
-@worker_init.connect
-def validate_runpod_configuration(**_: object) -> None:
-    """Fail worker startup before it can accept jobs with invalid credentials."""
-    client_from_environment()

@@ -148,6 +148,8 @@ def _metrics(features: dict) -> list[dict[str, Any]]:
             "reference_range",
             "coaching_action",
             "interpretation",
+            "score",
+            "score_method",
         ):
             if key in feature:
                 metric[key] = feature[key]

@@ -8,6 +8,7 @@ cd "${PROJECT_ROOT}"
 
 for path in \
   worker/runpod_client.py \
+  worker/start_coach_worker.sh \
   worker/video_analysis_contract.py \
   worker/run_coach_postprocess.sh \
   api/migrations/010_gpu_video_attempts.sql \
@@ -29,6 +30,12 @@ if grep -q 'coach.run_object_storage' worker/coach_celery_app.py worker/coach_ta
 fi
 grep -q 'coach.dispatch_video_analysis' api/app/main.py
 grep -q 'normalize_features.py' worker/run_coach_postprocess.sh
+grep -q '/app/start_coach_worker.sh' compose.coach.yaml
+grep -q -- '--entrypoint /app/run_coach_postprocess.sh' deploy/verify_model_candidate.sh
+if grep -q 'input.mp4' deploy/verify_model_candidate.sh; then
+  echo "Production model canary must consume approved RunPod artifacts, not run local HPE" >&2
+  exit 1
+fi
 grep -q 'sehyeon-e2fe43e' compose.yaml compose.coach.yaml
 
 echo "RunPod video-analysis boundary contract passed"

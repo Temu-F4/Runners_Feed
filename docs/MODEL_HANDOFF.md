@@ -5,11 +5,11 @@
 
 ## 현재 기준 모델
 
-- model ID: `sehyeon-dcc2d7d`
-- 원본 저장소: `Oracle_Project/sehyeon`
-- 원본 commit: `dcc2d7d7a7eaacb8b2828745d31a5b375c5b893b`
-- 플러그인: `coach/model_plugins/sehyeon-dcc2d7d/`
-- feature: `feature1`, 골반 수직 이동/사용자 키, 단위 `ratio`
+- model ID: `sehyeon-e2fe43e`
+- 원본 저장소: `J-sehyeon/Oracle_Project`
+- 원본 commit: `e2fe43e9bb0ee13bd445d8a6d4db240dba84eacc`
+- 플러그인: `coach/model_plugins/sehyeon-e2fe43e/`
+- feature: `feature1`~`feature4`
 
 원본 Python 파일은 플러그인 안에 보존한다. OCI 실행에 필요한 경로, 입력 탐색,
 H.264 변환, 단계 기록, Object Storage, DB, Celery는 플러그인 밖의 wrapper가
@@ -24,8 +24,7 @@ coach/model_plugins/<model_id>/
 └── scripts/
     ├── hpe/
     │   ├── hpe.py
-    │   ├── hpe_model.py
-    │   └── pose_track.py
+    │   └── utils.py
     ├── features/
     │   ├── feature_extract.py
     │   ├── utils.py
@@ -55,10 +54,10 @@ Pose 엔트리포인트:
 python hpe.py WORKSPACE_ROOT RUN_ID VIDEO_PATH --device cpu
 ```
 
-필수 출력:
+RunPod `video_analysis` 필수 출력:
 
 ```text
-run/<RUN_ID>/outputs/output.mp4
+run/<RUN_ID>/outputs/rendered.mp4
 run/<RUN_ID>/outputs/details.json
 run/<RUN_ID>/outputs/pose_predictions.json
 ```
@@ -76,13 +75,16 @@ run/<RUN_ID>/outputs/feature_results.json
 ```
 
 `details.json.video`에는 `width`, `height`, `fps`, `frame_count`가 필요하다.
-`pose_predictions.json.frames`는 비어 있으면 안 된다. feature는 최소한
-`value`와 비어 있지 않은 `unit`을 포함해야 한다. 숫자에는 `NaN`과
-`Infinity`를 사용할 수 없으며 측정 불가는 `null`로 표현한다.
+`pose_predictions.json.frames`는 비어 있으면 안 된다. 세현 원본
+`feature_results.json`은 이름과 내부 구조를 그대로 보존한다. Adapter 입력인
+`feature_results.service.json`의 각 feature에는 최소한 `value`와 비어 있지 않은
+`unit`이 필요하다. 두 JSON 모두 `NaN`과 `Infinity`를 사용할 수 없으며 측정
+불가는 `null`로 표현한다.
 
-앱에서 feature 카드와 근거 상세를 표시하려면 `feature_results.json`의 각
-feature에 다음 선택 필드를 추가할 수 있다. 모델이 제공하지 않는 필드는
-adapter가 임의로 만들지 않고 앱에서 미제공 상태로 표시한다.
+앱에서 feature 카드와 근거 상세를 표시하기 위한 아래 계약은
+`feature_results.service.json`에 적용한다. 원본 측정의 `range`와 `boundary`는
+각각 `source_range`, `source_boundary`로 보존하며, 승인된 기준 범위만
+`reference_range`로 표시한다.
 
 ```json
 {
@@ -150,8 +152,12 @@ adapter가 임의로 만들지 않고 앱에서 미제공 상태로 표시한다
 
 ```text
 /opt/runners-feed/model-golden/<model_id>/
-├── input.mp4
-└── user_info.json
+├── user_info.json
+└── outputs/
+    ├── details.json
+    ├── pose_predictions.json
+    ├── rendered.mp4
+    └── pose_manifest.json
 ```
 
 예시 사용자 정보:
@@ -181,9 +187,9 @@ tracking coverage, 처리시간의 변동을 함께 전달한다.
 1. 새 디렉터리를 `coach/model_plugins/<model_id>/`에 추가한다.
 2. 원본 파일과 commit을 대조한다.
 3. contract validator와 quality gate를 실행한다.
-4. 모델러 승인 golden 자료를 Production의 별도 경로에 배치한다.
+4. 실제 CUDA RunPod가 만든 모델러 승인 golden 산출물을 Production의 별도 경로에 배치한다.
 5. GitHub Production variable `COACH_MODEL_ID`와 `MODEL_GOLDEN_DIR`을 바꾼다.
-6. `MODEL_CANARY_REQUIRED=1`을 설정한다.
+6. `MODEL_CANARY_REQUIRED=1`을 유지한다. 값이 없을 때도 배포 검증은 기본적으로 필수다.
 7. PR CI를 통과시키고 immutable release를 배포한다.
 8. 배포 전 canary, 배포 직후 검증, 60분 watchdog을 통과시킨다.
 9. 새 배포일부터 14일 안정성 관찰을 시작한다.

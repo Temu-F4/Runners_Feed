@@ -11,13 +11,13 @@ from pathlib import Path
 from celery.exceptions import Retry
 from coach_celery_app import celery_app
 from job_repository import (
+    claim_postprocess_attempt,
+    complete_postprocess,
     create_gpu_attempt,
     fail_gpu_attempt,
     finish_gpu_attempt,
-    get_successful_gpu_attempt,
     mark_job_failed,
     mark_job_processing,
-    mark_job_success,
     start_gpu_attempt,
 )
 from job_stages import JobStageRecorder
@@ -225,86 +225,6 @@ def _postprocess_pipeline(job_id: str, stage_recorder: JobStageRecorder) -> subp
         raise RuntimeError(f"Coach postprocess failed:\n{error_log}") from error
 
 
-def execute_pipeline(
-    case_id: str,
-    job_id: str,
-    run_id: str,
-    stage_recorder: JobStageRecorder | None = None,
-) -> dict:
-    validate_case_id(case_id)
-    validate_case_id(run_id)
-
-    run_dir = WORKSPACE_DIR / "run" / run_id
-    video_files = sorted(run_dir.glob("*.mp4"))
-    if len(video_files) != 1:
-        raise ValueError(
-            f"Expected exactly one MP4 in {run_dir}, found {len(video_files)}"
-        )
-
-    output_dir = run_dir / "outputs"
-    if output_dir.exists():
-        raise FileExistsError(f"Output already exists: {output_dir}")
-
-    timeout_seconds = int(os.getenv("COACH_TIMEOUT_SECONDS", "3600"))
-
-    command = ["/app/run_coach_pipeline.sh", run_id]
-
-    def invoke_pipeline() -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            command,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-        )
-
-    try:
-        if stage_recorder is None:
-            completed = invoke_pipeline()
-        else:
-            completed = invoke_tracked_pipeline(
-                command,
-                timeout_seconds=timeout_seconds,
-                stage_recorder=stage_recorder,
-            )
-    except subprocess.CalledProcessError as error:
-        error_log = (error.stderr or error.stdout or "")[-4000:]
-        if "MODEL_CONTRACT_INVALID=" in error_log:
-            raise ModelArtifactValidationError(error_log) from error
-        raise RuntimeError(f"Coach pipeline failed:\n{error_log}") from error
-
-    required_artifacts = {
-        "details": output_dir / "details.json",
-        "predictions": output_dir / "pose_predictions.json",
-        "report": output_dir / "report.json",
-        "skeleton": output_dir / "skeleton.json.gz",
-        "rendered_video": output_dir / "rendered.mp4",
-    }
-    missing = [
-        str(path)
-        for path in required_artifacts.values()
-        if not path.is_file()
-    ]
-    if missing:
-        raise ModelArtifactValidationError(
-            "Coach pipeline did not create required artifacts: "
-            + ", ".join(missing)
-        )
-
-    validate_completed_artifacts(required_artifacts)
-
-    return {
-        "job_id": job_id,
-        "case_id": case_id,
-        "status": "success",
-        "artifacts": {
-            name: str(path)
-            for name, path in required_artifacts.items()
-        },
-        "log_tail": (completed.stdout + completed.stderr)[-4000:],
-    }
-
-
 @celery_app.task(
     name="coach.dispatch_video_analysis",
     bind=True,
@@ -314,6 +234,7 @@ def execute_pipeline(
 def dispatch_video_analysis(self, job_id: str) -> dict:
     """Dispatch the complete GPU video_analysis boundary to RunPod."""
     attempt_id: str | None = None
+    gpu_completed = False
     stage_recorder: JobStageRecorder | None = None
     try:
         validate_case_id(job_id)
@@ -323,14 +244,39 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
                 os.getenv("GPU_ATTEMPT_STALE_SECONDS", "4200")
             ),
         )
-        if attempt["status"] in {"SUCCESS", "FAILED"}:
-            return {"job_id": job_id, "status": f"already_{attempt['status'].lower()}"}
+        if attempt["status"] in {"JOB_SUCCESS", "JOB_FAILED"}:
+            return {
+                "job_id": job_id,
+                "status": f"already_{attempt['status'].lower()}",
+            }
         if attempt["status"] == "RUNNING":
             raise self.retry(
                 countdown=60,
                 max_retries=80,
             )
         attempt_id = attempt["attempt_id"]
+        if attempt["status"] == "POSTPROCESSING":
+            return {
+                "job_id": job_id,
+                "attempt_id": attempt_id,
+                "status": "already_postprocessing",
+            }
+        if attempt["status"] == "GPU_SUCCESS":
+            manifest_object = attempt["manifest_object"]
+            if not manifest_object:
+                raise RuntimeError("Completed GPU attempt has no manifest")
+            celery_app.send_task(
+                "coach.run_postprocess",
+                args=[job_id, attempt_id, manifest_object],
+                queue="postprocess",
+            )
+            return {
+                "job_id": job_id,
+                "attempt_id": attempt_id,
+                "attempt_number": attempt["attempt_number"],
+                "manifest_object": manifest_object,
+                "status": "postprocess_requeued",
+            }
         snapshot = start_gpu_attempt(job_id, attempt_id)
         if not mark_job_processing(
             job_id,
@@ -358,6 +304,7 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
         validate_manifest(manifest, request)
         if not finish_gpu_attempt(job_id, attempt_id, manifest_object):
             raise RuntimeError("GPU attempt completed after it was superseded")
+        gpu_completed = True
 
         timings = manifest["timings_seconds"]
         stage_recorder.record_external("input_download", float(timings["download"]))
@@ -380,6 +327,8 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
     except Retry:
         raise
     except Exception as error:
+        if gpu_completed:
+            raise self.retry(exc=error, countdown=30, max_retries=80)
         if attempt_id is not None:
             try:
                 fail_gpu_attempt(job_id, attempt_id, error)
@@ -408,15 +357,22 @@ def run_postprocess(
     run_dir: Path | None = None
     try:
         validate_case_id(job_id)
-        snapshot = get_successful_gpu_attempt(job_id, attempt_id, manifest_object)
-        if snapshot["job_status"] == "SUCCESS":
+        snapshot = claim_postprocess_attempt(
+            job_id,
+            attempt_id,
+            manifest_object,
+            stale_after_seconds=int(
+                os.getenv("POSTPROCESS_ATTEMPT_STALE_SECONDS", "1200")
+            ),
+        )
+        if snapshot["claim_status"] == "COMPLETE":
             return {
                 "job_id": job_id,
                 "attempt_id": attempt_id,
                 "status": "already_success",
             }
-        if snapshot["job_status"] != "PROCESSING":
-            raise RuntimeError("Job is not available for postprocess")
+        if snapshot["claim_status"] == "BUSY":
+            raise self.retry(countdown=30, max_retries=40)
         stage_recorder.attach_existing()
         request = build_request(snapshot, attempt_id, Path("/app/coach"))
         storage = ObjectStorageGateway()
@@ -473,7 +429,7 @@ def run_postprocess(
             "skeleton": postprocess_objects["skeleton"],
             "rendered_video": manifest["objects"]["video"]["object_name"],
         }
-        if not mark_job_success(job_id, result_objects):
+        if not complete_postprocess(job_id, attempt_id, result_objects):
             raise RuntimeError("Job reached a final state before postprocess completed")
         try:
             with stage_recorder.track("workspace_cleanup", failure_status="WARNING"):
@@ -487,7 +443,13 @@ def run_postprocess(
             "result_objects": result_objects,
             "feature_object": postprocess_objects["features"],
         }
+    except Retry:
+        raise
     except Exception as error:
+        try:
+            fail_gpu_attempt(job_id, attempt_id, error)
+        except Exception:
+            LOGGER.exception("Failed to persist postprocess attempt failure for job %s", job_id)
         try:
             stage_recorder.skip_pending()
         except Exception:

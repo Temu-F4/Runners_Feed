@@ -796,6 +796,8 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
     interpretation = raw.get("interpretation")
     coaching_action = raw.get("coaching_action", raw.get("coachingAction"))
     limitation = raw.get("limitation")
+    score = _finite_number(raw.get("score"))
+    score_method = raw.get("score_method", raw.get("scoreMethod"))
     return {
         "featureId": feature_id,
         "label": metric.get("label") if isinstance(metric.get("label"), str) else feature_id,
@@ -812,6 +814,8 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
         "confidenceLevel": confidence_level,
         "limitation": limitation if isinstance(limitation, str) else notice,
         "evidenceIds": _string_list(raw.get("evidence_ids", raw.get("evidenceIds", []))),
+        "score": score,
+        "scoreMethod": score_method if isinstance(score_method, str) else None,
     }
 
 
