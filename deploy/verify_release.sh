@@ -11,7 +11,7 @@ readonly COMPOSE_FILES=(
   -f "${PROJECT_DIR}/compose.yaml"
   -f "${PROJECT_DIR}/compose.coach.yaml"
 )
-readonly SERVICES=(api frontend web coach-worker gpu-dispatch-worker maintenance)
+readonly SERVICES=(api frontend web coach-worker maintenance)
 readonly SUPPORT_SERVICES=(alertmanager)
 
 fail() {
@@ -41,7 +41,7 @@ compose() {
 }
 
 verify_services() {
-  local service image_service container_ids container_id state config_image health expected_image
+  local service container_ids container_id state config_image health expected_image
 
   for service in "${SERVICES[@]}"; do
     container_ids="$(compose ps -q "${service}")" || fail "unable to inspect Compose service ${service}"
@@ -60,11 +60,7 @@ verify_services() {
 
     config_image="$(docker inspect -f '{{.Config.Image}}' "${container_id}")" \
       || fail "unable to inspect image for ${service}"
-    image_service="${service}"
-    if [[ "${service}" == "gpu-dispatch-worker" ]]; then
-      image_service="coach-worker"
-    fi
-    expected_image="${IMAGE_PREFIX}-${image_service}:${TARGET_TAG}"
+    expected_image="${IMAGE_PREFIX}-${service}:${TARGET_TAG}"
     [[ "${config_image}" == "${expected_image}" ]] \
       || fail "${service} uses ${config_image}, expected ${expected_image}"
 

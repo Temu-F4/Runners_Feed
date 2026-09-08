@@ -45,11 +45,7 @@ if [[ "${1:-}" == "inspect" ]]; then
       if [[ "${MOCK_BAD_IMAGE_SERVICE:-}" == "$service" ]]; then
         printf 'unexpected/image:latest\n'
       else
-        image_service="$service"
-        if [[ "$service" == "gpu-dispatch-worker" ]]; then
-          image_service="coach-worker"
-        fi
-        printf 'ghcr.io/temu-f4/runners-feed-%s:%s\n' "$image_service" "${IMAGE_TAG}"
+        printf 'ghcr.io/temu-f4/runners-feed-%s:%s\n' "$service" "${IMAGE_TAG}"
       fi
       ;;
     "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}")

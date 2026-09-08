@@ -150,16 +150,24 @@ GitHub에 올리지 않고 `/opt/runners-feed/model-golden/<model_id>/`에 둔�
   session 발급 통과; 현재 품질 상태는 표본 부족에 따른 `insufficient_sample`이며
   rollback condition은 없음
 
-## 실제 Production 상태 (2026-09-08)
+## 실제 Production 상태 (2026-09-07)
 
-Production은 `sha-adc592aabd1032b19dceeb965df89a05c50ec5a3` 릴리스로 전환됐다.
-관리자 권한으로 systemd unit을 동기화한 뒤 인증서 갱신, DB backup,
-DB backup 검증, 모델 품질 watchdog timer 네 개가 모두 `enabled`와 `active`임을
-확인했다.
+Production은 `sha-6743f3534519c93b2e6a96b6ed44f91ac0fb6cbf` 릴리스로 전환됐다.
+Release workflow 전체가 실패로 표시된 이유는 앱 배포 실패가 아니라 마지막
+`Synchronize operational systemd units` 단계에서 `github-deploy`의
+passwordless `sudo`가 없어 systemd unit 설치가 거부됐기 때문이다.
 
-같은 릴리스의 운영 사이트 RunPod 통합 작업
-`44c9e8f8-2941-4e48-96e3-5a994b9d14c2`는 `SUCCESS`로 완료됐다. Grafana에서
-총 처리시간 24.6초, 큐 대기 107.956ms, `video_analysis` 5.8초를 확인했다.
+따라서 모델 품질 watchdog 코드와 unit 파일은 릴리스에 포함되어 있으나,
+Production에서 timer가 실제 활성화됐다고 아직 확정할 수 없다. 관리자 권한으로
+다음 명령을 실행한 뒤 활성 상태를 확인해야 한다.
+
+```bash
+sudo install -o root -g root -m 0644 /opt/runners-feed/current/deploy/systemd/runners-feed-model-quality-watchdog.service /etc/systemd/system/
+sudo install -o root -g root -m 0644 /opt/runners-feed/current/deploy/systemd/runners-feed-model-quality-watchdog.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now runners-feed-model-quality-watchdog.timer
+systemctl is-active runners-feed-model-quality-watchdog.timer
+```
 
 Android preview APK는 저장소 설정까지 완료했지만, 현재 Expo 계정 인증 정보가
 없어 EAS build를 실행하지 않았다. 프로젝트 소유자가 `mobile/`에서 로그인 후
@@ -171,13 +179,8 @@ Android preview APK는 저장소 설정까지 완료했지만, 현재 Expo 계�
   `quality_baseline.json`의 `approval_status`를 `approved`로 변경
 - Kakao Developers에 mobile server callback URI 등록
 - Expo 소유자 계정으로 `eas init` 후 preview APK build
+- Production에서 model-quality watchdog systemd timer 활성화
 - DB backup/restore 실제 검증 결과와 보관 위치를 운영 runbook에 기록
-
-systemd 동기화는 동일한 unit과 활성 timer를 확인하면 sudo 없이 성공하도록
-멱등화했다. unit이 실제로 바뀌거나 timer가 꺼진 경우에는 Production 관리자만
-동기화하며, 배포 계정에 포괄적인 passwordless sudo를 부여하지 않는다. 또한
-Production 배포 시작 시 Docker 디스크 guard를 실행해 과거 runner 디스크 부족
-재발을 방지한다. 2026-09-08 관리자 동기화 후 네 timer의 활성 상태를 확인했다.
 
 배포일 기준 14일 안정성 관찰은 2026-09-20까지 진행한다. 그 기간에는
 레거시 경로, 오래된 release, 로컬 Docker image를 삭제하지 않는다.
