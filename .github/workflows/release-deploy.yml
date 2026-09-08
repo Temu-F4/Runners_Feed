@@ -287,4 +287,4 @@ jobs:
 
       - name: Synchronize operational systemd units
         if: success()
-        run: bash /opt/runners-feed/current/deploy/sync_systemd_units.sh
+        run: sudo -n /usr/bin/bash /opt/runners-feed/current/deploy/sync_systemd_units.sh

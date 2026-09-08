@@ -92,6 +92,7 @@ deploy_tag() {
     --detach \
     --no-build \
     --no-deps \
+    --remove-orphans \
     --wait \
     --wait-timeout 180 \
     "${SERVICES[@]}" "${SUPPORT_SERVICES[@]}" || return 1

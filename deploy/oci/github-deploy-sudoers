@@ -1,0 +1,4 @@
+# Permit the production Actions runner to synchronize only the Runners Feed
+# systemd units installed by the immutable release deployment.
+Cmnd_Alias RUNNERS_FEED_SYSTEMD_SYNC = /usr/bin/bash /opt/runners-feed/current/deploy/sync_systemd_units.sh
+github-deploy ALL=(root) NOPASSWD: RUNNERS_FEED_SYSTEMD_SYNC
