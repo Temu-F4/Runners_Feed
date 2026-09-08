@@ -4,7 +4,7 @@ set -euo pipefail
 
 readonly TARGET_TAG="${1:?usage: verify_model_candidate.sh sha-<commit>}"
 readonly REQUIRED="${MODEL_CANARY_REQUIRED:-0}"
-readonly MODEL_ID="${COACH_MODEL_ID:-sehyeon-dcc2d7d}"
+readonly MODEL_ID="${COACH_MODEL_ID:-sehyeon-e2fe43e}"
 readonly ENV_FILE="${RUNNERS_FEED_ENV_FILE:-/etc/runners-feed/prod.env}"
 readonly PROJECT_DIR="${RUNNERS_FEED_PROJECT_DIR:-/opt/runners-feed/current}"
 readonly GOLDEN_DIR="${MODEL_GOLDEN_DIR:-/opt/runners-feed/model-golden/${MODEL_ID}}"

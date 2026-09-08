@@ -18,6 +18,24 @@ FEATURE_PRESENTATION = {
         "measurement_basis": "Coach feature1 output without recalculation",
         "evidence_query": ["pelvis vertical oscillation", "body height ratio"],
     },
+    "feature2": {
+        "label": "팔꿈치 각도",
+        "description": "러닝 중 팔꿈치 각도의 평균값입니다.",
+        "measurement_basis": "Coach elbow-angle mean without recalculation",
+        "evidence_query": ["running elbow angle", "running economy"],
+    },
+    "feature3": {
+        "label": "몸통 굽힘 각도",
+        "description": "지지 구간에서 계산한 몸통 굽힘 각도입니다.",
+        "measurement_basis": "Coach trunk-flexion output without recalculation",
+        "evidence_query": ["running trunk flexion"],
+    },
+    "feature4": {
+        "label": "상체 기울기",
+        "description": "지지 구간에서 계산한 상체 기울기 각도입니다.",
+        "measurement_basis": "Coach postural-lean output without recalculation",
+        "evidence_query": ["running postural lean"],
+    },
 }
 
 
@@ -117,8 +135,7 @@ def _metrics(features: dict) -> list[dict[str, Any]]:
                 "evidence_query": [],
             },
         )
-        output.append(
-            {
+        metric = {
                 "id": feature_id,
                 "label": presentation["label"],
                 "value": feature["value"],
@@ -126,8 +143,15 @@ def _metrics(features: dict) -> list[dict[str, Any]]:
                 "description": presentation["description"],
                 "measurement_basis": presentation["measurement_basis"],
                 "evidence_query": presentation["evidence_query"],
-            }
-        )
+        }
+        for key in (
+            "reference_range",
+            "coaching_action",
+            "interpretation",
+        ):
+            if key in feature:
+                metric[key] = feature[key]
+        output.append(metric)
     return output
 
 
@@ -192,7 +216,7 @@ def build_report(run_dir: Path) -> dict[str, Any]:
     details = _load_json(output_dir / "details.json")
     predictions = _load_json(output_dir / "pose_predictions.json")
     features = _json_safe(
-        _load_json(output_dir / "feature_results.json")
+        _load_json(output_dir / "feature_results.service.json")
     )
     video = details.get("video", {})
 

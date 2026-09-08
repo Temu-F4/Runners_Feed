@@ -137,8 +137,8 @@ jobs:
           check-config /etc/alertmanager/alertmanager.yml
       - name: Test deployment rollback behavior
         run: bash deploy/test_deploy_ghcr_release.sh
-      - name: Test OCI coach-only architecture
-        run: bash deploy/test_runpod_removal.sh
+      - name: Test RunPod video-analysis boundary
+        run: bash deploy/test_runpod_boundary.sh
       - name: Test release verification behavior
         run: bash deploy/test_verify_release.sh
       - name: Test model quality watchdog behavior

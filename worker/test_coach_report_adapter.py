@@ -45,7 +45,7 @@ class CoachReportAdapterTest(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        (self.output_dir / "feature_results.json").write_text(
+        (self.output_dir / "feature_results.service.json").write_text(
             json.dumps(
                 {
                     "feature1": {
@@ -111,7 +111,7 @@ class CoachReportAdapterTest(unittest.TestCase):
         self.assertEqual(persisted["schema_version"], "coach-1.0")
 
     def test_converts_non_finite_feature_value_to_null(self) -> None:
-        (self.output_dir / "feature_results.json").write_text(
+        (self.output_dir / "feature_results.service.json").write_text(
             '{"feature1":{"value":NaN,"unit":"ratio"}}',
             encoding="utf-8",
         )

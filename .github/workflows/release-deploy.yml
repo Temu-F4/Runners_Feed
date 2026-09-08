@@ -18,7 +18,7 @@ on:
       - deploy/verify_model_candidate.sh
       - deploy/check_model_quality.sh
       - deploy/test_model_quality_watchdog.sh
-      - deploy/test_runpod_removal.sh
+      - deploy/test_runpod_boundary.sh
       - deploy/ci_disk_guard.sh
       - deploy/sync_systemd_units.sh
       - deploy/backup/**
@@ -97,8 +97,8 @@ jobs:
             coach/tests/fixtures/model-golden \
             coach/scripts/model_contract/quality_baseline.example.json
 
-      - name: Verify OCI coach-only architecture
-        run: bash deploy/test_runpod_removal.sh
+      - name: Verify RunPod video-analysis boundary
+        run: bash deploy/test_runpod_boundary.sh
 
       - name: Set build metadata
         run: |

@@ -34,7 +34,10 @@ def evaluate_run(run_dir: Path, baseline_path: Path) -> dict[str, Any]:
     outputs = run_dir / "outputs"
     details = _load_json(outputs / "details.json")
     predictions = _load_json(outputs / "pose_predictions.json")
-    features = _load_json(outputs / "feature_results.json")
+    feature_path = outputs / "feature_results.service.json"
+    if not feature_path.is_file():
+        feature_path = outputs / "feature_results.json"
+    features = _load_json(feature_path)
 
     required_features = baseline.get("required_feature_ids", [])
     missing = [feature_id for feature_id in required_features if feature_id not in features]

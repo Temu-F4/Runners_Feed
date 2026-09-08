@@ -67,6 +67,19 @@ def validate_plugin(
         if not path.is_file():
             raise ValueError(f"missing {name} entrypoint: {path}")
 
+    source_files = manifest.get("source_files")
+    if source_files is not None:
+        if not isinstance(source_files, list) or not source_files:
+            raise ValueError("manifest source_files must be a non-empty list")
+        for index, value in enumerate(source_files):
+            path = _safe_relative_path(
+                plugin_dir,
+                value,
+                f"source_files[{index}]",
+            )
+            if not path.is_file():
+                raise ValueError(f"missing source file: {path}")
+
     weights = manifest.get("weights")
     if not isinstance(weights, list) or not weights:
         raise ValueError("manifest weights must be a non-empty list")

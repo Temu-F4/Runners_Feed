@@ -1,6 +1,9 @@
 import os
 
 from celery import Celery
+from celery.signals import worker_init
+
+from runpod_client import client_from_environment
 
 
 celery_app = Celery(
@@ -22,8 +25,17 @@ celery_app.conf.update(
     task_time_limit=3600,
     task_soft_time_limit=3500,
     task_routes={
-        "coach.run_object_storage": {
-            "queue": "coach",
+        "coach.dispatch_video_analysis": {
+            "queue": "gpu_dispatch",
+        },
+        "coach.run_postprocess": {
+            "queue": "postprocess",
         },
     },
 )
+
+
+@worker_init.connect
+def validate_runpod_configuration(**_: object) -> None:
+    """Fail worker startup before it can accept jobs with invalid credentials."""
+    client_from_environment()
