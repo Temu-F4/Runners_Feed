@@ -8,9 +8,6 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 
-USER_AGENT = "Runners-Feed-OCI-Dispatcher/1.0"
-
-
 class RunPodVideoAnalysisClient:
     def __init__(self, endpoint: str, token: str, *, timeout: float = 3700, opener=urlopen) -> None:
         parsed = urlparse(endpoint)
@@ -27,11 +24,7 @@ class RunPodVideoAnalysisClient:
         request = Request(
             self.endpoint,
             data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.token}",
-                "Content-Type": "application/json",
-                "User-Agent": USER_AGENT,
-            },
+            headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
             method="POST",
         )
         try:
