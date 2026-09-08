@@ -798,6 +798,7 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
     limitation = raw.get("limitation")
     score = _finite_number(raw.get("score"))
     score_method = raw.get("score_method", raw.get("scoreMethod"))
+    confidence_assumed = raw.get("confidence_assumed", raw.get("confidenceAssumed")) is True
     return {
         "featureId": feature_id,
         "label": metric.get("label") if isinstance(metric.get("label"), str) else feature_id,
@@ -816,6 +817,12 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
         "evidenceIds": _string_list(raw.get("evidence_ids", raw.get("evidenceIds", []))),
         "score": score,
         "scoreMethod": score_method if isinstance(score_method, str) else None,
+        "denominatorPolicy": raw.get("denominator_policy", raw.get("denominatorPolicy")),
+        "goodFrameCount": raw.get("good_frame_count", raw.get("goodFrameCount")),
+        "evaluatedFrameCount": raw.get("evaluated_frame_count", raw.get("evaluatedFrameCount")),
+        "sourceFrameCount": raw.get("source_frame_count", raw.get("sourceFrameCount")),
+        "evaluationCoveragePct": _finite_number(raw.get("evaluation_coverage_pct", raw.get("evaluationCoveragePct"))),
+        "confidenceAssumed": confidence_assumed,
     }
 
 
@@ -913,6 +920,7 @@ def _mobile_result(job: dict, report: dict) -> dict:
         "features": features,
         "evidence": [item for item in evidence if item is not None],
         "narrative": narrative,
+        "postureScore": _finite_number(report.get("posture_score", report.get("postureScore"))),
     }
 
 

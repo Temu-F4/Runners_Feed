@@ -20,6 +20,15 @@ API가 작업을 넣으면 `coach-worker`는 RunPod에 원본 영상의 HPE·대
 리포트·스켈레톤 Adapter, Object Storage 업로드와 DB 상태 갱신만 수행합니다.
 운영 경로에는 OCI 로컬 HPE fallback이 없습니다.
 
+RunPod Pod가 실행 중일 때만 HTTP Proxy API를 직접 사용할 수 있습니다. Worker는 장시간
+동기 HTTP 요청을 유지하지 않고 빠른 submit 응답의 `remote_job_id`를 저장한 뒤 별도
+Celery countdown 작업으로 상태를 polling합니다. 계약 상세는
+`docs/RUNPOD_SEHYEON_E2FE43E_HANDOFF.md`를 참고합니다.
+
+서비스 피처 점수의 기본 분모는 `FEATURE_SCORE_DENOMINATOR=all_frames`이며 모델 담당자
+확인 후 `evaluated_frames`로 전환할 수 있습니다. confidence는 계산 확률이 아니라 초기
+가정값이며 `confidence_assumed=true`, `confidence_pct=null`로 전달됩니다.
+
 ## 수동 실행
 
 `runtime/run/<RUN_ID>` 안에 MP4 한 개와 `user_info.json`을 준비한 뒤 실행합니다.

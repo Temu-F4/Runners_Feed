@@ -39,6 +39,7 @@ def create_gpu_attempt(
             cursor.execute(
                 """
                 SELECT attempt_id, attempt_number, status, manifest_object,
+                       remote_job_id,
                        (
                            status IN ('RUNNING', 'POSTPROCESSING')
                            AND updated_at < NOW() - (%s * INTERVAL '1 second')
@@ -53,15 +54,19 @@ def create_gpu_attempt(
             )
             active = cursor.fetchone()
             if active is not None:
-                active_id, active_number, active_status, manifest_object, is_stale = active
+                (active_id, active_number, active_status, manifest_object,
+                 remote_job_id, is_stale) = active
                 if active_status in {"RUNNING", "POSTPROCESSING"} and not is_stale:
                     return {
                         "attempt_id": str(active_id),
                         "attempt_number": active_number,
                         "status": active_status,
                         "manifest_object": manifest_object,
+                        "remote_job_id": remote_job_id,
                     }
-                if active_status in {"RUNNING", "POSTPROCESSING"}:
+                if active_status in {"RUNNING", "POSTPROCESSING"} and not (
+                    active_status == "RUNNING" and remote_job_id
+                ):
                     recovered_status = (
                         "QUEUED" if active_status == "RUNNING" else "GPU_SUCCESS"
                     )
@@ -77,15 +82,17 @@ def create_gpu_attempt(
                         """,
                         (recovered_status, recovered_status, active_id, active_status),
                     )
+                returned_status = active_status
+                if active_status in {"RUNNING", "POSTPROCESSING"} and not (
+                    active_status == "RUNNING" and remote_job_id
+                ) and is_stale:
+                    returned_status = recovered_status
                 return {
                     "attempt_id": str(active_id),
                     "attempt_number": active_number,
-                    "status": (
-                        recovered_status
-                        if active_status in {"RUNNING", "POSTPROCESSING"}
-                        else active_status
-                    ),
+                    "status": returned_status,
                     "manifest_object": manifest_object,
+                    "remote_job_id": remote_job_id,
                 }
             cursor.execute(
                 """
@@ -171,6 +178,70 @@ def finish_gpu_attempt(job_id: str, attempt_id: str, manifest_object: str) -> bo
                 and row[0] in {"GPU_SUCCESS", "POSTPROCESSING", "SUCCESS"}
                 and row[1] == manifest_object
             )
+
+
+def save_remote_job_id(job_id: str, attempt_id: str, remote_job_id: str) -> bool:
+    """Persist the submit result once; an identical redelivery is idempotent."""
+    if not remote_job_id.strip():
+        raise ValueError("remote_job_id is required")
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE inference_gpu_attempts
+                SET remote_job_id = %s, updated_at = NOW()
+                WHERE job_id = %s AND attempt_id = %s AND status = 'RUNNING'
+                  AND (remote_job_id IS NULL OR remote_job_id = %s)
+                """,
+                (remote_job_id, job_id, attempt_id, remote_job_id),
+            )
+            return cursor.rowcount == 1
+
+
+def get_gpu_attempt(job_id: str, attempt_id: str) -> dict[str, Any]:
+    """Return polling state and immutable request fields for one active attempt."""
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT attempts.status, attempts.remote_job_id,
+                       attempts.manifest_object,
+                       EXTRACT(EPOCH FROM (NOW() - attempts.started_at)),
+                       jobs.job_id, jobs.case_id, jobs.input_object_name,
+                       jobs.input_size_bytes, jobs.input_etag,
+                       jobs.height_snapshot_m, jobs.model_id, jobs.model_release
+                FROM inference_gpu_attempts AS attempts
+                JOIN inference_jobs AS jobs ON jobs.job_id = attempts.job_id
+                WHERE attempts.job_id = %s AND attempts.attempt_id = %s
+                """,
+                (job_id, attempt_id),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise LookupError(f"Unknown GPU attempt: {attempt_id}")
+            return dict(zip(
+                ("status", "remote_job_id", "manifest_object", "elapsed_seconds",
+                 "job_id", "case_id", "input_object_name", "input_size_bytes",
+                 "input_etag", "height_snapshot_m", "model_id", "model_release"),
+                row,
+            ))
+
+
+def accept_gpu_result(job_id: str, attempt_id: str, manifest_object: str) -> bool:
+    """Atomically accept a complete poll exactly once."""
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE inference_gpu_attempts
+                SET status = 'GPU_SUCCESS', manifest_object = %s,
+                    completed_at = NOW(), updated_at = NOW()
+                WHERE job_id = %s AND attempt_id = %s AND status = 'RUNNING'
+                  AND remote_job_id IS NOT NULL
+                """,
+                (manifest_object, job_id, attempt_id),
+            )
+            return cursor.rowcount == 1
 
 
 def claim_postprocess_attempt(
@@ -295,8 +366,54 @@ def fail_gpu_attempt(job_id: str, attempt_id: str, error: Exception) -> None:
                       'QUEUED', 'RUNNING', 'GPU_SUCCESS', 'POSTPROCESSING'
                   )
                 """,
-                (type(error).__name__, str(error)[-2000:], job_id, attempt_id),
+                (
+                    getattr(error, "error_code", type(error).__name__),
+                    str(error)[-2000:],
+                    job_id,
+                    attempt_id,
+                ),
             )
+
+
+def fail_gpu_attempt_and_job(
+    job_id: str,
+    attempt_id: str,
+    error: Exception,
+    *,
+    artifact_invalid: bool = False,
+) -> bool:
+    """Atomically fail an active attempt and its non-final parent job."""
+    error_code = getattr(error, "error_code", type(error).__name__)
+    error_message = str(error)[-2000:]
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE inference_gpu_attempts
+                SET status = 'FAILED', error_code = %s, error_message = %s,
+                    completed_at = NOW(), updated_at = NOW()
+                WHERE job_id = %s AND attempt_id = %s
+                  AND status IN ('QUEUED', 'RUNNING', 'GPU_SUCCESS', 'POSTPROCESSING')
+                """,
+                (error_code, error_message, job_id, attempt_id),
+            )
+            if cursor.rowcount != 1:
+                return False
+            cursor.execute(
+                """
+                UPDATE inference_jobs
+                SET status = 'FAILED', error_code = %s, error_message = %s,
+                    artifact_validation_status = CASE
+                        WHEN %s THEN 'INVALID' ELSE artifact_validation_status
+                    END,
+                    completed_at = NOW(), updated_at = NOW()
+                WHERE job_id = %s AND status IN ('QUEUED', 'PROCESSING')
+                """,
+                (error_code, error_message, artifact_invalid, job_id),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("Job reached a final state before attempt failed")
+            return True
 
 
 def mark_job_processing(

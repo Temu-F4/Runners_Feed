@@ -110,6 +110,18 @@ class CoachReportAdapterTest(unittest.TestCase):
         persisted = json.loads(output_path.read_text(encoding="utf-8"))
         self.assertEqual(persisted["schema_version"], "coach-1.0")
 
+    def test_posture_score_averages_only_features_two_through_four(self) -> None:
+        features = {
+            "feature1": {"value": 0.046, "unit": "ratio", "score": 100},
+            "feature2": {"value": 80, "unit": "degree", "score": 30},
+            "feature3": {"value": 12, "unit": "degree", "score": 60},
+            "feature4": {"value": 3, "unit": "degree", "score": 90},
+        }
+        (self.output_dir / "feature_results.service.json").write_text(
+            json.dumps(features), encoding="utf-8"
+        )
+        self.assertEqual(build_report(self.run_dir)["posture_score"], 60.0)
+
     def test_converts_non_finite_feature_value_to_null(self) -> None:
         (self.output_dir / "feature_results.service.json").write_text(
             '{"feature1":{"value":NaN,"unit":"ratio"}}',

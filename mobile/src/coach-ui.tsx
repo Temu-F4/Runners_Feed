@@ -101,7 +101,7 @@ export function ScoreOverview({ jobs, onPress }: { jobs: ActiveAnalysisJob[]; on
         </Text>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "800" }}>이번 종합 자세 점수</Text>
-          <Text style={[styles.caption, { marginTop: 4 }]}>4개 피처 가중평균</Text>
+          <Text style={[styles.caption, { marginTop: 4 }]}>3개 자세 피처 평균</Text>
         </View>
         <Svg accessibilityLabel="최근 종합 자세 점수 추이" height={46} role="img" viewBox="0 0 120 46" width={112}>
           <Line stroke={colors.border} x1="0" x2="120" y1="40" y2="40" />

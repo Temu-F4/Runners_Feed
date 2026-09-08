@@ -150,6 +150,16 @@ def _metrics(features: dict) -> list[dict[str, Any]]:
             "interpretation",
             "score",
             "score_method",
+            "denominator_policy",
+            "good_frame_count",
+            "evaluated_frame_count",
+            "source_frame_count",
+            "evaluation_coverage_pct",
+            "confidence_level",
+            "confidence_pct",
+            "confidence_assumed",
+            "limitation",
+            "series",
         ):
             if key in feature:
                 metric[key] = feature[key]
@@ -221,6 +231,12 @@ def build_report(run_dir: Path) -> dict[str, Any]:
         _load_json(output_dir / "feature_results.service.json")
     )
     video = details.get("video", {})
+    scored = [
+        feature.get("score") for feature_id, feature in features.items()
+        if feature_id in {"feature2", "feature3", "feature4"}
+        and isinstance(feature, dict)
+        and isinstance(feature.get("score"), (int, float))
+    ]
 
     return {
         "schema_version": "coach-1.0",
@@ -236,6 +252,7 @@ def build_report(run_dir: Path) -> dict[str, Any]:
         "tracking": _tracking_summary(details, predictions),
         "metrics": _metrics(features),
         "features": features,
+        "posture_score": round(sum(scored) / len(scored), 2) if scored else None,
         "evidence": [],
         "narrative": _narrative(output_dir),
         "notice": (

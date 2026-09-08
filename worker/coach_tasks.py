@@ -11,13 +11,15 @@ from pathlib import Path
 from celery.exceptions import Retry
 from coach_celery_app import celery_app
 from job_repository import (
+    accept_gpu_result,
     claim_postprocess_attempt,
     complete_postprocess,
     create_gpu_attempt,
-    fail_gpu_attempt,
-    finish_gpu_attempt,
+    fail_gpu_attempt_and_job,
+    get_gpu_attempt,
     mark_job_failed,
     mark_job_processing,
+    save_remote_job_id,
     start_gpu_attempt,
 )
 from job_stages import JobStageRecorder
@@ -27,7 +29,7 @@ from output_validation import (
     validate_completed_artifacts,
 )
 from run_cleanup import remove_successful_run
-from runpod_client import client_from_environment
+from runpod_client import RunPodTransientError, client_from_environment
 from video_analysis_contract import (
     build_request,
     validate_downloaded_artifacts,
@@ -228,13 +230,12 @@ def _postprocess_pipeline(job_id: str, stage_recorder: JobStageRecorder) -> subp
 @celery_app.task(
     name="coach.dispatch_video_analysis",
     bind=True,
-    soft_time_limit=4100,
-    time_limit=4200,
+    soft_time_limit=120,
+    time_limit=180,
 )
 def dispatch_video_analysis(self, job_id: str) -> dict:
-    """Dispatch the complete GPU video_analysis boundary to RunPod."""
+    """Submit the GPU boundary quickly, then hand monitoring to the poll task."""
     attempt_id: str | None = None
-    gpu_completed = False
     stage_recorder: JobStageRecorder | None = None
     try:
         validate_case_id(job_id)
@@ -249,11 +250,6 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
                 "job_id": job_id,
                 "status": f"already_{attempt['status'].lower()}",
             }
-        if attempt["status"] == "RUNNING":
-            raise self.retry(
-                countdown=60,
-                max_retries=80,
-            )
         attempt_id = attempt["attempt_id"]
         if attempt["status"] == "POSTPROCESSING":
             return {
@@ -277,15 +273,34 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
                 "manifest_object": manifest_object,
                 "status": "postprocess_requeued",
             }
-        snapshot = start_gpu_attempt(job_id, attempt_id)
-        if not mark_job_processing(
-            job_id,
-            model_id=snapshot["model_id"],
-            model_release=snapshot["model_release"],
-        ):
-            raise RuntimeError("Job reached a final state before GPU dispatch")
+        if attempt["status"] == "RUNNING":
+            if attempt.get("remote_job_id"):
+                celery_app.send_task(
+                    "coach.poll_video_analysis",
+                    args=[job_id, attempt_id],
+                    queue="gpu_dispatch",
+                    countdown=_poll_interval(),
+                )
+                return {
+                    "job_id": job_id,
+                    "attempt_id": attempt_id,
+                    "remote_job_id": attempt["remote_job_id"],
+                    "status": "poll_requeued",
+                }
+            snapshot = get_gpu_attempt(job_id, attempt_id)
+        else:
+            snapshot = start_gpu_attempt(job_id, attempt_id)
+            if not mark_job_processing(
+                job_id,
+                model_id=snapshot["model_id"],
+                model_release=snapshot["model_release"],
+            ):
+                raise RuntimeError("Job reached a final state before GPU dispatch")
         stage_recorder = JobStageRecorder(job_id)
-        stage_recorder.initialize()
+        if attempt["status"] == "QUEUED":
+            stage_recorder.initialize()
+        else:
+            stage_recorder.attach_existing()
         storage = ObjectStorageGateway()
         request_without_transfer = build_request(
             snapshot, attempt_id, Path("/app/coach")
@@ -299,18 +314,111 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
             snapshot, attempt_id, Path("/app/coach"), transfer=transfer
         )
         response = client_from_environment().submit(request)
-        manifest_object = response["manifest_object"]
-        manifest = storage.load_result_json(manifest_object)
-        validate_manifest(manifest, request)
-        if not finish_gpu_attempt(job_id, attempt_id, manifest_object):
-            raise RuntimeError("GPU attempt completed after it was superseded")
-        gpu_completed = True
+        remote_job_id = response["remote_job_id"]
+        if not save_remote_job_id(job_id, attempt_id, remote_job_id):
+            raise RuntimeError("GPU attempt was superseded before submit completed")
+        celery_app.send_task(
+            "coach.poll_video_analysis",
+            args=[job_id, attempt_id],
+            queue="gpu_dispatch",
+            countdown=_poll_interval(),
+        )
+        return {
+            "job_id": job_id,
+            "attempt_id": attempt_id,
+            "attempt_number": attempt["attempt_number"],
+            "remote_job_id": remote_job_id,
+            "status": "submitted",
+        }
+    except Retry:
+        raise
+    except RunPodTransientError as error:
+        raise self.retry(exc=error, countdown=_poll_interval(), max_retries=20)
+    except Exception as error:
+        if attempt_id is not None:
+            try:
+                fail_gpu_attempt_and_job(job_id, attempt_id, error)
+            except Exception:
+                LOGGER.exception("Failed to persist GPU attempt failure for job %s", job_id)
+        if stage_recorder is not None:
+            try:
+                stage_recorder.skip_pending()
+            except Exception:
+                LOGGER.exception("Failed to skip remaining stages for job %s", job_id)
+        if attempt_id is None:
+            try:
+                mark_job_failed(job_id, error)
+            except Exception:
+                LOGGER.exception("Failed to persist FAILED state for job %s", job_id)
+        raise
 
+
+def _poll_interval() -> int:
+    value = int(os.getenv("RUNPOD_POLL_INTERVAL_SECONDS", "10"))
+    if value < 1:
+        raise ValueError("RUNPOD_POLL_INTERVAL_SECONDS must be positive")
+    return value
+
+
+def _max_poll_seconds() -> int:
+    value = int(os.getenv("RUNPOD_MAX_POLL_SECONDS", "4200"))
+    if value < 1:
+        raise ValueError("RUNPOD_MAX_POLL_SECONDS must be positive")
+    return value
+
+
+class RunPodPollingTimeout(RuntimeError):
+    pass
+
+
+@celery_app.task(
+    name="coach.poll_video_analysis",
+    bind=True,
+    soft_time_limit=120,
+    time_limit=180,
+)
+def poll_video_analysis(self, job_id: str, attempt_id: str) -> dict:
+    """Poll once without sleeping, scheduling another short task when needed."""
+    stage_recorder = JobStageRecorder(job_id)
+    try:
+        validate_case_id(job_id)
+        attempt = get_gpu_attempt(job_id, attempt_id)
+        if attempt["status"] in {"GPU_SUCCESS", "POSTPROCESSING", "SUCCESS"}:
+            return {"job_id": job_id, "attempt_id": attempt_id, "status": "already_complete"}
+        if attempt["status"] == "FAILED":
+            return {"job_id": job_id, "attempt_id": attempt_id, "status": "already_failed"}
+        if attempt["status"] != "RUNNING" or not attempt["remote_job_id"]:
+            raise RuntimeError("GPU attempt is not submitted")
+        elapsed = float(attempt["elapsed_seconds"] or 0)
+        if elapsed >= _max_poll_seconds():
+            raise RunPodPollingTimeout(
+                f"RunPod polling exceeded {_max_poll_seconds()} seconds"
+            )
+        response = client_from_environment().poll(
+            attempt["remote_job_id"],
+            job_id=job_id,
+            attempt_id=attempt_id,
+        )
+        if response["status"] in {"queued", "running"}:
+            celery_app.send_task(
+                "coach.poll_video_analysis",
+                args=[job_id, attempt_id],
+                queue="gpu_dispatch",
+                countdown=_poll_interval(),
+            )
+            return {"job_id": job_id, "attempt_id": attempt_id, "status": response["status"]}
+
+        manifest_object = response["manifest_object"]
+        request = build_request(attempt, attempt_id, Path("/app/coach"))
+        manifest = ObjectStorageGateway().load_result_json(manifest_object)
+        validate_manifest(manifest, request)
+        if not accept_gpu_result(job_id, attempt_id, manifest_object):
+            return {"job_id": job_id, "attempt_id": attempt_id, "status": "already_complete"}
         timings = manifest["timings_seconds"]
+        stage_recorder.attach_existing()
         stage_recorder.record_external("input_download", float(timings["download"]))
         stage_recorder.record_external(
-            "video_analysis",
-            float(timings["analysis"]) + float(timings["encode"]),
+            "video_analysis", float(timings["analysis"]) + float(timings["encode"])
         )
         celery_app.send_task(
             "coach.run_postprocess",
@@ -320,29 +428,24 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
         return {
             "job_id": job_id,
             "attempt_id": attempt_id,
-            "attempt_number": attempt["attempt_number"],
             "manifest_object": manifest_object,
             "status": "postprocess_queued",
         }
-    except Retry:
-        raise
+    except RunPodTransientError:
+        celery_app.send_task(
+            "coach.poll_video_analysis",
+            args=[job_id, attempt_id],
+            queue="gpu_dispatch",
+            countdown=_poll_interval(),
+        )
+        return {"job_id": job_id, "attempt_id": attempt_id, "status": "poll_retry"}
     except Exception as error:
-        if gpu_completed:
-            raise self.retry(exc=error, countdown=30, max_retries=80)
-        if attempt_id is not None:
-            try:
-                fail_gpu_attempt(job_id, attempt_id, error)
-            except Exception:
-                LOGGER.exception("Failed to persist GPU attempt failure for job %s", job_id)
-        if stage_recorder is not None:
-            try:
-                stage_recorder.skip_pending()
-            except Exception:
-                LOGGER.exception("Failed to skip remaining stages for job %s", job_id)
+        fail_gpu_attempt_and_job(job_id, attempt_id, error)
         try:
-            mark_job_failed(job_id, error)
+            stage_recorder.attach_existing()
+            stage_recorder.skip_pending()
         except Exception:
-            LOGGER.exception("Failed to persist FAILED state for job %s", job_id)
+            LOGGER.exception("Failed to close stages for job %s", job_id)
         raise
 
 @celery_app.task(name="coach.run_postprocess", bind=True)
@@ -447,19 +550,18 @@ def run_postprocess(
         raise
     except Exception as error:
         try:
-            fail_gpu_attempt(job_id, attempt_id, error)
+            fail_gpu_attempt_and_job(
+                job_id,
+                attempt_id,
+                error,
+                artifact_invalid=isinstance(
+                    error, (ModelArtifactValidationError, ValueError)
+                ),
+            )
         except Exception:
             LOGGER.exception("Failed to persist postprocess attempt failure for job %s", job_id)
         try:
             stage_recorder.skip_pending()
         except Exception:
             LOGGER.exception("Failed to skip remaining stages for job %s", job_id)
-        try:
-            mark_job_failed(
-                job_id,
-                error,
-                artifact_invalid=isinstance(error, (ModelArtifactValidationError, ValueError)),
-            )
-        except Exception:
-            LOGGER.exception("Failed to persist FAILED state for job %s", job_id)
         raise

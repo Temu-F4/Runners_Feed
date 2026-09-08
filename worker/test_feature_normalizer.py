@@ -3,7 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from coach.scripts.model_contract.normalize_features import normalize, write_normalized
+from coach.scripts.model_contract.normalize_features import (
+    derive_pose_series,
+    normalize,
+    write_normalized,
+)
 
 
 class FeatureNormalizerTests(unittest.TestCase):
@@ -44,7 +48,8 @@ class FeatureNormalizerTests(unittest.TestCase):
         self.assertEqual(result["feature2"]["unit"], "degree")
         self.assertEqual(result["feature1"]["coaching_action"], "리듬을 유지하세요.")
         self.assertEqual(result["feature1"]["source_range"], {"section": "일반"})
-        self.assertNotIn("reference_range", result["feature1"])
+        self.assertEqual(result["feature1"]["reference_range"]["min"], 0.028)
+        self.assertEqual(result["feature1"]["research_reference"]["mean"], 0.046)
         self.assertEqual(result["feature2"]["reference_range"]["min"], 70.0)
         self.assertEqual(result["feature2"]["score"], 100.0)
         self.assertEqual(result["feature2"]["series"][1], {
@@ -89,6 +94,68 @@ class FeatureNormalizerTests(unittest.TestCase):
         del raw["Elbow angle"]["range"]["mean"]
         with self.assertRaisesRegex(ValueError, "range.mean"):
             normalize(raw)
+
+    def test_all_frames_counts_invalid_frames_in_denominator(self):
+        result = normalize(
+            self._raw(), source_frame_count=4, denominator_policy="all_frames"
+        )
+        elbow = result["feature2"]
+        self.assertEqual(elbow["good_frame_count"], 2)
+        self.assertEqual(elbow["evaluated_frame_count"], 2)
+        self.assertEqual(elbow["source_frame_count"], 4)
+        self.assertEqual(elbow["score"], 50.0)
+        self.assertEqual(elbow["evaluation_coverage_pct"], 50.0)
+
+    def test_evaluated_frames_policy_is_switchable(self):
+        result = normalize(
+            self._raw(), source_frame_count=4,
+            denominator_policy="evaluated_frames",
+        )
+        self.assertEqual(result["feature2"]["score"], 100.0)
+        self.assertEqual(result["feature2"]["denominator_policy"], "evaluated_frames")
+
+    def test_feature_boundaries_and_feature1_exclusion(self):
+        raw = self._raw()
+        raw["Elbow angle"]["value"] = [70, 90, 110, 110.1]
+        pose = {
+            "feature3": [{"value": value} for value in (10.9, 18.899, 18.9)],
+            "feature4": [{"value": value} for value in (1.7, 4.299, 4.3)],
+        }
+        result = normalize(raw, source_frame_count=4, pose_series=pose)
+        self.assertEqual(result["feature2"]["good_frame_count"], 3)
+        self.assertEqual(result["feature3"]["good_frame_count"], 2)
+        self.assertEqual(result["feature4"]["good_frame_count"], 2)
+        self.assertIsNone(result["feature1"]["score"])
+
+    def test_confidence_is_explicitly_assumed_without_percentage(self):
+        item = normalize(self._raw())["feature2"]
+        self.assertEqual(item["confidence_level"], "high")
+        self.assertIsNone(item["confidence_pct"])
+        self.assertTrue(item["confidence_assumed"])
+
+    def test_pose_series_skips_frames_without_required_joints(self):
+        keypoints = [[0.0, 0.0] for _ in range(26)]
+        keypoints[5], keypoints[6] = [1.0, 1.0], [3.0, 1.0]
+        keypoints[11], keypoints[12] = [1.0, 3.0], [3.0, 3.0]
+        keypoints[18], keypoints[15] = [2.0, 1.0], [2.0, 5.0]
+        valid = {
+            "track_id": 0, "keypoints": keypoints,
+            "observed": [True] * 26,
+            "imputed_keypoints": [None] * 26,
+        }
+        invalid = {**valid, "observed": [False] * 26}
+        series = derive_pose_series(
+            {"frames": [
+                {"frame_num": 4, "people": [valid]},
+                {"frame_num": 5, "people": [invalid]},
+                {"frame_num": 6, "people": []},
+            ]},
+            20.0,
+        )
+        self.assertEqual(len(series["feature3"]), 1)
+        self.assertEqual(len(series["feature4"]), 1)
+        self.assertEqual(series["feature3"][0]["frame_index"], 4)
+        self.assertEqual(series["feature3"][0]["timestamp_ms"], 200)
 
 
 if __name__ == "__main__":

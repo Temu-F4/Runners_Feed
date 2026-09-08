@@ -25,6 +25,9 @@ celery_app.conf.update(
         "coach.dispatch_video_analysis": {
             "queue": "gpu_dispatch",
         },
+        "coach.poll_video_analysis": {
+            "queue": "gpu_dispatch",
+        },
         "coach.run_postprocess": {
             "queue": "postprocess",
         },

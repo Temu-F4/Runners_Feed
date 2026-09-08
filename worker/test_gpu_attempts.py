@@ -13,8 +13,11 @@ from job_repository import (
     complete_postprocess,
     create_gpu_attempt,
     finish_gpu_attempt,
+    fail_gpu_attempt_and_job,
     mark_job_failed,
     mark_job_success,
+    save_remote_job_id,
+    accept_gpu_result,
     start_gpu_attempt,
 )
 
@@ -41,7 +44,7 @@ class GPUAttemptTests(unittest.TestCase):
         cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
         cursor.fetchone.side_effect = [
             ("PROCESSING",),
-            ("attempt", 1, "RUNNING", None, True),
+            ("attempt", 1, "RUNNING", None, None, True),
         ]
         result = create_gpu_attempt("job", stale_after_seconds=60)
         self.assertEqual(result["status"], "QUEUED")
@@ -53,11 +56,39 @@ class GPUAttemptTests(unittest.TestCase):
         cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
         cursor.fetchone.side_effect = [
             ("PROCESSING",),
-            ("attempt", 1, "RUNNING", None, False),
+            ("attempt", 1, "RUNNING", None, None, False),
         ]
         result = create_gpu_attempt("job")
         self.assertEqual(result["status"], "RUNNING")
         self.assertEqual(cursor.execute.call_count, 2)
+
+    @patch("job_repository.psycopg.connect")
+    def test_stale_submitted_attempt_keeps_remote_job(self, connect):
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [
+            ("PROCESSING",),
+            ("attempt", 1, "RUNNING", None, "remote-1", True),
+        ]
+        result = create_gpu_attempt("job", stale_after_seconds=60)
+        self.assertEqual(result["status"], "RUNNING")
+        self.assertEqual(result["remote_job_id"], "remote-1")
+        self.assertEqual(cursor.execute.call_count, 2)
+
+    @patch("job_repository.psycopg.connect")
+    def test_saves_remote_id_only_on_running_attempt(self, connect):
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.rowcount = 1
+        self.assertTrue(save_remote_job_id("job", "attempt", "remote-1"))
+        query = cursor.execute.call_args.args[0]
+        self.assertIn("status = 'RUNNING'", query)
+        self.assertIn("remote_job_id IS NULL OR remote_job_id = %s", query)
+
+    @patch("job_repository.psycopg.connect")
+    def test_accepts_completed_poll_only_once(self, connect):
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.rowcount = 1
+        self.assertTrue(accept_gpu_result("job", "attempt", "manifest"))
+        self.assertIn("remote_job_id IS NOT NULL", cursor.execute.call_args.args[0])
 
     @patch("job_repository.psycopg.connect")
     def test_start_returns_persisted_snapshot(self, connect):
@@ -82,7 +113,7 @@ class GPUAttemptTests(unittest.TestCase):
         cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
         cursor.fetchone.side_effect = [
             ("PROCESSING",),
-            ("attempt", 2, "GPU_SUCCESS", "manifest.json", False),
+            ("attempt", 2, "GPU_SUCCESS", "manifest.json", None, False),
         ]
 
         result = create_gpu_attempt("job")
@@ -159,6 +190,17 @@ class GPUAttemptTests(unittest.TestCase):
             "status IN ('QUEUED', 'PROCESSING')",
             cursor.execute.call_args.args[0],
         )
+
+    @patch("job_repository.psycopg.connect")
+    def test_fails_attempt_and_job_in_one_transaction(self, connect):
+        cursor = connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.rowcount = 1
+        self.assertTrue(
+            fail_gpu_attempt_and_job("job", "attempt", RuntimeError("failed"))
+        )
+        self.assertEqual(cursor.execute.call_count, 2)
+        self.assertIn("inference_gpu_attempts", cursor.execute.call_args_list[0].args[0])
+        self.assertIn("inference_jobs", cursor.execute.call_args_list[1].args[0])
 
 
 if __name__ == "__main__":

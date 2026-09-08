@@ -78,6 +78,12 @@ class MobileContractTests(TestCase):
                     "coaching_action": "상체를 조금 더 세워 보세요.",
                     "score": 42.5,
                     "score_method": "reference-band frame compliance",
+                    "denominator_policy": "all_frames",
+                    "good_frame_count": 1,
+                    "evaluated_frame_count": 2,
+                    "source_frame_count": 3,
+                    "evaluation_coverage_pct": 66.67,
+                    "confidence_assumed": True,
                     "evidence_ids": ["paper-1"],
                 }
             },
@@ -109,6 +115,8 @@ class MobileContractTests(TestCase):
             result["features"][0]["scoreMethod"],
             "reference-band frame compliance",
         )
+        self.assertTrue(result["features"][0]["confidenceAssumed"])
+        self.assertEqual(result["features"][0]["denominatorPolicy"], "all_frames")
         self.assertEqual(result["evidence"][0]["evidenceId"], "paper-1")
         self.assertEqual(result["narrative"]["priorityActions"][0]["featureId"], "feature1")
 

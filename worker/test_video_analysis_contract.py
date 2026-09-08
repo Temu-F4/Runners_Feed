@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock
 from uuid import UUID
 
-from runpod_client import RunPodVideoAnalysisClient
+from runpod_client import RunPodRemoteFailure, RunPodVideoAnalysisClient
 from video_analysis_contract import build_request, validate_manifest
 
 
@@ -85,6 +85,62 @@ class VideoAnalysisContractTests(unittest.TestCase):
 
 
 class RunPodClientTests(unittest.TestCase):
+    @staticmethod
+    def _response(payload):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.read.return_value = json.dumps(payload).encode()
+        return response
+
+    def test_submit_accepts_async_job_and_remote_id(self):
+        response = self._response({
+            "status": "accepted", "job_id": "job", "attempt_id": "attempt",
+            "remote_job_id": "remote-1",
+        })
+        response.status = 202
+        opener = Mock(return_value=response)
+        client = RunPodVideoAnalysisClient("https://pod.example", "x" * 24, opener=opener)
+        result = client.submit({"job_id": "job", "attempt_id": "attempt"})
+        self.assertEqual(result["remote_job_id"], "remote-1")
+        self.assertEqual(opener.call_args.args[0].method, "POST")
+
+    def test_submit_requires_http_202(self):
+        response = self._response({
+            "status": "accepted", "job_id": "job", "attempt_id": "attempt",
+            "remote_job_id": "remote-1",
+        })
+        response.status = 200
+        client = RunPodVideoAnalysisClient(
+            "https://pod.example", "x" * 24, opener=Mock(return_value=response)
+        )
+        with self.assertRaisesRegex(RuntimeError, "expected 202"):
+            client.submit({"job_id": "job", "attempt_id": "attempt"})
+
+    def test_poll_accepts_running_and_complete_states(self):
+        complete = {
+            "status": "complete", "job_id": "job", "attempt_id": "attempt",
+            "manifest_object": "jobs/job/video-analysis/attempt/pose_manifest.json",
+        }
+        opener = Mock(side_effect=[
+            self._response({"status": "running", "job_id": "job", "attempt_id": "attempt"}),
+            self._response(complete),
+        ])
+        client = RunPodVideoAnalysisClient("https://pod.example", "x" * 24, opener=opener)
+        self.assertEqual(client.poll("remote-1", job_id="job", attempt_id="attempt")["status"], "running")
+        self.assertEqual(client.poll("remote-1", job_id="job", attempt_id="attempt"), complete)
+        self.assertTrue(opener.call_args.args[0].full_url.endswith("/remote-1"))
+
+    def test_poll_preserves_explicit_remote_failure(self):
+        opener = Mock(return_value=self._response({
+            "status": "failed", "job_id": "job", "attempt_id": "attempt",
+            "error_code": "CUDA_OOM", "error_message": "out of memory",
+        }))
+        client = RunPodVideoAnalysisClient("https://pod.example", "x" * 24, opener=opener)
+        with self.assertRaisesRegex(RunPodRemoteFailure, "CUDA_OOM") as raised:
+            client.poll("remote-1", job_id="job", attempt_id="attempt")
+        self.assertEqual(raised.exception.error_code, "CUDA_OOM")
+
     def test_rejects_non_https_endpoint(self):
         with self.assertRaisesRegex(ValueError, "HTTPS"):
             RunPodVideoAnalysisClient("http://pod.example", "x" * 24)
