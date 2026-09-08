@@ -40,10 +40,6 @@ class JobStageRecorder:
         )
         self.initialized = True
 
-    def attach_existing(self) -> None:
-        """Attach to stages initialized by an earlier Celery task."""
-        self.initialized = True
-
     @contextmanager
     def track(
         self,
@@ -102,20 +98,6 @@ class JobStageRecorder:
             status=status,
             duration_seconds=time.perf_counter() - started,
             **({"error_code": error_code} if error_code else {}),
-        )
-
-    def record_external(self, stage_key: str, duration_seconds: float) -> None:
-        """Persist a duration measured by a trusted remote worker."""
-        if not self.initialized:
-            raise RuntimeError("Job stages have not been initialized")
-        if stage_key not in JOB_STAGE_KEYS:
-            raise ValueError(f"Unknown job stage: {stage_key}")
-        mark_job_stage_running(self.job_id, stage_key)
-        mark_job_stage_finished(
-            self.job_id,
-            stage_key,
-            status="SUCCESS",
-            duration_seconds=duration_seconds,
         )
 
     def skip_pending(self) -> None:

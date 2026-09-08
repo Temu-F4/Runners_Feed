@@ -401,7 +401,7 @@ Compose 대상은 다음과 같다.
 compose.yaml
 compose.coach.yaml
 profile: coach
-services: api, frontend, web, coach-worker, gpu-dispatch-worker, maintenance
+services: api, frontend, web, coach-worker, maintenance
 profile: backup (timer가 db-backup, db-backup-verify를 on-demand 실행)
 ```
 
@@ -510,7 +510,7 @@ docker compose \
   -f compose.yaml \
   -f compose.coach.yaml \
   --profile coach \
-  logs --tail=150 api frontend web coach-worker gpu-dispatch-worker maintenance
+  logs --tail=150 api frontend web coach-worker maintenance
 ```
 
 GitHub Actions 로그에서 자동 롤백 성공 여부와 이전 SHA를 확인한다. 롤백까지
