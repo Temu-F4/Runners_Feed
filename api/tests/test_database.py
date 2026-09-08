@@ -122,6 +122,8 @@ class GuestSessionDatabaseTests(TestCase):
             job_id="8e9f1ecb-7181-46ee-a8d4-243f5af650da",
             case_id="case-1",
             input_object_name="uploads/input.mp4",
+            input_size_bytes=1234,
+            input_etag="object-etag",
             user_id=user_id,
             height_snapshot_m=1.78,
             model_id="sehyeon-dcc2d7d",
@@ -131,6 +133,8 @@ class GuestSessionDatabaseTests(TestCase):
         connection = connect.return_value.__enter__.return_value
         cursor = connection.cursor.return_value.__enter__.return_value
         query, parameters = cursor.execute.call_args.args
+        self.assertIn("input_size_bytes", query)
+        self.assertIn("input_etag", query)
         self.assertIn("user_id", query)
         self.assertIn("height_snapshot_m", query)
         self.assertEqual(

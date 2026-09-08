@@ -25,5 +25,11 @@ celery_app.conf.update(
         "coach.run_object_storage": {
             "queue": "coach",
         },
+        "coach.dispatch_video_analysis": {
+            "queue": "gpu_dispatch",
+        },
+        "coach.run_postprocess": {
+            "queue": "postprocess",
+        },
     },
 )

@@ -1441,13 +1441,18 @@ def create_coach_job(
     payload: CreateCoachJobRequest,
     request: Request,
 ):
-    _inspect_input_object(payload.input_object_name)
+    input_metadata = _inspect_input_object(payload.input_object_name)
+    input_etag = input_metadata.get("etag")
+    if not isinstance(input_etag, str) or not input_etag:
+        raise HTTPException(status_code=503, detail="Uploaded video ETag is unavailable")
     job_id = str(uuid4())
 
     create_job(
         job_id=job_id,
         case_id=payload.case_id,
         input_object_name=payload.input_object_name,
+        input_size_bytes=int(input_metadata["size_bytes"]),
+        input_etag=input_etag,
         user_id=request.state.user_id,
         height_snapshot_m=payload.user_height_m,
         model_id=_model_id(),
@@ -1456,14 +1461,10 @@ def create_coach_job(
 
     try:
         celery_client.send_task(
-            "coach.run_object_storage",
-            args=[
-                payload.case_id,
-                payload.input_object_name,
-                payload.user_height_m,
-            ],
+            "coach.dispatch_video_analysis",
+            args=[job_id],
             task_id=job_id,
-            queue="coach",
+            queue="gpu_dispatch",
         )
     except Exception as error:
         mark_job_dispatch_failed(job_id)

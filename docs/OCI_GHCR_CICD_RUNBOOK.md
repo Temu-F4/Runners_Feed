@@ -274,6 +274,10 @@ GHCR에 일부 이미지가 먼저 올라간 뒤 Release가 실패할 수 있지
 
 Release가 성공하면 `oci-prod-deploy`가 `deploy/deploy_ghcr_release.sh`를 실행한다.
 
+불변 릴리스 배포 스크립트는 이미지 Pull 전에 Docker 파일시스템 사용률을 확인한다. 75% 이상이면
+24시간보다 오래된 미사용 컨테이너·이미지·빌드 캐시를 정리하고, 정리 후에도
+90% 이상이면 이미지 Pull 전에 배포를 중단한다.
+
 1. `sha-<40자리 commit>` 형식과 Production 환경 파일을 확인한다.
 2. API, Frontend, Web, Coach Worker, Maintenance의 해당 SHA 이미지를 Pull한다.
 3. Compose 설정을 검증한다.
@@ -281,6 +285,22 @@ Release가 성공하면 `oci-prod-deploy`가 `deploy/deploy_ghcr_release.sh`를 
 5. 각 서비스가 실행 중이고 대상 SHA 이미지를 사용하는지 확인한다.
 6. Frontend와 API 응답 및 PostgreSQL, Redis, OCI Object Storage 상태를 확인한다.
 7. 모든 검사가 성공하면 `last-successful.env`를 새 SHA로 원자적으로 갱신한다.
+
+애플리케이션 배포 후 systemd unit 동기화는 멱등적으로 동작한다. 저장소 unit과
+`/etc/systemd/system` 파일이 같고 네 timer가 이미 enabled·active이면 배포 계정은
+sudo를 호출하지 않는다. unit 변경 또는 비활성 timer가 있으면 자동으로 권한을
+넓히지 않고 관리자 동기화를 요구한다. 관리자는 다음을 실행한 뒤 해당 배포 Job을
+재실행한다.
+
+```bash
+sudo -i
+bash /opt/runners-feed/current/deploy/sync_systemd_units.sh
+systemctl is-enabled runners-feed-cert-renew.timer runners-feed-db-backup.timer runners-feed-db-backup-verify.timer runners-feed-model-quality-watchdog.timer
+systemctl is-active runners-feed-cert-renew.timer runners-feed-db-backup.timer runners-feed-db-backup-verify.timer runners-feed-model-quality-watchdog.timer
+```
+
+2026-09-08 Production에서 위 관리자 동기화를 실행했고 네 timer가 모두
+`enabled`와 `active`임을 확인했다.
 
 Production 배포 중에는 다음 문제가 발생할 수 있다.
 
@@ -401,7 +421,7 @@ Compose 대상은 다음과 같다.
 compose.yaml
 compose.coach.yaml
 profile: coach
-services: api, frontend, web, coach-worker, maintenance
+services: api, frontend, web, coach-worker, gpu-dispatch-worker, maintenance
 profile: backup (timer가 db-backup, db-backup-verify를 on-demand 실행)
 ```
 
@@ -510,7 +530,7 @@ docker compose \
   -f compose.yaml \
   -f compose.coach.yaml \
   --profile coach \
-  logs --tail=150 api frontend web coach-worker maintenance
+  logs --tail=150 api frontend web coach-worker gpu-dispatch-worker maintenance
 ```
 
 GitHub Actions 로그에서 자동 롤백 성공 여부와 이전 SHA를 확인한다. 롤백까지

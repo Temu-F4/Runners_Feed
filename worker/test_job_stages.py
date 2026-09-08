@@ -129,6 +129,17 @@ class JobStageRecorderTest(unittest.TestCase):
         recorder.skip_pending()
         mark_skipped.assert_called_once_with("job-3")
 
+    @patch("job_stages.mark_job_stage_finished")
+    @patch("job_stages.mark_job_stage_running")
+    def test_records_remote_worker_duration(self, mark_running, mark_finished) -> None:
+        recorder = JobStageRecorder("job-5")
+        recorder.attach_existing()
+        recorder.record_external("video_analysis", 12.25)
+        mark_running.assert_called_once_with("job-5", "video_analysis")
+        mark_finished.assert_called_once_with(
+            "job-5", "video_analysis", status="SUCCESS", duration_seconds=12.25
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

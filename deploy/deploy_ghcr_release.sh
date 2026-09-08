@@ -14,11 +14,12 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly PROJECT_ROOT
 readonly RELEASE_VERIFIER="${RELEASE_VERIFIER:-${PROJECT_ROOT}/deploy/verify_release.sh}"
 readonly MODEL_CANDIDATE_VERIFIER="${MODEL_CANDIDATE_VERIFIER:-${PROJECT_ROOT}/deploy/verify_model_candidate.sh}"
+readonly DEPLOY_DISK_GUARD="${RUNNERS_FEED_DEPLOY_DISK_GUARD:-${PROJECT_ROOT}/deploy/ci_disk_guard.sh}"
 readonly COMPOSE_FILES=(
   -f "${PROJECT_ROOT}/compose.yaml"
   -f "${PROJECT_ROOT}/compose.coach.yaml"
 )
-readonly SERVICES=(api frontend web coach-worker maintenance)
+readonly SERVICES=(api frontend web coach-worker gpu-dispatch-worker maintenance)
 readonly SUPPORT_SERVICES=(alertmanager)
 
 export IMAGE_PREFIX
@@ -41,12 +42,17 @@ if [[ ! -r "${MODEL_CANDIDATE_VERIFIER}" ]]; then
   echo "Model candidate verifier is not readable: ${MODEL_CANDIDATE_VERIFIER}" >&2
   exit 2
 fi
+if [[ ! -r "${DEPLOY_DISK_GUARD}" ]]; then
+  echo "Deploy disk guard is not readable: ${DEPLOY_DISK_GUARD}" >&2
+  exit 2
+fi
 
 if [[ ! "${WATCHDOG_SECONDS}" =~ ^[0-9]+$ ]] || [[ "${WATCHDOG_SECONDS}" -lt 60 ]]; then
   echo "MODEL_QUALITY_WATCHDOG_SECONDS must be an integer of at least 60" >&2
   exit 2
 fi
 
+bash "${DEPLOY_DISK_GUARD}"
 mkdir -p "${STATE_DIR}"
 
 compose() {

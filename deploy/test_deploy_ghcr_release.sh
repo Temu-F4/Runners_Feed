@@ -45,11 +45,17 @@ printf 'canary|%s\n' "${IMAGE_TAG:-unset}" >>"${MOCK_LOG}"
 exit 0
 EOF
 
+cat >"${test_root}/disk_guard.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "disk-guard" >>"${MOCK_LOG}"
+EOF
+
 chmod +x \
   "${test_root}/bin/docker" \
   "${test_root}/bin/curl" \
   "${test_root}/verify_release.sh" \
-  "${test_root}/verify_model_candidate.sh"
+  "${test_root}/verify_model_candidate.sh" \
+  "${test_root}/disk_guard.sh"
 
 run_deploy() {
   PATH="${test_root}/bin:${PATH}" \
@@ -59,12 +65,15 @@ run_deploy() {
   RUNNERS_FEED_DEPLOY_STATE_DIR="${test_root}/state" \
   RELEASE_VERIFIER="${test_root}/verify_release.sh" \
   MODEL_CANDIDATE_VERIFIER="${test_root}/verify_model_candidate.sh" \
+  RUNNERS_FEED_DEPLOY_DISK_GUARD="${test_root}/disk_guard.sh" \
   PRODUCTION_BASE_URL="https://production.example" \
   bash "${DEPLOY_SCRIPT}" "$1"
 }
 
 run_deploy "${SUCCESS_TAG}"
 grep -qx "IMAGE_TAG=${SUCCESS_TAG}" "${test_root}/state/last-successful.env"
+grep -q "gpu-dispatch-worker" "${test_root}/docker.log"
+grep -q "disk-guard" "${test_root}/docker.log"
 
 printf 'IMAGE_TAG=%s\n' "${PREVIOUS_TAG}" >"${test_root}/state/last-successful.env"
 run_deploy "${SUCCESS_TAG}"
@@ -111,3 +120,4 @@ grep -q "Rollback failed" "${test_root}/rollback-failure.log"
 grep -qx "IMAGE_TAG=${PREVIOUS_TAG}" "${test_root}/state/last-successful.env"
 
 echo "Deployment success and rollback tests passed"
+bash "${PROJECT_ROOT}/deploy/test_sync_systemd_units.sh"
