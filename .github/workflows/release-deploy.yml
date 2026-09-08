@@ -9,6 +9,7 @@ on:
       - .dockerignore
       - api/**
       - coach/**
+      - mobile/**
       - compose.yaml
       - compose.coach.yaml
       - compose.backup.yaml
@@ -17,6 +18,7 @@ on:
       - deploy/verify_model_candidate.sh
       - deploy/check_model_quality.sh
       - deploy/test_model_quality_watchdog.sh
+      - deploy/test_runpod_removal.sh
       - deploy/ci_disk_guard.sh
       - deploy/sync_systemd_units.sh
       - deploy/backup/**
@@ -94,6 +96,9 @@ jobs:
           python3 coach/scripts/model_contract/quality_gate.py \
             coach/tests/fixtures/model-golden \
             coach/scripts/model_contract/quality_baseline.example.json
+
+      - name: Verify OCI coach-only architecture
+        run: bash deploy/test_runpod_removal.sh
 
       - name: Set build metadata
         run: |
