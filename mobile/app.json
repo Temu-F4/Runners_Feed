@@ -22,7 +22,8 @@
           "microphonePermission": false
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true
@@ -31,9 +32,9 @@
       "apiBaseUrl": "https://140.238.0.197/api",
       "router": {},
       "eas": {
-        "projectId": "21ca9ae5-1db1-47fd-b2b2-192adcd86225"
+        "projectId": "21a79edf-df5f-441b-8aaa-f0a47db065ae"
       }
     },
-    "owner": "zapfinos-team"
+    "owner": "runnerseye"
   }
 }

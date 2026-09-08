@@ -44,8 +44,8 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: 108,
+    paddingHorizontal: 17,
+    paddingBottom: 96,
   },
   eyebrow: {
     color: colors.lime,
@@ -56,20 +56,20 @@ export const styles = StyleSheet.create({
   },
   title: {
     color: colors.primary,
-    fontSize: 32,
-    fontWeight: "800",
-    letterSpacing: -0.8,
-    lineHeight: 38,
+    fontSize: 23,
+    fontWeight: "900",
+    letterSpacing: -0.55,
+    lineHeight: 29,
   },
   subtitle: {
     color: colors.secondary,
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 21,
   },
   body: {
     color: colors.secondary,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 20,
   },
   caption: {
     color: colors.muted,
@@ -83,13 +83,11 @@ export const styles = StyleSheet.create({
   panel: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 4,
     borderWidth: 1,
-    padding: spacing.lg,
+    padding: 14,
   },
   button: {
     alignItems: "center",
-    borderRadius: 2,
     flexDirection: "row",
     justifyContent: "center",
     minHeight: 52,

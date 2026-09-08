@@ -1,150 +1,112 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Image, Modal, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as Linking from "expo-linking";
+import { useVideoPlayer, VideoView } from "expo-video";
 
 import { createResultVideoUrl, getResult } from "../../src/api";
 import { useAuth } from "../../src/auth";
-import { AppHeader, Button, EmptyState, ErrorState, FeatureCard, LoadingState, Panel, Screen } from "../../src/components";
-import type { AnalysisResult, CoachingAction, EvidenceItem, FeatureAnalysis } from "../../src/contracts";
-import { colors, formatDate, formatValue, spacing, styles } from "../../src/theme";
+import { AppHeader, Button, FeatureFrameChart, LoadingState, Screen } from "../../src/components";
+import { FullLink, ProfileChip, SectionHeading } from "../../src/coach-ui";
+import type { AnalysisResult, CoachingAction, FeatureAnalysis } from "../../src/contracts";
+import { featureScore, featureScoreLabel, overallScore } from "../../src/scoring";
+import { colors, fonts, formatDate, formatValue, spacing, styles } from "../../src/theme";
+
+function StoredResultVideo({ uri, skeleton = false }: { uri: string; skeleton?: boolean }) {
+  const player = useVideoPlayer(uri, (instance) => { instance.loop = true; });
+  return <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 8 }}><VideoView contentFit="contain" fullscreenOptions={{ enable: true }} nativeControls player={player} style={{ aspectRatio: 16 / 9, backgroundColor: colors.background, width: "100%" }} /><Text style={{ borderTopColor: colors.border, borderTopWidth: 1, color: colors.muted, fontSize: 9, lineHeight: 14, minHeight: 44, padding: 9 }}>{skeleton ? "저장된 skeleton.mp4 · 리포트와 함께 장기 보관" : "분석 시 생성·저장된 rendered.mp4 · 약 24시간 후 삭제"}</Text></View>;
+}
 
 function ActionRow({ action, index }: { action: CoachingAction; index: number }) {
-  return (
-    <View style={{ alignItems: "flex-start", flexDirection: "row", gap: spacing.md, minHeight: 54, paddingVertical: spacing.sm }}>
-      <Text style={{ color: action.kind === "improve" ? colors.amber : colors.lime, fontFamily: styles.mono.fontFamily, fontSize: 14, fontWeight: "900" }}>{String(index + 1).padStart(2, "0")}</Text>
-      <View style={{ flex: 1, gap: spacing.xs }}>
-        <Text style={styles.body}>{action.text}</Text>
-        {action.measurementReference ? <Text style={styles.caption}>측정값 {formatValue(action.measurementReference.value, action.measurementReference.unit)}{action.measurementReference.referenceMin !== null && action.measurementReference.referenceMax !== null ? ` · 기준 ${formatValue(action.measurementReference.referenceMin, action.measurementReference.unit)} ~ ${formatValue(action.measurementReference.referenceMax, action.measurementReference.unit)}` : ""}</Text> : null}
-      </View>
-    </View>
-  );
+  return <View style={{ alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", gap: 10, minHeight: 42 }}><Text style={{ color: colors.amber, fontFamily: fonts.mono, fontSize: 9, fontWeight: "900", width: 24 }}>{String(index + 1).padStart(2, "0")}</Text><Text style={{ color: colors.primary, flex: 1, fontSize: 11, fontWeight: "700", lineHeight: 16 }}>{action.text}</Text></View>;
 }
 
-function EvidenceSourceCard({ source }: { source: EvidenceItem }) {
-  const openSource = () => {
-    if (source.doi) void Linking.openURL(`https://doi.org/${source.doi}`);
-    else if (source.url) void Linking.openURL(source.url);
-  };
-  return (
-    <View style={{ borderColor: colors.border, borderWidth: 1, gap: spacing.xs, padding: spacing.md }}>
-      <Text style={{ color: colors.primary, fontWeight: "700" }}>{source.title}</Text>
-      <Text style={styles.caption}>{source.authors}{source.year ? ` · ${source.year}` : ""}</Text>
-      <Text style={styles.body}>{source.excerptSummary || "출처 요약이 제공되지 않았습니다."}</Text>
-      <Text style={styles.caption}>{source.page ? `p.${source.page} ` : ""}{source.section ?? ""} · 기준 {source.criterionVersion ?? "미버전"}</Text>
-      {source.caveat ? <Text style={styles.caption}>주의: {source.caveat}</Text> : null}
-      {source.doi || source.url ? <Button label={source.doi ? "DOI 열기" : "출처 열기"} kind="secondary" onPress={openSource} /> : null}
-    </View>
-  );
+function featureKey(feature: FeatureAnalysis) {
+  const id = feature.featureId.toLowerCase();
+  if (id.includes("vertical")) return "vertical";
+  if (id.includes("elbow")) return "elbow";
+  if (id.includes("trunk")) return "trunk";
+  if (id.includes("lean")) return "lean";
+  return id;
 }
 
-function EvidenceSheet({ feature, result, onClose }: { feature: FeatureAnalysis | null; result: AnalysisResult; onClose: () => void }) {
-  const [sourceExpanded, setSourceExpanded] = useState(false);
-  const sources = useMemo(() => {
-    if (!feature) return [];
-    return result.evidence.filter((item) => feature.evidenceIds.includes(item.evidenceId));
-  }, [feature, result.evidence]);
-  useEffect(() => setSourceExpanded(false), [feature]);
-  if (!feature) return null;
-  const representative = sources.find((item) => item.uri) ?? sources[0];
-  return (
-    <Modal animationType="slide" onRequestClose={onClose} transparent visible>
-      <View style={{ backgroundColor: "rgba(0,0,0,0.72)", flex: 1, justifyContent: "flex-end" }}>
-        <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderTopLeftRadius: 12, borderTopRightRadius: 12, borderTopWidth: 1, gap: spacing.lg, maxHeight: "88%", padding: spacing.xl }}>
-          <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={styles.eyebrow}>EVIDENCE · {feature.featureId}</Text>
-            <Pressable accessibilityLabel="상세 근거 닫기" accessibilityRole="button" onPress={onClose} style={{ justifyContent: "center", minHeight: 48 }}><Text style={{ color: colors.lime, fontWeight: "800" }}>닫기</Text></Pressable>
-          </View>
-          <Text style={{ color: colors.primary, fontSize: 22, fontWeight: "800" }}>{feature.label}</Text>
-          <View accessible accessibilityLabel="대표 프레임과 관절 오버레이" style={{ alignItems: "center", backgroundColor: colors.surfaceSecondary, height: 175, justifyContent: "center", overflow: "hidden" }}>
-            {representative?.uri ? <Image accessibilityLabel={`${feature.label} 대표 프레임`} source={{ uri: representative.uri }} style={{ height: "100%", width: "100%" }} resizeMode="contain" /> : <><Text style={styles.eyebrow}>REPRESENTATIVE FRAME</Text><Text style={[styles.caption, { marginTop: spacing.sm }]}>대표 프레임과 관절 오버레이가 제공되면 표시됩니다.</Text></>}
-          </View>
-          <View style={{ borderColor: colors.border, borderTopWidth: 1 }}>
-            <View style={{ borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.xs, paddingVertical: spacing.md }}><Text style={styles.caption}>측정</Text><Text style={{ color: colors.primary, fontFamily: styles.mono.fontFamily, fontSize: 18, fontWeight: "800" }}>{formatValue(feature.representativeValue, feature.unit)}</Text><Text style={styles.caption}>{feature.aggregation || "대표값"}</Text></View>
-            <View style={{ borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.xs, paddingVertical: spacing.md }}><Text style={styles.caption}>판단 기준</Text><Text style={styles.body}>{feature.referenceRange ? `${formatValue(feature.referenceRange.min, feature.referenceRange.unit)} ~ ${formatValue(feature.referenceRange.max, feature.referenceRange.unit)}` : "현재 비교 가능한 기준 범위가 없습니다."}</Text><Text style={styles.caption}>{feature.referenceRange?.criterionVersion ? `기준 버전 ${feature.referenceRange.criterionVersion}` : "기준 버전 미제공"}</Text></View>
-            <View style={{ borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.xs, paddingVertical: spacing.md }}><Text style={styles.caption}>해석</Text><Text style={styles.body}>{feature.interpretation || "해석 문장이 아직 제공되지 않았습니다."}</Text></View>
-          </View>
-          {feature.coachingAction && feature.confidenceLevel !== "low" && feature.confidenceLevel !== "excluded" ? <Panel style={{ borderColor: colors.lime, gap: spacing.sm }}><Text style={styles.eyebrow}>NEXT RUN</Text><Text style={styles.body}>{feature.coachingAction}</Text></Panel> : null}
-          <View style={{ gap: spacing.xs }}><Text style={styles.body}>분석 신뢰도: {feature.confidenceLevel === "high" ? "높음" : feature.confidenceLevel === "medium" ? "보통" : "낮음 · 판단 보류"}{feature.confidencePct === null ? "" : ` · ${feature.confidencePct.toFixed(0)}%`}</Text><Text style={styles.caption}>제한사항: {feature.limitation}</Text></View>
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: sourceExpanded }} onPress={() => setSourceExpanded((expanded) => !expanded)} style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", minHeight: 48 }}>
-            <Text style={{ color: colors.lime, fontSize: 14, fontWeight: "800" }}>판단 기준과 출처 확인</Text><Text style={{ color: colors.lime }}>{sourceExpanded ? "↑" : "→"}</Text>
-          </Pressable>
-          {sourceExpanded ? (sources.length ? sources.map((source) => <EvidenceSourceCard key={source.evidenceId} source={source} />) : <Text style={styles.caption}>연결된 출처가 아직 제공되지 않았습니다.</Text>) : null}
-        </View>
-      </View>
-    </Modal>
-  );
+function shortLabel(feature: FeatureAnalysis) {
+  const key = featureKey(feature);
+  if (key === "vertical") return "수직진동";
+  if (key === "elbow") return "팔꿈치";
+  if (key === "trunk") return "몸통";
+  if (key === "lean") return "전방기울기";
+  return feature.label;
+}
+
+function verdictLabel(feature: FeatureAnalysis) {
+  if (feature.verdict === "maintain") return "좋은 구간";
+  if (feature.verdict === "improve") return "조정 필요";
+  if (feature.verdict === "excluded") return "분석 제외";
+  return "검토 중";
 }
 
 export default function ResultScreen() {
   const { jobId: rawJobId } = useLocalSearchParams<{ jobId: string }>();
   const jobId = Array.isArray(rawJobId) ? rawJobId[0] : rawJobId;
   const router = useRouter();
-  const { token } = useAuth();
-  const { width } = useWindowDimensions();
+  const { token, profile } = useAuth();
   const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [selected, setSelected] = useState<FeatureAnalysis | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [videoLoading, setVideoLoading] = useState(false);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [limitsOpen, setLimitsOpen] = useState(false);
 
   useEffect(() => {
     if (!token || !jobId) return;
-    getResult(token, jobId)
-      .then(setResult)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "결과를 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+    getResult(token, jobId).then((value) => { setResult(value); setSelectedId(value.features[0]?.featureId ?? null); }).catch((cause) => setError(cause instanceof Error ? cause.message : "결과를 불러오지 못했습니다.")).finally(() => setLoading(false));
   }, [token, jobId]);
 
   const openVideo = async () => {
     if (!token || !jobId) return;
     setVideoLoading(true);
-    try {
-      const response = await createResultVideoUrl(token, jobId);
-      await Linking.openURL(response.renderedVideoUrl);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "결과 영상을 열지 못했습니다.");
-    } finally {
-      setVideoLoading(false);
-    }
+    try { setVideoUrl((await createResultVideoUrl(token, jobId)).renderedVideoUrl); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "결과 영상을 열지 못했습니다."); }
+    finally { setVideoLoading(false); }
   };
+
+  const selected = useMemo(() => result?.features.find((feature) => feature.featureId === selectedId) ?? result?.features[0] ?? null, [result, selectedId]);
+  const storedMediaUrl = videoUrl ?? result?.media?.renderedVideoUrl ?? result?.media?.skeletonVideoUrl ?? null;
+  const showingSkeleton = !videoUrl && !result?.media?.renderedVideoUrl && Boolean(result?.media?.skeletonVideoUrl);
+  const actions = result ? [...result.narrative.priorityActions, ...result.narrative.maintainActions].slice(0, 2) : [];
 
   return (
     <Screen>
-      <AppHeader eyebrow="VALIDATED RESULT" title="분석 결과" />
+      <AppHeader title="이번 러닝 분석 결과" right={<ProfileChip height={profile?.heightCm ? String(profile.heightCm) : "—"} onPress={() => router.push("/")} />} />
       {loading ? <LoadingState message="검증된 결과를 불러오는 중입니다." /> : null}
-      {error ? <ErrorState message={error} onRetry={() => router.replace({ pathname: "/result/[jobId]", params: { jobId } })} /> : null}
-      {result ? (
-        <>
-          <Panel style={{ gap: spacing.md, marginBottom: spacing.lg }}>
-            <Text style={styles.eyebrow}>{formatDate(result.completedAt)}</Text>
-            <Text style={{ color: colors.primary, fontSize: 20, fontWeight: "800" }}>{result.narrative.summary || "측정 결과를 확인해 보세요"}</Text>
-            <Text style={styles.body}>분석 프레임 {result.analyzedFrameCount.toLocaleString()} / 전체 {result.totalFrameCount.toLocaleString()}</Text>
-            <Text style={styles.caption}>{result.modelId ?? "모델 ID 미제공"}{result.modelRelease ? ` · ${result.modelRelease}` : ""}</Text>
-            <Button label="결과 영상 보기" onPress={() => void openVideo()} loading={videoLoading} kind="secondary" />
-          </Panel>
+      {error ? <Pressable onPress={() => router.replace({ pathname: "/result/[jobId]", params: { jobId } })} style={{ borderColor: colors.red, borderWidth: 1, marginBottom: 10, minHeight: 48, padding: 10 }}><Text style={{ color: colors.red, fontSize: 11 }}>{error} · 다시 시도</Text></Pressable> : null}
+      {result ? <>
+        <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, padding: 14 }}>
+          <SectionHeading label="종합 자세 점수" meta={formatDate(result.completedAt)} />
+          <View style={{ alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}><View style={{ flex: 1, paddingRight: 10 }}><Text style={styles.caption}>수직 진동과 세 각도 피처의 가중평균입니다.</Text></View><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 31, fontWeight: "900" }}>{overallScore(result) ?? "—"}<Text style={{ color: colors.muted, fontSize: 9 }}>/100</Text></Text></View>
+          <View style={{ marginTop: 9 }}>{result.features.map((feature) => { const score = featureScore(feature); return <Pressable key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", gap: 8, minHeight: 44 }}><Text style={{ color: colors.muted, fontSize: 9, width: 65 }}>{shortLabel(feature)}</Text><View style={{ backgroundColor: colors.border, flex: 1, height: 4 }}><View style={{ backgroundColor: colors.lime, height: 4, width: `${score ?? 0}%` }} /></View><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 10, fontWeight: "800", width: 26 }}>{score ?? "—"}</Text></Pressable>; })}</View>
+        </View>
 
-          {result.narrative.priorityActions.length || result.narrative.maintainActions.length ? (
-            <Panel style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
-              <Text style={styles.eyebrow}>COACHING · VALIDATED</Text>
-              {result.narrative.priorityActions.slice(0, 3).map((action, index) => <ActionRow action={action} index={index} key={`${action.featureId}-${index}`} />)}
-              {result.narrative.maintainActions.map((action, index) => <ActionRow action={action} index={result.narrative.priorityActions.length + index} key={`${action.featureId}-maintain-${index}`} />)}
-            </Panel>
-          ) : <Panel style={{ marginBottom: spacing.lg }}><Text style={styles.caption}>검증된 코칭 문장이 준비되면 이곳에 표시됩니다. 현재는 모델이 제공한 측정값만 표시합니다.</Text></Panel>}
+        {result.runMetrics ? <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 8 }}><View style={{ flexDirection: "row" }}>{[{ label: "예상 페이스", value: result.runMetrics.pacePerKm ?? "—" }, { label: "케이던스", value: result.runMetrics.cadenceSpm === null ? "—" : `${result.runMetrics.cadenceSpm} spm` }, { label: "보폭", value: result.runMetrics.strideLengthM === null ? "—" : `${result.runMetrics.strideLengthM.toFixed(2)} m` }].map((metric, index) => <View key={metric.label} style={{ borderRightColor: colors.border, borderRightWidth: index < 2 ? 1 : 0, flex: 1, padding: 9 }}><Text style={{ color: colors.muted, fontSize: 8 }}>{metric.label}</Text><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 11, fontWeight: "800", marginTop: 5 }}>{metric.value}</Text></View>)}</View><Text style={{ borderTopColor: colors.border, borderTopWidth: 1, color: colors.muted, fontSize: 8, padding: 7, textAlign: "center" }}>{result.runMetrics.estimationBasis ?? "1보폭 측정값으로 1분 기준 근사"}</Text></View> : null}
 
-          <View style={{ gap: spacing.md }}>
-            <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}><Text style={styles.eyebrow}>FRAME-BY-FRAME FEATURES</Text><Text style={styles.caption}>{result.features.length}개</Text></View>
-            {result.features.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>{result.features.map((feature) => <View key={feature.featureId} style={{ width: width >= 380 ? "48.5%" : "100%" }}><FeatureCard feature={feature} onDetails={() => setSelected(feature)} /></View>)}</View> : <EmptyState title="표시할 지표가 없습니다" message="모델 결과에 유효한 지표가 없거나 검증에서 제외되었습니다." />}
-          </View>
-          <Panel style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-            <Text style={{ color: colors.primary, fontWeight: "700" }}>분석 신뢰도와 한계</Text>
-            <Text style={styles.body}>{result.narrative.disclaimer}</Text>
-            <Text style={styles.caption}>이 서비스는 의료 진단이나 부상 예측이 아닙니다.</Text>
-          </Panel>
-          <Button label="다음 러닝 다시 분석" onPress={() => router.push("/upload")} style={{ marginTop: spacing.lg }} />
-          <EvidenceSheet feature={selected} result={result} onClose={() => setSelected(null)} />
-        </>
-      ) : null}
+        <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderTopColor: colors.lime, borderTopWidth: 2, borderWidth: 1, marginTop: 14, padding: 14 }}><SectionHeading label="핵심 피드백" meta={formatDate(result.completedAt)} /><Text style={{ color: colors.primary, fontSize: 17, fontWeight: "900", lineHeight: 23, marginVertical: 10 }}>{result.narrative.summary || "몸통과 팔의 움직임을 먼저 조정해 보세요."}</Text>{actions.length ? actions.map((action, index) => <ActionRow action={action} index={index} key={`${action.featureId}-${index}`} />) : <Text style={styles.caption}>검증된 피드백이 준비되면 이곳에 표시됩니다.</Text>}</View>
+
+        {storedMediaUrl ? <StoredResultVideo uri={storedMediaUrl} skeleton={showingSkeleton} /> : <Button label="저장된 결과 영상 보기" onPress={() => void openVideo()} loading={videoLoading} kind="secondary" style={{ marginTop: 8 }} />}
+
+        {selected ? <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, marginTop: 12, padding: 13 }}>
+          <SectionHeading label="1보폭 프레임별 자세" meta={`F01–F${String(result.analyzedFrameCount || result.totalFrameCount || selected.series.length).padStart(2, "0")}`} />
+          <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", marginTop: 10 }}>{result.features.map((feature, index) => { const active = feature.featureId === selected.featureId; return <Pressable key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ alignItems: "center", backgroundColor: active ? colors.lime : colors.background, borderRightColor: colors.border, borderRightWidth: index < result.features.length - 1 ? 1 : 0, flex: 1, justifyContent: "center", minHeight: 44 }}><Text numberOfLines={1} style={{ color: active ? colors.limeInk : colors.muted, fontSize: 9, fontWeight: "800" }}>{shortLabel(feature)}</Text></Pressable>; })}</View>
+          <View style={{ alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between", marginTop: 12 }}><View><Text style={{ color: colors.primary, fontSize: 14, fontWeight: "800" }}>{selected.label}</Text><Text style={{ color: selected.verdict === "improve" ? colors.amber : selected.verdict === "maintain" ? colors.lime : colors.muted, fontSize: 10, marginTop: 5 }}>{verdictLabel(selected)}</Text></View><View style={{ alignItems: "flex-end" }}><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 22, fontWeight: "900" }}>{featureScore(selected) ?? "—"}<Text style={{ color: colors.muted, fontSize: 8 }}>/100</Text></Text><Text style={styles.caption}>{featureScoreLabel(selected)}</Text></View></View>
+          <View style={{ borderBottomColor: colors.border, borderBottomWidth: 1, borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingVertical: 9 }}><Text style={styles.caption}>측정 범위 <Text style={{ color: colors.primary, fontFamily: fonts.mono }}>{formatValue(selected.representativeValue, selected.unit)}</Text></Text><Text style={styles.caption}>{selected.referenceRange ? `${formatValue(selected.referenceRange.min, selected.referenceRange.unit)}–${formatValue(selected.referenceRange.max, selected.referenceRange.unit)}` : "기준 준비 중"}</Text></View>
+          <FeatureFrameChart feature={selected} />
+          <Pressable onPress={() => setLimitsOpen((open) => !open)} style={{ alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 44 }}><Text style={styles.caption}>분석 신뢰도와 한계</Text><Text style={{ color: colors.primary, fontSize: 9, fontWeight: "800" }}>{selected.confidencePct === null ? "—" : `${selected.confidencePct.toFixed(0)}%`} {limitsOpen ? "↑" : "→"}</Text></Pressable>
+          {limitsOpen ? <Text style={[styles.caption, { paddingBottom: 8 }]}>{selected.limitation || result.narrative.disclaimer}</Text> : null}
+        </View> : null}
+
+        <FullLink label="전체 기록과 과거 스켈레톤 보기" onPress={() => router.push("/history")} style={{ marginTop: 8 }} />
+        {result.runtimeMetadata ? <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 8, padding: 11 }}><Text style={styles.caption}>리포트 생성 정보</Text><Text style={[styles.caption, { fontFamily: fonts.mono, fontSize: 8, marginTop: 7 }]}>prompt {result.runtimeMetadata.promptVersion ?? "—"} · model {result.runtimeMetadata.model ?? result.narrative.model ?? "—"}{`\n`}validator {result.runtimeMetadata.validatorVersion ?? result.narrative.validatorVersion} · tokens {result.runtimeMetadata.inputTokens ?? "—"}/{result.runtimeMetadata.outputTokens ?? "—"}</Text></View> : null}
+      </> : null}
     </Screen>
   );
 }

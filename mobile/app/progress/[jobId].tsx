@@ -1,17 +1,24 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
-import { Text, View } from "react-native";
+import Constants from "expo-constants";
+import { Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { getJob } from "../../src/api";
 import { useAuth } from "../../src/auth";
-import { AppHeader, Button, ErrorState, LoadingState, Panel, ProgressBar, Screen, stageLabel } from "../../src/components";
+import { AppHeader, Button, ErrorState, LoadingState, Screen, stageLabel } from "../../src/components";
+import { ProfileChip } from "../../src/coach-ui";
 import type { ActiveAnalysisJob, JobStage } from "../../src/contracts";
 import { colors, spacing, styles } from "../../src/theme";
 
 const NOTIFICATION_KEY = "runners-feed.mobile.completion-notifications";
 const stages: JobStage[] = ["upload", "queue", "keypoints", "features", "validation", "result"];
+const notificationsSupported = Constants.appOwnership !== "expo";
+
+async function getNotifications() {
+  if (!notificationsSupported) return null;
+  return import("expo-notifications");
+}
 
 export default function ProgressScreen() {
   const { jobId: rawJobId } = useLocalSearchParams<{ jobId: string }>();
@@ -24,12 +31,17 @@ export default function ProgressScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(NOTIFICATION_KEY).then((value) => setNotificationsEnabled(value === "true")).catch(() => undefined);
+    AsyncStorage.getItem(NOTIFICATION_KEY).then((value) => setNotificationsEnabled(notificationsSupported && value === "true")).catch(() => undefined);
   }, []);
 
   const toggleNotifications = async () => {
     const next = !notificationsEnabled;
     if (next) {
+      const Notifications = await getNotifications();
+      if (!Notifications) {
+        setError("Expo Go에서는 완료 알림을 사용할 수 없습니다. 개발 APK에서는 정상적으로 사용할 수 있습니다.");
+        return;
+      }
       const permission = await Notifications.requestPermissionsAsync();
       if (!permission.granted) {
         setError("완료 알림을 사용하려면 알림 권한이 필요합니다.");
@@ -50,7 +62,7 @@ export default function ProgressScreen() {
         const next = await getJob(token, jobId);
         if (!mounted) return;
         if (previousStatus !== "SUCCESS" && next.status === "SUCCESS" && notificationsEnabled) {
-          void Notifications.scheduleNotificationAsync({ content: { title: "러너스 피드 분석 완료", body: "분석 결과를 확인해 보세요." }, trigger: null });
+          void getNotifications().then((Notifications) => Notifications?.scheduleNotificationAsync({ content: { title: "러너스 피드 분석 완료", body: "분석 결과를 확인해 보세요." }, trigger: null }));
         }
         previousStatus = next.status;
         setJob(next);
@@ -76,71 +88,30 @@ export default function ProgressScreen() {
 
   return (
     <Screen>
-      <View style={{ position: "relative" }}>
-        <AppHeader
-          eyebrow="ANALYSIS IN PROGRESS"
-          title="분석 중"
-          right={<Button label="••" kind="secondary" onPress={() => setMenuOpen((open) => !open)} style={{ minHeight: 48, paddingHorizontal: spacing.md }} />}
-        />
-        {menuOpen ? (
-          <Panel style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
-            <Button label="대시보드" kind="secondary" onPress={() => router.replace("/")} />
-            <Button label="달리기 팁" kind="secondary" onPress={() => setMenuOpen(false)} />
-            <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", minHeight: 48 }}>
-              <Text style={styles.body}>완료 알림</Text>
-              <Button label={notificationsEnabled ? "켜짐" : "꺼짐"} kind={notificationsEnabled ? "primary" : "secondary"} onPress={() => void toggleNotifications()} style={{ minHeight: 44, paddingHorizontal: spacing.md }} />
-            </View>
-          </Panel>
-        ) : null}
+      <AppHeader title="분석하고 있습니다" right={<ProfileChip height={job?.heightCm ? String(job.heightCm) : "—"} onPress={() => router.replace("/")} />} />
+      <View style={{ flexDirection: "row", gap: 5, marginBottom: 12 }}>
+        <Pressable onPress={() => router.replace("/")} style={{ alignItems: "center", borderColor: colors.border, borderWidth: 1, flex: 1, justifyContent: "center", minHeight: 44 }}><Text style={styles.caption}>대시보드</Text></Pressable>
+        <Pressable onPress={() => setMenuOpen((open) => !open)} style={{ alignItems: "center", borderColor: colors.border, borderWidth: 1, flex: 1, justifyContent: "center", minHeight: 44 }}><Text style={styles.caption}>달리기 팁</Text></Pressable>
+        <Pressable onPress={() => void toggleNotifications()} style={{ alignItems: "center", borderColor: notificationsEnabled ? colors.lime : colors.border, borderWidth: 1, flex: 1, justifyContent: "center", minHeight: 44 }}><Text style={{ color: notificationsEnabled ? colors.primary : colors.muted, fontSize: 9 }}>완료 알림 {notificationsSupported ? (notificationsEnabled ? "켜짐" : "꺼짐") : "APK 전용"}</Text></Pressable>
       </View>
 
       {!job && !error ? <LoadingState message="서버에서 분석 상태를 확인하고 있습니다." /> : null}
       {error ? <ErrorState message={error} onRetry={() => router.replace({ pathname: "/progress/[jobId]", params: { jobId } })} /> : null}
       {job ? (
         <>
-          <Panel style={{ gap: spacing.lg, marginBottom: spacing.lg }}>
-            <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={styles.eyebrow}>JOB STATUS</Text>
-              <Text style={{ color: failed ? colors.red : colors.lime, fontFamily: styles.mono.fontFamily }}>{job.progressPct === null ? "—" : `${Math.round(job.progressPct)}%`}</Text>
-            </View>
-            <Text style={{ color: colors.primary, fontSize: 24, fontWeight: "800" }}>{failed ? "분석을 완료하지 못했습니다" : stageLabel(job.stage)}</Text>
-            <ProgressBar value={job.progressPct} />
-            <Text style={styles.body}>{failed ? job.error ?? "분석에 실패했습니다. 다른 영상으로 다시 시도해 주세요." : job.estimatedCompletionSeconds !== null ? `약 ${Math.ceil(job.estimatedCompletionSeconds / 60)}분 후 완료 예정입니다.` : "분석이 끝나면 결과 화면으로 이동합니다. 앱을 닫아도 분석은 계속 진행됩니다."}</Text>
-          </Panel>
+          <View style={{ alignItems: "center", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, flexDirection: "row", gap: 14, minHeight: 136, padding: 14 }}>
+            <View style={{ alignItems: "center", borderColor: colors.border, borderRadius: 42, borderTopColor: failed ? colors.red : colors.lime, borderWidth: 7, height: 82, justifyContent: "center", width: 82 }}><Text style={{ color: failed ? colors.red : colors.primary, fontFamily: styles.mono.fontFamily, fontSize: 16, fontWeight: "900" }}>{job.progressPct === null ? "—" : `${Math.round(job.progressPct)}%`}</Text></View>
+            <View style={{ flex: 1 }}><Text style={styles.eyebrow}>현재 단계 · {Math.min(activeIndex + 1, 4).toString().padStart(2, "0")}/04</Text><Text style={{ color: colors.primary, fontSize: 16, fontWeight: "900", lineHeight: 22, marginTop: 8 }}>{failed ? "분석을 완료하지 못했습니다" : stageLabel(job.stage)}</Text><Text style={[styles.caption, { marginTop: 7 }]}>{failed ? job.error ?? "다른 영상으로 다시 시도해 주세요." : job.estimatedCompletionSeconds !== null ? `완료까지 약 ${job.estimatedCompletionSeconds}초` : "분석은 계속 진행됩니다."}</Text></View>
+          </View>
 
-          <Panel style={{ gap: spacing.md, marginBottom: spacing.lg }}>
-            <Text style={styles.eyebrow}>PROCESS STAGES</Text>
-            {stages.map((stage, index) => {
-              const complete = job.status === "SUCCESS" || index < activeIndex;
-              const current = stage === job.stage;
-              const danger = failed && current;
-              return (
-                <View key={stage} style={{ alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: 48 }}>
-                  <View style={{ alignItems: "center", backgroundColor: danger ? colors.red : complete || current ? colors.lime : colors.surfaceRaised, borderColor: danger ? colors.red : complete || current ? colors.lime : colors.border, borderRadius: 12, borderWidth: 1, height: 24, justifyContent: "center", width: 24 }}>
-                    <Text style={{ color: danger ? colors.primary : complete || current ? colors.limeInk : colors.muted, fontSize: 11, fontWeight: "800" }}>{danger ? "!" : complete ? "✓" : index + 1}</Text>
-                  </View>
-                  <Text style={{ color: danger ? colors.red : current ? colors.primary : colors.secondary, flex: 1, fontSize: 15, fontWeight: current ? "700" : "500" }}>{stageLabel(stage)}</Text>
-                  <Text style={styles.caption}>{danger ? "실패" : complete ? "완료" : current ? "진행 중" : "대기"}</Text>
-                </View>
-              );
-            })}
-          </Panel>
+          <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", marginTop: 8 }}>
+            {[{ label: "업로드", threshold: 0 }, { label: "관절 추출", threshold: 2 }, { label: "특성값", threshold: 3 }, { label: "검증", threshold: 4 }].map((item, index) => { const active = activeIndex >= item.threshold; return <View key={item.label} style={{ alignItems: "center", backgroundColor: activeIndex === item.threshold ? "rgba(201,255,56,0.05)" : colors.background, borderRightColor: colors.border, borderRightWidth: index < 3 ? 1 : 0, flex: 1, justifyContent: "center", minHeight: 48 }}><Text style={{ color: active ? colors.lime : colors.muted, fontSize: 9 }}>{item.label}</Text></View>; })}
+          </View>
 
-          <Panel style={{ gap: spacing.md, marginBottom: spacing.lg }}>
-            <Text style={styles.eyebrow}>WHY RUNNERS FEED</Text>
-            <Text style={{ color: colors.primary, fontSize: 17, fontWeight: "700" }}>근거를 확인하는 분석</Text>
-            <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-              {["관절 측정", "기준 비교", "피드백 검증"].map((label, index) => <React.Fragment key={label}><Text style={styles.caption}>{label}</Text>{index < 2 ? <Text style={{ color: colors.lime }}>→</Text> : null}</React.Fragment>)}
-            </View>
-            <Text style={styles.body}>측정값과 기준을 확인한 뒤 검증된 정보만 결과에 표시합니다.</Text>
-          </Panel>
+          {menuOpen ? <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, marginTop: 10, padding: 15 }}><Text style={styles.eyebrow}>RUNNING TIP</Text><Text style={{ color: colors.primary, fontSize: 13, fontWeight: "800", lineHeight: 20, marginTop: 9 }}>상체에 힘을 빼고 자연스러운 시선을 유지해 보세요.</Text><Text style={[styles.caption, { marginTop: 7 }]}>분석 완료 후 내 측정값에 맞는 피드백으로 바뀝니다.</Text></View> : null}
 
-          <Panel style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
-            <Text style={styles.eyebrow}>RUNNING TIP · 01</Text>
-            <Text style={styles.body}>다음 러닝에서는 시선을 10m 앞에 두고 상체의 긴장을 풀어 보세요.</Text>
-            <Text style={styles.caption}>분석이 끝나면 내 측정값에 맞춘 팁으로 바뀝니다.</Text>
-          </Panel>
-          <Button label="대시보드로 돌아가기" onPress={() => router.replace("/")} kind="secondary" />
+          <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, marginTop: 14, minHeight: 210, padding: 20 }}><Text style={styles.eyebrow}>RUNNERS FEED METHOD</Text><Text style={{ color: colors.primary, fontSize: 21, fontWeight: "900", lineHeight: 27, marginTop: 13 }}>측정에서 피드백까지{`\n`}근거를 연결합니다</Text><View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginTop: 22 }}>{["관절 측정", "기준 비교", "피드백 검증"].map((label, index) => <React.Fragment key={label}><View style={{ alignItems: "center", borderColor: colors.border, borderWidth: 1, flex: 1, justifyContent: "center", minHeight: 44 }}><Text style={{ color: colors.secondary, fontSize: 9 }}>{label}</Text></View>{index < 2 ? <Text style={{ color: colors.lime, marginHorizontal: 5 }}>→</Text> : null}</React.Fragment>)}</View></View>
+          {failed ? <Button label="영상 다시 선택" onPress={() => router.replace("/upload")} style={{ marginTop: 10 }} /> : null}
         </>
       ) : null}
     </Screen>

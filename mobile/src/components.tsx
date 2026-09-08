@@ -22,6 +22,7 @@ import type {
   TrendSummary,
 } from "./contracts";
 import { colors, formatDate, formatValue, spacing, styles } from "./theme";
+import { featureScore, featureScoreLabel } from "./scoring";
 
 export function Screen({
   children,
@@ -54,9 +55,9 @@ export function AppHeader({
   right?: React.ReactNode;
 }) {
   return (
-    <View style={{ paddingTop: spacing.xxl, paddingBottom: spacing.xxl }}>
+    <View style={{ paddingBottom: 14, paddingTop: 18 }}>
       <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-        <View style={{ flex: 1, gap: spacing.sm }}>
+        <View style={{ flex: 1, gap: 6, paddingRight: spacing.sm }}>
           <Text style={styles.eyebrow}>{eyebrow}</Text>
           <Text style={styles.title}>{title}</Text>
         </View>
@@ -238,7 +239,10 @@ export function JobCard({ job, onPress }: { job: ActiveAnalysisJob; onPress: () 
           <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "700" }}>{job.title}</Text>
           <Text style={styles.caption}>{formatDate(job.createdAt)}</Text>
         </View>
-        <StatusBadge status={job.status} label={statusLabel(job.status)} />
+        <View style={{ alignItems: "flex-end", gap: spacing.xs }}>
+          {typeof job.postureScore === "number" ? <Text style={{ color: colors.lime, fontFamily: styles.mono.fontFamily, fontSize: 20, fontWeight: "900" }}>{Math.round(job.postureScore)}<Text style={{ color: colors.muted, fontSize: 10 }}>/100</Text></Text> : null}
+          <StatusBadge status={job.status} label={statusLabel(job.status)} />
+        </View>
       </View>
       <View style={{ gap: spacing.sm }}>
         <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
@@ -246,9 +250,41 @@ export function JobCard({ job, onPress }: { job: ActiveAnalysisJob; onPress: () 
           <Text style={styles.mono}>{job.progressPct === null ? "—" : `${Math.round(job.progressPct)}%`}</Text>
         </View>
         <ProgressBar value={job.progressPct} />
+        {job.status === "SUCCESS" ? <Text style={styles.caption}>{job.renderedVideoExpiresAt ? `렌더링 영상 ${formatDate(job.renderedVideoExpiresAt)}까지` : "스켈레톤 리포트 보관"}</Text> : null}
         {job.error ? <Text style={{ color: colors.red, fontSize: 12 }}>{job.error}</Text> : null}
       </View>
     </Pressable>
+  );
+}
+
+export function ScoreTrendChart({ jobs }: { jobs: ActiveAnalysisJob[] }) {
+  const scored = jobs
+    .filter((job) => job.status === "SUCCESS" && typeof job.postureScore === "number")
+    .slice(0, 8)
+    .reverse();
+  if (scored.length < 2) {
+    return <Text style={styles.caption}>점수가 두 번 이상 쌓이면 날짜별 추이가 표시됩니다.</Text>;
+  }
+  const width = 320;
+  const height = 120;
+  const left = 12;
+  const top = 20;
+  const plotWidth = 296;
+  const plotHeight = 66;
+  const x = (index: number) => left + (index / Math.max(1, scored.length - 1)) * plotWidth;
+  const y = (score: number) => top + ((100 - score) / 100) * plotHeight;
+  const path = scored.map((job, index) => `${index ? "L" : "M"} ${x(index)} ${y(job.postureScore!)}`).join(" ");
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <Svg accessibilityLabel="날짜별 종합 자세 점수 추이" height={height} role="img" viewBox={`0 0 ${width} ${height}`} width="100%">
+        <Line stroke={colors.border} strokeWidth="1" x1={left} x2={left + plotWidth} y1={top + plotHeight} y2={top + plotHeight} />
+        <Path d={path} fill="none" stroke={colors.primary} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
+        {scored.map((job, index) => <Circle key={job.jobId} cx={x(index)} cy={y(job.postureScore!)} fill={colors.lime} r="4" />)}
+      </Svg>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        {scored.map((job) => <View key={job.jobId} style={{ alignItems: "center" }}><Text style={{ color: colors.primary, fontFamily: styles.mono.fontFamily, fontSize: 11, fontWeight: "800" }}>{Math.round(job.postureScore!)}</Text><Text style={styles.caption}>{new Date(job.createdAt).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}</Text></View>)}
+      </View>
+    </View>
   );
 }
 
@@ -261,7 +297,7 @@ export function BottomNavigation() {
     { label: "기록", mark: "↗", path: "/history" as const },
   ];
   return (
-    <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderTopWidth: 1, bottom: 0, flexDirection: "row", left: 0, paddingBottom: spacing.lg, paddingTop: spacing.sm, position: "absolute", right: 0 }}>
+    <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderTopWidth: 1, bottom: 0, flexDirection: "row", left: 0, paddingBottom: 8, paddingTop: 5, position: "absolute", right: 0 }}>
       {items.map((item) => {
         const active = item.path === "/" ? pathname === "/" : pathname.startsWith(item.path);
         return (
@@ -270,10 +306,10 @@ export function BottomNavigation() {
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             onPress={() => router.push(item.path)}
-            style={{ alignItems: "center", flex: 1, gap: spacing.xs, minHeight: 48, justifyContent: "center" }}
+            style={{ alignItems: "center", flex: 1, gap: 2, minHeight: 54, justifyContent: "center" }}
           >
             <Text style={{ color: active ? colors.lime : colors.muted, fontFamily: styles.mono.fontFamily, fontSize: 15, fontWeight: "800" }}>{item.mark}</Text>
-            <Text style={{ color: active ? colors.lime : colors.muted, fontSize: 12, fontWeight: active ? "800" : "500" }}>{item.label}</Text>
+            <Text style={{ color: active ? colors.lime : colors.muted, fontSize: 10, fontWeight: active ? "800" : "500" }}>{item.label}</Text>
           </Pressable>
         );
       })}
@@ -432,6 +468,7 @@ function verdictLabel(verdict: FeatureAnalysis["verdict"]) {
 export function FeatureCard({ feature, onDetails }: { feature: FeatureAnalysis; onDetails: () => void }) {
   const actionAllowed = feature.confidenceLevel === "high" || feature.confidenceLevel === "medium";
   const feedback = actionAllowed && feature.coachingAction ? feature.coachingAction : feature.interpretation || feature.limitation || "해석 문장이 제공되지 않았습니다.";
+  const score = featureScore(feature);
   return (
     <Panel style={{ gap: spacing.md, minHeight: 304 }}>
       <View style={{ alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between" }}>
@@ -443,8 +480,11 @@ export function FeatureCard({ feature, onDetails }: { feature: FeatureAnalysis; 
       </View>
       <FeatureFrameChart feature={feature} />
       <View style={{ gap: spacing.xs }}>
-        <Text style={{ color: colors.lime, fontFamily: styles.mono.fontFamily, fontSize: 24, fontWeight: "900" }}>{formatValue(feature.representativeValue, feature.unit)}</Text>
-        <Text style={styles.caption}>{feature.aggregation || "대표값"}</Text>
+        <View style={{ alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between" }}>
+          <View><Text style={styles.caption}>측정값</Text><Text style={{ color: colors.primary, fontFamily: styles.mono.fontFamily, fontSize: 17, fontWeight: "800" }}>{formatValue(feature.representativeValue, feature.unit)}</Text></View>
+          <View style={{ alignItems: "flex-end" }}><Text style={styles.caption}>피처 점수</Text><Text style={{ color: colors.lime, fontFamily: styles.mono.fontFamily, fontSize: 24, fontWeight: "900" }}>{score === null ? "—" : score}<Text style={{ color: colors.muted, fontSize: 10 }}>/100</Text></Text></View>
+        </View>
+        <Text style={styles.caption}>{featureScoreLabel(feature)}</Text>
       </View>
       <Text style={styles.body}>{feedback}</Text>
       <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
