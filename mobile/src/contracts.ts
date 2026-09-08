@@ -49,6 +49,8 @@ export interface FeatureAnalysis {
   confidenceLevel: ConfidenceLevel;
   limitation: string;
   evidenceIds: string[];
+  score?: number | null;
+  scoreMethod?: string | null;
 }
 
 export interface PostureSignal {
@@ -125,6 +127,25 @@ export interface AnalysisResult {
   features: FeatureAnalysis[];
   evidence: EvidenceItem[];
   narrative: ValidatedNarrative;
+  postureScore?: number | null;
+  runMetrics?: {
+    pacePerKm: string | null;
+    cadenceSpm: number | null;
+    strideLengthM: number | null;
+    estimationBasis: string | null;
+  } | null;
+  media?: {
+    renderedVideoUrl: string | null;
+    renderedVideoExpiresAt: string | null;
+    skeletonVideoUrl: string | null;
+  } | null;
+  runtimeMetadata?: {
+    promptVersion: string | null;
+    model: string | null;
+    validatorVersion: string | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
+  } | null;
 }
 
 export interface EvidenceItem extends EvidenceSource {
@@ -151,6 +172,9 @@ export interface ActiveAnalysisJob {
   modelId: string | null;
   modelRelease: string | null;
   error: string | null;
+  postureScore?: number | null;
+  skeletonVideoUrl?: string | null;
+  renderedVideoExpiresAt?: string | null;
 }
 
 export interface MobileProfile {

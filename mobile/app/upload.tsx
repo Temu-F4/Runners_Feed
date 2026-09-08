@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { ImagePickerAsset, launchCameraAsync, launchImageLibraryAsync, requestCameraPermissionsAsync, requestMediaLibraryPermissionsAsync } from "expo-image-picker";
-import { Text, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { uploadVideo } from "../src/api";
 import { useAuth } from "../src/auth";
-import { AppHeader, Button, ErrorState, Panel, Screen, TextField } from "../src/components";
-import { colors, spacing, styles } from "../src/theme";
+import { AppHeader, Button, Screen } from "../src/components";
+import { ProfileChip } from "../src/coach-ui";
+import { colors, fonts, spacing, styles } from "../src/theme";
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const MIN_VIDEO_MS = 3_000;
@@ -91,45 +92,28 @@ export default function UploadScreen() {
 
   return (
     <Screen>
-      <AppHeader eyebrow="NEW ANALYSIS" title="분석할 영상을 선택하세요" />
-      <Text style={[styles.body, { marginBottom: spacing.lg }]}>측면에서 전신이 보이는 짧은 영상이면 측정이 더 안정적입니다.</Text>
+      <AppHeader title="분석할 영상을 선택하세요" right={<ProfileChip height={height} onPress={() => undefined} />} />
+      <Pressable onPress={() => undefined} style={{ alignItems: "center", alignSelf: "flex-end", borderColor: colors.border, borderWidth: 1, flexDirection: "row", gap: 7, marginBottom: 10, minHeight: 44, paddingHorizontal: 10 }}><Text style={styles.caption}>분석 대상</Text><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 12, fontWeight: "900" }}>{height || "—"}cm</Text><Text style={styles.caption}>수정 ↓</Text></Pressable>
+      <Text style={[styles.body, { marginBottom: 12 }]}>측면에서 머리부터 발끝까지 보이는 3–10초 영상을 사용하세요.</Text>
 
-      <Panel style={{ gap: spacing.md, marginBottom: spacing.lg }}>
-        <View accessible accessibilityLabel="측면에서 달리는 사람의 전신이 모두 보이는 샘플 촬영 이미지 자리" style={{ alignItems: "center", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, height: 156, justifyContent: "center" }}>
-          <Text style={styles.eyebrow}>CAPTURE GUIDE IMAGE</Text>
-          <Text style={{ color: colors.secondary, fontSize: 17, fontWeight: "700", marginTop: spacing.sm }}>측면 · 전신 · 흔들림 없이</Text>
-          <Text style={[styles.caption, { marginTop: spacing.sm }]}>승인된 촬영 가이드 이미지가 준비되면 이 영역에 표시됩니다.</Text>
-        </View>
-        <View style={{ flexDirection: "row" }}>
-          {["카메라는 옆쪽에", "머리부터 발까지 한 화면에", "3–10초 흔들림 없이"].map((item, index) => (
-            <View key={item} style={{ borderColor: colors.border, borderRightWidth: index < 2 ? 1 : 0, flex: 1, gap: spacing.sm, minHeight: 90, paddingHorizontal: spacing.sm }}>
-              <Text style={styles.eyebrow}>0{index + 1}</Text>
-              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "700" }}>{item}</Text>
-            </View>
-          ))}
-        </View>
-      </Panel>
+      <Pressable accessibilityLabel="촬영 가이드" accessibilityRole="button" style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, flexDirection: "row", gap: 12, minHeight: 116, padding: 10 }}>
+        <View style={{ alignItems: "center", backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1.2, justifyContent: "center" }}><Text style={styles.eyebrow}>GUIDE VIDEO</Text><View style={{ borderColor: colors.lime, borderRadius: 22, borderWidth: 3, height: 66, marginTop: 7, opacity: 0.65, width: 31 }} /></View>
+        <View style={{ flex: 1, justifyContent: "center" }}><Text style={styles.eyebrow}>촬영 가이드</Text><Text style={{ color: colors.primary, fontSize: 13, fontWeight: "800", lineHeight: 19, marginTop: 8 }}>측면 · 전신{`\n`}3–10초</Text><Text style={[styles.caption, { marginTop: 8 }]}>샘플 영상 재생 →</Text></View>
+      </Pressable>
 
-      <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
-        <Button label="갤러리에서 선택" onPress={() => void selectVideo(false)} kind="secondary" style={{ flex: 1 }} />
-        <Button label="카메라로 촬영" onPress={() => void selectVideo(true)} kind="secondary" style={{ flex: 1 }} />
-      </View>
+      <Pressable onPress={() => void selectVideo(false)} style={{ alignItems: "center", backgroundColor: colors.surfaceSecondary, borderColor: video?.validation === "valid" ? colors.lime : "#596158", borderStyle: video ? "solid" : "dashed", borderWidth: 1, flexDirection: "row", gap: 10, marginTop: 10, minHeight: 78, paddingHorizontal: 12 }}>
+        <Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 27 }}>{video ? "✓" : "+"}</Text>
+        <View style={{ flex: 1 }}><Text numberOfLines={1} style={{ color: colors.primary, fontSize: 12, fontWeight: "800" }}>{video ? video.name : "영상 선택 또는 촬영"}</Text><Text style={[styles.caption, { fontFamily: fonts.mono, fontSize: 9, marginTop: 5 }]}>{video ? `${video.duration ? `${Math.round(video.duration / 100) / 10}초` : "길이 확인 중"}${video.size ? ` · ${(video.size / 1024 / 1024).toFixed(1)}MiB` : ""}` : "MP4 · 최대 250MiB"}</Text></View>
+        <Text style={{ borderColor: colors.border, borderWidth: 1, color: colors.primary, fontSize: 9, fontWeight: "800", padding: 8 }}>찾아보기</Text>
+      </Pressable>
+      <View style={{ flexDirection: "row", gap: 6, marginTop: 6 }}><Button label="갤러리" onPress={() => void selectVideo(false)} kind="secondary" style={{ flex: 1, minHeight: 44 }} /><Button label="카메라 촬영" onPress={() => void selectVideo(true)} kind="secondary" style={{ flex: 1, minHeight: 44 }} /></View>
 
-      <Panel style={{ alignItems: "center", borderColor: video?.validation === "valid" ? colors.lime : colors.border, borderStyle: "dashed", gap: spacing.sm, marginBottom: spacing.lg, paddingVertical: spacing.xxl }}>
-        <Text style={{ color: video ? colors.lime : colors.secondary, fontFamily: styles.mono.fontFamily, fontSize: 28 }}>{video ? "✓" : "+"}</Text>
-        <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "700" }}>{video ? video.name : "분석할 MP4 영상을 선택하세요"}</Text>
-        <Text style={styles.caption}>{video ? `${video.duration ? `${Math.round(video.duration / 100) / 10}초` : "길이 확인 중"}${video.size ? ` · ${(video.size / 1024 / 1024).toFixed(1)}MiB` : ""}` : "최대 250MiB · 3–10초"}</Text>
-      </Panel>
-
-      <Panel style={{ gap: spacing.md }}>
-        <TextField keyboardType="decimal-pad" label="분석 대상 키 (cm)" onChangeText={setHeight} placeholder="예: 175" value={height} />
-        <Text style={styles.caption}>프로필 키와 다르면 이번 분석에만 적용됩니다. 프로필 값을 변경하지 않습니다.</Text>
-        <Text style={styles.caption}>원본 영상은 분석 목적으로만 사용되며 구체적인 보관·삭제 정책은 서비스 정책을 따릅니다.</Text>
-        <Button label={video && video.validation === "valid" ? "확인하고 분석 시작" : "먼저 영상을 선택하세요"} onPress={() => void start()} disabled={!video || video.validation !== "valid"} loading={busy} />
-        {busy ? <View style={{ backgroundColor: colors.surfaceRaised, height: 6, overflow: "hidden" }}><View style={{ backgroundColor: colors.lime, height: "100%", width: `${Math.max(2, progress * 100)}%` }} /></View> : null}
-      </Panel>
+      <View style={{ alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", marginTop: 9, minHeight: 66, padding: 10 }}><View><Text style={{ color: colors.primary, fontSize: 11, fontWeight: "800" }}>이번 분석 대상 키</Text><Text style={[styles.caption, { fontSize: 9, marginTop: 5 }]}>프로필 기본값 · 이번 분석에만 변경</Text></View><View style={{ alignItems: "center", flexDirection: "row", gap: 4 }}><TextInput keyboardType="decimal-pad" onChangeText={setHeight} placeholder="175" placeholderTextColor={colors.muted} value={height} style={{ backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, color: colors.lime, fontFamily: fonts.mono, fontSize: 16, fontWeight: "900", height: 44, paddingHorizontal: 9, textAlign: "right", width: 66 }} /><Text style={styles.caption}>cm</Text></View></View>
+      <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 8, minHeight: 44, padding: 10 }}><Text style={styles.caption}>영상 보관 및 삭제 안내</Text><Text style={[styles.caption, { fontSize: 9, lineHeight: 14, marginTop: 5 }]}>원본·렌더링 영상·상세 추론 데이터는 약 24시간 후 삭제됩니다. 리포트와 스켈레톤은 기록에 남습니다.</Text></View>
+      <Button label={video && video.validation === "valid" ? "확인하고 분석 시작  →" : "먼저 영상을 선택하세요"} onPress={() => void start()} disabled={!video || video.validation !== "valid"} loading={busy} style={{ marginTop: 10 }} />
+      {busy ? <View style={{ backgroundColor: colors.surfaceRaised, height: 6, overflow: "hidden", marginTop: 6 }}><View style={{ backgroundColor: colors.lime, height: "100%", width: `${Math.max(2, progress * 100)}%` }} /></View> : null}
       {video && video.validation !== "valid" ? <Text style={{ color: colors.red, fontSize: 12, marginTop: spacing.md }}>{validationMessage(video.validation)}</Text> : null}
-      {error ? <View style={{ marginTop: spacing.lg }}><ErrorState message={error} /></View> : null}
+      {error ? <Text style={{ color: colors.red, fontSize: 11, marginTop: spacing.md }}>{error}</Text> : null}
     </Screen>
   );
 }
