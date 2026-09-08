@@ -29,6 +29,14 @@ if (( before >= CLEANUP_THRESHOLD )); then
 fi
 
 after="$(disk_usage_percent)"
+if (( after >= FAILURE_THRESHOLD )); then
+  echo "CI disk usage is still above the safe build threshold; removing all unused Docker data"
+  docker container prune --force
+  docker image prune --all --force
+  docker builder prune --all --force
+  after="$(disk_usage_percent)"
+fi
+
 echo "CI Docker filesystem usage after guard: ${after}%"
 if (( after >= FAILURE_THRESHOLD )); then
   echo "CI disk usage remains above the safe build threshold" >&2
