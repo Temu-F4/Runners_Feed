@@ -19,7 +19,7 @@ def sha(path):
 class Pipeline:
     def __init__(self, state_dir):
         self.root = Path(os.getenv('COACH_ROOT', '/app/coach'))
-        self.plugin = self.root / 'model_plugins' / 'sehyeon-e2fe43e'
+        self.plugin = self.root / 'model_plugins' / 'sehyeon-57e4938'
         self.weights = Path(os.getenv('COACH_MODEL_ROOT', '/models'))
         self.state_dir = Path(state_dir)
         self.manifest = json.loads((self.plugin / 'model_manifest.json').read_text())
@@ -34,7 +34,7 @@ class Pipeline:
         validate_request(request)
         if 'transfer' not in request:
             raise ValueError('Signed transfer URLs required')
-        for key, value in [('model_id', 'sehyeon-e2fe43e'), ('model_release', self.release), ('source_sha256', self.sources), ('model_sha256', self.models)]:
+        for key, value in [('model_id', 'sehyeon-57e4938'), ('model_release', self.release), ('source_sha256', self.sources), ('model_sha256', self.models)]:
             if request[key] != value:
                 raise ValueError('Release mismatch: ' + key)
 
