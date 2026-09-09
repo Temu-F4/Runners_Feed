@@ -123,7 +123,7 @@ if deploy_tag \
     {
       printf 'TARGET_TAG=%s\n' "${TARGET_TAG}"
       printf 'PREVIOUS_TAG=%s\n' "${previous_tag}"
-      printf 'MODEL_ID=%s\n' "${COACH_MODEL_ID:-sehyeon-dcc2d7d}"
+      printf 'MODEL_ID=%s\n' "${COACH_MODEL_ID:-sehyeon-e2fe43e}"
       printf 'ARMED_AT_EPOCH=%s\n' "${armed_at}"
       printf 'EXPIRES_AT_EPOCH=%s\n' "${expires_at}"
     } >"${temporary_candidate}"

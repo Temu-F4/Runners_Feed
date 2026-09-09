@@ -91,7 +91,7 @@ SUPPORTED_VIDEO_CONTENT_TYPES = {
 
 
 def _model_id() -> str:
-    return os.getenv("COACH_MODEL_ID", "sehyeon-dcc2d7d").strip()
+    return os.getenv("COACH_MODEL_ID", "sehyeon-e2fe43e").strip()
 
 
 def _model_release() -> str:
@@ -796,6 +796,9 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
     interpretation = raw.get("interpretation")
     coaching_action = raw.get("coaching_action", raw.get("coachingAction"))
     limitation = raw.get("limitation")
+    score = _finite_number(raw.get("score"))
+    score_method = raw.get("score_method", raw.get("scoreMethod"))
+    confidence_assumed = raw.get("confidence_assumed", raw.get("confidenceAssumed")) is True
     return {
         "featureId": feature_id,
         "label": metric.get("label") if isinstance(metric.get("label"), str) else feature_id,
@@ -812,6 +815,14 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
         "confidenceLevel": confidence_level,
         "limitation": limitation if isinstance(limitation, str) else notice,
         "evidenceIds": _string_list(raw.get("evidence_ids", raw.get("evidenceIds", []))),
+        "score": score,
+        "scoreMethod": score_method if isinstance(score_method, str) else None,
+        "denominatorPolicy": raw.get("denominator_policy", raw.get("denominatorPolicy")),
+        "goodFrameCount": raw.get("good_frame_count", raw.get("goodFrameCount")),
+        "evaluatedFrameCount": raw.get("evaluated_frame_count", raw.get("evaluatedFrameCount")),
+        "sourceFrameCount": raw.get("source_frame_count", raw.get("sourceFrameCount")),
+        "evaluationCoveragePct": _finite_number(raw.get("evaluation_coverage_pct", raw.get("evaluationCoveragePct"))),
+        "confidenceAssumed": confidence_assumed,
     }
 
 
@@ -909,6 +920,7 @@ def _mobile_result(job: dict, report: dict) -> dict:
         "features": features,
         "evidence": [item for item in evidence if item is not None],
         "narrative": narrative,
+        "postureScore": _finite_number(report.get("posture_score", report.get("postureScore"))),
     }
 
 
@@ -1441,13 +1453,18 @@ def create_coach_job(
     payload: CreateCoachJobRequest,
     request: Request,
 ):
-    _inspect_input_object(payload.input_object_name)
+    input_metadata = _inspect_input_object(payload.input_object_name)
+    input_etag = input_metadata.get("etag")
+    if not isinstance(input_etag, str) or not input_etag:
+        raise HTTPException(status_code=503, detail="Uploaded video ETag is unavailable")
     job_id = str(uuid4())
 
     create_job(
         job_id=job_id,
         case_id=payload.case_id,
         input_object_name=payload.input_object_name,
+        input_size_bytes=int(input_metadata["size_bytes"]),
+        input_etag=input_etag,
         user_id=request.state.user_id,
         height_snapshot_m=payload.user_height_m,
         model_id=_model_id(),
@@ -1456,14 +1473,10 @@ def create_coach_job(
 
     try:
         celery_client.send_task(
-            "coach.run_object_storage",
-            args=[
-                payload.case_id,
-                payload.input_object_name,
-                payload.user_height_m,
-            ],
+            "coach.dispatch_video_analysis",
+            args=[job_id],
             task_id=job_id,
-            queue="coach",
+            queue="gpu_dispatch",
         )
     except Exception as error:
         mark_job_dispatch_failed(job_id)

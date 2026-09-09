@@ -67,6 +67,19 @@ def validate_plugin(
         if not path.is_file():
             raise ValueError(f"missing {name} entrypoint: {path}")
 
+    source_files = manifest.get("source_files")
+    if source_files is not None:
+        if not isinstance(source_files, list) or not source_files:
+            raise ValueError("manifest source_files must be a non-empty list")
+        for index, value in enumerate(source_files):
+            path = _safe_relative_path(
+                plugin_dir,
+                value,
+                f"source_files[{index}]",
+            )
+            if not path.is_file():
+                raise ValueError(f"missing source file: {path}")
+
     weights = manifest.get("weights")
     if not isinstance(weights, list) or not weights:
         raise ValueError("manifest weights must be a non-empty list")
@@ -106,6 +119,37 @@ def validate_plugin(
     approval_status = baseline.get("approval_status")
     if approval_status not in {"pending_modeler_approval", "approved"}:
         raise ValueError("quality baseline approval_status is invalid")
+
+    features = manifest.get("features")
+    if not isinstance(features, list) or not features:
+        raise ValueError("manifest features must be a non-empty list")
+    feature_units: dict[str, str] = {}
+    for index, feature in enumerate(features):
+        if not isinstance(feature, dict):
+            raise ValueError(f"features[{index}] must be an object")
+        feature_id = feature.get("id")
+        unit = feature.get("unit")
+        description = feature.get("description")
+        if not isinstance(feature_id, str) or not feature_id:
+            raise ValueError(f"features[{index}].id must be non-empty")
+        if feature_id in feature_units:
+            raise ValueError(f"duplicate feature id: {feature_id}")
+        if not isinstance(unit, str) or not unit:
+            raise ValueError(f"features[{index}].unit must be non-empty")
+        if not isinstance(description, str) or not description:
+            raise ValueError(f"features[{index}].description must be non-empty")
+        feature_units[feature_id] = unit
+
+    required_feature_ids = baseline.get("required_feature_ids")
+    if not isinstance(required_feature_ids, list) or set(required_feature_ids) != set(feature_units):
+        raise ValueError("baseline required_feature_ids must match manifest features")
+    bounds = baseline.get("feature_bounds")
+    if not isinstance(bounds, dict):
+        raise ValueError("baseline feature_bounds must be an object")
+    for feature_id, unit in feature_units.items():
+        rule = bounds.get(feature_id)
+        if not isinstance(rule, dict) or rule.get("unit") != unit:
+            raise ValueError(f"baseline unit mismatch: {feature_id}")
 
     return {
         "status": "ok",

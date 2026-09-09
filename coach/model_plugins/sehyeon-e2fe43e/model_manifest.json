@@ -1,0 +1,43 @@
+{
+  "contract_version": "coach-model-1.0",
+  "model_id": "sehyeon-e2fe43e",
+  "algorithm_version": "e2fe43e9bb0ee13bd445d8a6d4db240dba84eacc",
+  "source": "github:J-sehyeon/Oracle_Project@e2fe43e9bb0ee13bd445d8a6d4db240dba84eacc",
+  "compatibility_patches": [
+    "feature1 returns its computed result",
+    "agent reads the service workspace and standard OpenAI environment variables"
+  ],
+  "entrypoints": {
+    "pose": "scripts/hpe/hpe.py",
+    "features": "scripts/features/feature_extract.py",
+    "narrative": "scripts/Agent/Running_coach.py"
+  },
+  "source_files": [
+    "scripts/hpe/hpe.py",
+    "scripts/hpe/utils.py"
+  ],
+  "input": {
+    "video_extensions": [".mp4", ".mov"],
+    "user_info_file": "user_info.json",
+    "height_key": "user.height",
+    "height_unit": "meters"
+  },
+  "outputs": {
+    "details": "outputs/details.json",
+    "predictions": "outputs/pose_predictions.json",
+    "features": "outputs/feature_results.json",
+    "service_features": "outputs/feature_results.service.json",
+    "rendered_video": "outputs/output.mp4"
+  },
+  "features": [
+    {"id": "feature1", "raw_name": "Amplitude of pelvis oscillation", "unit": "ratio", "description": "Pelvis vertical movement normalized by runner height"},
+    {"id": "feature2", "raw_name": "Elbow angle", "unit": "degree", "description": "Mean left elbow angle with the original frame series preserved"},
+    {"id": "feature3", "raw_name": "Trunk flexion angle", "unit": "degree", "description": "Mean trunk flexion angle during detected ground-contact phases"},
+    {"id": "feature4", "raw_name": "Postural lean angle", "unit": "degree", "description": "Mean postural lean angle during detected ground-contact phases"}
+  ],
+  "weights": [
+    {"path": "detectors/rtmdet-nano-person-320x320/end2end.onnx", "sha256": "dae7d98b247441ec4e408381c72087be5bbf325df939704bb978e21725a948ea"},
+    {"path": "pose/rtmpose-m-halpe26-384x288/end2end.onnx", "sha256": "f43e623a47dd21e465d1f4e7b3083e99c589cd4048958b152d650b27732e6946"}
+  ],
+  "quality": {"baseline": "quality_baseline.json", "golden_status": "pending_modeler_approval"}
+}

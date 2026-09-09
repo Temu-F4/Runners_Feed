@@ -451,7 +451,8 @@ export function FeatureFrameChart({ feature }: { feature: FeatureAnalysis }) {
   );
 }
 
-function confidenceLabel(level: FeatureAnalysis["confidenceLevel"]) {
+function confidenceLabel(level: FeatureAnalysis["confidenceLevel"], assumed = false) {
+  if (assumed) return "측정 가능 · 초기 신뢰도 가정";
   if (level === "high") return "신뢰도 높음";
   if (level === "medium") return "일부 구간 경향";
   if (level === "low") return "신뢰도 낮음 · 판단 보류";
@@ -489,7 +490,7 @@ export function FeatureCard({ feature, onDetails }: { feature: FeatureAnalysis; 
       <Text style={styles.body}>{feedback}</Text>
       <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
         <Text style={{ color: feature.confidenceLevel === "low" || feature.confidenceLevel === "excluded" ? colors.amber : colors.muted, fontSize: 12 }}>
-          {confidenceLabel(feature.confidenceLevel)}{feature.confidencePct === null ? "" : ` · ${feature.confidencePct.toFixed(0)}%`}
+          {confidenceLabel(feature.confidenceLevel, feature.confidenceAssumed)}{feature.confidencePct === null ? "" : ` · ${feature.confidencePct.toFixed(0)}%`}
         </Text>
         <Pressable accessibilityLabel={`${feature.label} 근거 자세히 보기`} accessibilityRole="button" onPress={onDetails} style={{ alignItems: "center", minHeight: 48, justifyContent: "center", paddingHorizontal: spacing.md }}>
           <View style={{ alignItems: "center", borderColor: colors.lime, borderRadius: 12, borderWidth: 1, height: 24, justifyContent: "center", width: 24 }}>

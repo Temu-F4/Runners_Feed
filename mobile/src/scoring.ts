@@ -33,7 +33,10 @@ export function overallScore(result: AnalysisResult): number | null {
   if (typeof result.postureScore === "number" && Number.isFinite(result.postureScore)) {
     return Math.max(0, Math.min(100, Math.round(result.postureScore)));
   }
-  const scores = result.features.map(featureScore).filter((score): score is number => score !== null);
+  const scores = result.features
+    .filter((feature) => feature.featureId !== "feature1")
+    .map(featureScore)
+    .filter((score): score is number => score !== null);
   if (!scores.length) return null;
   return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
 }

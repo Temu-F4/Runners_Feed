@@ -18,13 +18,10 @@ services:
       MPLCONFIGDIR: /tmp/matplotlib
       XDG_CACHE_HOME: /tmp/.cache
       COACH_DEVICE: ${COACH_DEVICE:-cpu}
-      COACH_MODEL_ID: ${COACH_MODEL_ID:-sehyeon-dcc2d7d}
-      MODEL_RELEASE: ${IMAGE_TAG:-local}
+      COACH_MODEL_ID: ${COACH_MODEL_ID:-sehyeon-e2fe43e}
+      MODEL_RELEASE: ${MODEL_RELEASE:-${IMAGE_TAG:-local}}
       COACH_AGENT_ENABLED: ${COACH_AGENT_ENABLED:-auto}
       COACH_LLM_MODEL: ${COACH_LLM_MODEL:-gpt-5.6-luna}
-      COACH_HPE_ENTRYPOINT: ${COACH_HPE_ENTRYPOINT:-/app/coach/scripts/hpe/hpe.py}
-      COACH_FEATURE_ENTRYPOINT: ${COACH_FEATURE_ENTRYPOINT:-/app/coach/scripts/features/feature_extract.py}
-      COACH_AGENT_ENTRYPOINT: ${COACH_AGENT_ENTRYPOINT:-/app/coach/scripts/Agent/Running_coach.py}
       COACH_TIMEOUT_SECONDS: ${COACH_TIMEOUT_SECONDS:-3600}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
@@ -48,13 +45,13 @@ services:
         COACH_GID: ${COACH_GID:-1000}
     user: "${COACH_UID:-1000}:${COACH_GID:-1000}"
     entrypoint:
-      - celery
+      - /app/start_coach_worker.sh
       - -A
       - coach_celery_app:celery_app
       - worker
       - --loglevel=INFO
       - --concurrency=1
-      - --queues=coach
+      - --queues=gpu_dispatch,postprocess,coach
     environment:
       HOME: /home/app
       MPLCONFIGDIR: /tmp/matplotlib
@@ -68,14 +65,21 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       COACH_DEVICE: ${COACH_DEVICE:-cpu}
-      COACH_MODEL_ID: ${COACH_MODEL_ID:-sehyeon-dcc2d7d}
-      MODEL_RELEASE: ${IMAGE_TAG:-local}
+      COACH_MODEL_ID: ${COACH_MODEL_ID:-sehyeon-e2fe43e}
+      MODEL_RELEASE: ${MODEL_RELEASE:-${IMAGE_TAG:-local}}
       COACH_AGENT_ENABLED: ${COACH_AGENT_ENABLED:-auto}
       COACH_LLM_MODEL: ${COACH_LLM_MODEL:-gpt-5.6-luna}
-      COACH_HPE_ENTRYPOINT: ${COACH_HPE_ENTRYPOINT:-/app/coach/scripts/hpe/hpe.py}
-      COACH_FEATURE_ENTRYPOINT: ${COACH_FEATURE_ENTRYPOINT:-/app/coach/scripts/features/feature_extract.py}
-      COACH_AGENT_ENTRYPOINT: ${COACH_AGENT_ENTRYPOINT:-/app/coach/scripts/Agent/Running_coach.py}
       COACH_TIMEOUT_SECONDS: ${COACH_TIMEOUT_SECONDS:-3600}
+      COACH_POSTPROCESS_TIMEOUT_SECONDS: ${COACH_POSTPROCESS_TIMEOUT_SECONDS:-900}
+      RUNPOD_VIDEO_ANALYSIS_ENDPOINT: ${RUNPOD_VIDEO_ANALYSIS_ENDPOINT:-}
+      RUNPOD_POLL_INTERVAL_SECONDS: ${RUNPOD_POLL_INTERVAL_SECONDS:-10}
+      RUNPOD_MAX_POLL_SECONDS: ${RUNPOD_MAX_POLL_SECONDS:-4200}
+      RUNPOD_REQUEST_TIMEOUT_SECONDS: ${RUNPOD_REQUEST_TIMEOUT_SECONDS:-30}
+      FEATURE_SCORE_DENOMINATOR: ${FEATURE_SCORE_DENOMINATOR:-all_frames}
+      RUNPOD_SHARED_TOKEN: ${RUNPOD_SHARED_TOKEN:-}
+      RUNPOD_SIGNED_URL_TTL_SECONDS: ${RUNPOD_SIGNED_URL_TTL_SECONDS:-7200}
+      GPU_ATTEMPT_STALE_SECONDS: ${GPU_ATTEMPT_STALE_SECONDS:-4200}
+      POSTPROCESS_ATTEMPT_STALE_SECONDS: ${POSTPROCESS_ATTEMPT_STALE_SECONDS:-1200}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       api:

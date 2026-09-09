@@ -66,6 +66,51 @@ class SkeletonAdapterTest(unittest.TestCase):
         self.assertNotIn("image_path", source := persisted["frames"][0])
         self.assertNotIn("people", source)
 
+    def test_uses_imputed_coordinates_but_preserves_observation_score(self) -> None:
+        output_dir = self.run_dir / "outputs"
+        (output_dir / "pose_predictions.json").write_text(
+            json.dumps({
+                "frames": [{
+                    "frame_num": 3,
+                    "people": [{
+                        "track_id": 0,
+                        "keypoints": [[10, 10]],
+                        "imputed_keypoints": [[100, 50]],
+                        "keypoint_scores": [0.1],
+                        "observed": [False],
+                    }],
+                }],
+            }),
+            encoding="utf-8",
+        )
+
+        frame = build_skeleton(self.run_dir)["frames"][0]
+
+        self.assertEqual(frame["t_ms"], 100)
+        self.assertEqual(frame["keypoints"], [[0.5, 0.5, 0.1]])
+        self.assertEqual(frame["imputed"], [True])
+
+    def test_does_not_mark_missing_imputation_as_imputed(self) -> None:
+        output_dir = self.run_dir / "outputs"
+        (output_dir / "pose_predictions.json").write_text(
+            json.dumps({
+                "frames": [{
+                    "frame_num": 3,
+                    "people": [{
+                        "track_id": 0,
+                        "keypoints": [[10, 10]],
+                        "keypoint_scores": [0.1],
+                        "observed": [False],
+                    }],
+                }],
+            }),
+            encoding="utf-8",
+        )
+
+        frame = build_skeleton(self.run_dir)["frames"][0]
+
+        self.assertEqual(frame["imputed"], [False])
+
 
 if __name__ == "__main__":
     unittest.main()

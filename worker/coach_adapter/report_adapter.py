@@ -18,6 +18,24 @@ FEATURE_PRESENTATION = {
         "measurement_basis": "Coach feature1 output without recalculation",
         "evidence_query": ["pelvis vertical oscillation", "body height ratio"],
     },
+    "feature2": {
+        "label": "팔꿈치 각도",
+        "description": "러닝 중 팔꿈치 각도의 평균값입니다.",
+        "measurement_basis": "Coach elbow-angle mean without recalculation",
+        "evidence_query": ["running elbow angle", "running economy"],
+    },
+    "feature3": {
+        "label": "몸통 굽힘 각도",
+        "description": "지지 구간에서 계산한 몸통 굽힘 각도입니다.",
+        "measurement_basis": "Coach trunk-flexion output without recalculation",
+        "evidence_query": ["running trunk flexion"],
+    },
+    "feature4": {
+        "label": "상체 기울기",
+        "description": "지지 구간에서 계산한 상체 기울기 각도입니다.",
+        "measurement_basis": "Coach postural-lean output without recalculation",
+        "evidence_query": ["running postural lean"],
+    },
 }
 
 
@@ -117,8 +135,7 @@ def _metrics(features: dict) -> list[dict[str, Any]]:
                 "evidence_query": [],
             },
         )
-        output.append(
-            {
+        metric = {
                 "id": feature_id,
                 "label": presentation["label"],
                 "value": feature["value"],
@@ -126,8 +143,27 @@ def _metrics(features: dict) -> list[dict[str, Any]]:
                 "description": presentation["description"],
                 "measurement_basis": presentation["measurement_basis"],
                 "evidence_query": presentation["evidence_query"],
-            }
-        )
+        }
+        for key in (
+            "reference_range",
+            "coaching_action",
+            "interpretation",
+            "score",
+            "score_method",
+            "denominator_policy",
+            "good_frame_count",
+            "evaluated_frame_count",
+            "source_frame_count",
+            "evaluation_coverage_pct",
+            "confidence_level",
+            "confidence_pct",
+            "confidence_assumed",
+            "limitation",
+            "series",
+        ):
+            if key in feature:
+                metric[key] = feature[key]
+        output.append(metric)
     return output
 
 
@@ -192,9 +228,15 @@ def build_report(run_dir: Path) -> dict[str, Any]:
     details = _load_json(output_dir / "details.json")
     predictions = _load_json(output_dir / "pose_predictions.json")
     features = _json_safe(
-        _load_json(output_dir / "feature_results.json")
+        _load_json(output_dir / "feature_results.service.json")
     )
     video = details.get("video", {})
+    scored = [
+        feature.get("score") for feature_id, feature in features.items()
+        if feature_id in {"feature2", "feature3", "feature4"}
+        and isinstance(feature, dict)
+        and isinstance(feature.get("score"), (int, float))
+    ]
 
     return {
         "schema_version": "coach-1.0",
@@ -210,6 +252,7 @@ def build_report(run_dir: Path) -> dict[str, Any]:
         "tracking": _tracking_summary(details, predictions),
         "metrics": _metrics(features),
         "features": features,
+        "posture_score": round(sum(scored) / len(scored), 2) if scored else None,
         "evidence": [],
         "narrative": _narrative(output_dir),
         "notice": (

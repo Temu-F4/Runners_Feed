@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CODE_COACH_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-$CODE_COACH_DIR}"
 PYTHON_BIN="${PYTHON_BIN:-$CODE_COACH_DIR/.venv/bin/python}"
-COACH_MODEL_ID="${COACH_MODEL_ID:-sehyeon-dcc2d7d}"
+COACH_MODEL_ID="${COACH_MODEL_ID:-sehyeon-e2fe43e}"
 MODEL_PLUGIN_ROOT="${COACH_MODEL_PLUGIN_ROOT:-$CODE_COACH_DIR/model_plugins/$COACH_MODEL_ID}"
 
 if [[ ! "$COACH_MODEL_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
@@ -40,6 +40,9 @@ fi
 "$SCRIPT_DIR/hpe/hpe.sh" "$RUN_FOLDER" "$@"
 echo "COACH_STAGE_START=feature_extract"
 "$SCRIPT_DIR/features/features.sh" "$RUN_FOLDER"
+"$PYTHON_BIN" \
+    "$SCRIPT_DIR/model_contract/normalize_features.py" \
+    "${WORKSPACE_ROOT}/run/${RUN_FOLDER}"
 "$PYTHON_BIN" \
     "$SCRIPT_DIR/model_contract/validate_artifacts.py" \
     "${WORKSPACE_ROOT}/run/${RUN_FOLDER}"

@@ -1,0 +1,10 @@
+fastapi==0.115.12
+uvicorn==0.34.2
+requests==2.32.3
+onnxruntime-gpu==1.22.0
+rtmlib==0.0.13
+opencv-python-headless==4.11.0.86
+numpy==2.2.5
+pandas==3.0.5
+tqdm==4.67.1
+scipy==1.15.2

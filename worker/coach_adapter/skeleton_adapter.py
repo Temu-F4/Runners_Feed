@@ -25,6 +25,9 @@ def _primary_person(frame: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _source_frame_index(frame: dict[str, Any], fallback: int) -> int:
+    frame_num = frame.get("frame_num")
+    if isinstance(frame_num, int) and frame_num >= 0:
+        return frame_num
     image_path = frame.get("image_path")
     if isinstance(image_path, str):
         try:
@@ -65,7 +68,9 @@ def build_skeleton(run_dir: Path, target_fps: float = TARGET_FPS) -> dict:
         if person is None:
             continue
         keypoints = person.get("keypoints", [])
+        imputed_keypoints = person.get("imputed_keypoints", [])
         scores = person.get("keypoint_scores", [])
+        observed = person.get("observed", [])
         if not isinstance(keypoints, list) or not isinstance(scores, list):
             continue
 
@@ -75,7 +80,23 @@ def build_skeleton(run_dir: Path, target_fps: float = TARGET_FPS) -> dict:
             continue
 
         compact_keypoints = []
-        for keypoint, score in zip(keypoints, scores):
+        imputed_flags = []
+        for index, (keypoint, score) in enumerate(zip(keypoints, scores)):
+            is_observed = (
+                bool(observed[index])
+                if isinstance(observed, list) and index < len(observed)
+                else True
+            )
+            used_imputed = False
+            if (
+                not is_observed
+                and isinstance(imputed_keypoints, list)
+                and index < len(imputed_keypoints)
+                and isinstance(imputed_keypoints[index], list)
+                and len(imputed_keypoints[index]) >= 2
+            ):
+                keypoint = imputed_keypoints[index]
+                used_imputed = True
             if not isinstance(keypoint, list) or len(keypoint) < 2:
                 continue
             compact_keypoints.append(
@@ -85,12 +106,14 @@ def build_skeleton(run_dir: Path, target_fps: float = TARGET_FPS) -> dict:
                     round(min(1.0, max(0.0, float(score))), 4),
                 ]
             )
+            imputed_flags.append(used_imputed)
 
         if compact_keypoints:
             frames.append(
                 {
                     "t_ms": round(timestamp * 1000),
                     "keypoints": compact_keypoints,
+                    "imputed": imputed_flags,
                 }
             )
             last_time = timestamp

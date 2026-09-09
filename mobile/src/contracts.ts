@@ -51,6 +51,12 @@ export interface FeatureAnalysis {
   evidenceIds: string[];
   score?: number | null;
   scoreMethod?: string | null;
+  denominatorPolicy?: "all_frames" | "evaluated_frames" | string;
+  goodFrameCount?: number;
+  evaluatedFrameCount?: number;
+  sourceFrameCount?: number;
+  evaluationCoveragePct?: number | null;
+  confidenceAssumed?: boolean;
 }
 
 export interface PostureSignal {

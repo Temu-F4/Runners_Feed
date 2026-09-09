@@ -22,8 +22,14 @@ celery_app.conf.update(
     task_time_limit=3600,
     task_soft_time_limit=3500,
     task_routes={
-        "coach.run_object_storage": {
-            "queue": "coach",
+        "coach.dispatch_video_analysis": {
+            "queue": "gpu_dispatch",
+        },
+        "coach.poll_video_analysis": {
+            "queue": "gpu_dispatch",
+        },
+        "coach.run_postprocess": {
+            "queue": "postprocess",
         },
     },
 )
