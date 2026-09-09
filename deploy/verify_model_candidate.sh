@@ -94,8 +94,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${run_dir}"
-mkdir -p "${run_dir}/outputs"
+install -d -m 0755 "${run_dir}"
+install -d -m 0775 "${run_dir}/outputs"
 install -m 0644 "${GOLDEN_DIR}/user_info.json" "${run_dir}/user_info.json"
 install -m 0644 "${GOLDEN_DIR}/outputs/details.json" \
   "${run_dir}/outputs/details.json"
