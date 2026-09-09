@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Linking, Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 
@@ -83,10 +83,24 @@ export default function ResultScreen() {
   const [error, setError] = useState<string | null>(null);
   const [limitsOpen, setLimitsOpen] = useState(false);
 
-  useEffect(() => {
+  const loadResult = useCallback(() => {
     if (!jobId || (!token && !jobId.startsWith("demo-"))) return;
+    setLoading(true);
+    setError(null);
     getResult(token ?? "", jobId).then((value) => { setResult(value); setSelectedId(value.features.find((feature) => feature.featureId === "feature2")?.featureId ?? value.features[0]?.featureId ?? null); }).catch((cause) => setError(cause instanceof Error ? cause.message : "결과를 불러오지 못했습니다.")).finally(() => setLoading(false));
   }, [token, jobId]);
+
+  useEffect(() => { loadResult(); }, [loadResult]);
+
+  const openExerciseVideo = async (url: string) => {
+    setError(null);
+    try {
+      if (!(await Linking.canOpenURL(url))) throw new Error("지원되는 영상 링크가 아닙니다.");
+      await Linking.openURL(url);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "추천 영상을 열지 못했습니다.");
+    }
+  };
 
   const openVideo = async () => {
     if (!token || !jobId) return;
@@ -107,7 +121,7 @@ export default function ResultScreen() {
     <Screen>
       <AppHeader title="이번 러닝 분석 결과" right={<ProfileChip height={profile?.heightCm ? String(profile.heightCm) : "—"} onPress={() => router.push("/")} />} />
       {loading ? <LoadingState message="검증된 결과를 불러오는 중입니다." /> : null}
-      {error ? <Pressable onPress={() => router.replace({ pathname: "/result/[jobId]", params: { jobId } })} style={{ borderColor: colors.red, borderWidth: 1, marginBottom: 10, minHeight: 48, padding: 10 }}><Text style={{ color: colors.red, fontSize: 11 }}>{error} · 다시 시도</Text></Pressable> : null}
+      {error ? <Pressable onPress={loadResult} style={{ borderColor: colors.red, borderWidth: 1, marginBottom: 10, minHeight: 48, padding: 10 }}><Text style={{ color: colors.red, fontSize: 11 }}>{error} · 다시 시도</Text></Pressable> : null}
       {result ? <>
         <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", marginBottom: 8 }}>
           <RunMetricCell label="페이스" value={paceLabel(result.runMetrics?.pacePerKm)} />
@@ -138,7 +152,7 @@ export default function ResultScreen() {
         </View> : null}
 
         {result.runtimeMetadata ? <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 8, padding: 11 }}><Text style={styles.caption}>리포트 생성 정보</Text><Text style={[styles.caption, { fontFamily: fonts.mono, fontSize: 8, marginTop: 7 }]}>prompt {result.runtimeMetadata.promptVersion ?? "—"} · model {result.runtimeMetadata.model ?? result.narrative.model ?? "—"}{`\n`}validator {result.runtimeMetadata.validatorVersion ?? result.narrative.validatorVersion} · tokens {result.runtimeMetadata.inputTokens ?? "—"}/{result.runtimeMetadata.outputTokens ?? "—"}</Text></View> : null}
-        <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderTopColor: colors.lime, borderTopWidth: 2, borderWidth: 1, marginTop: 14, padding: 14 }}><SectionHeading label="AI 러닝 코치 종합 리포트" meta={formatDate(result.completedAt)} /><Text style={{ color: colors.primary, fontSize: 17, fontWeight: "900", lineHeight: 23, marginVertical: 10 }}>{result.narrative.summary || "AI 코칭 설명이 준비되지 않았습니다."}</Text>{actions.length ? actions.map((action, index) => <ActionRow action={action} index={index} key={`${action.featureId}-${index}`} />) : <Text style={styles.caption}>측정 그래프와 점수는 정상적으로 확인할 수 있습니다.</Text>}<Text style={[styles.caption, { fontSize: 9, marginTop: 10 }]}>{result.narrative.disclaimer}</Text></View>
+        <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderTopColor: colors.lime, borderTopWidth: 2, borderWidth: 1, marginTop: 14, padding: 14 }}><SectionHeading label="AI 러닝 코치 종합 리포트" meta={formatDate(result.completedAt)} /><Text style={{ color: colors.primary, fontSize: 17, fontWeight: "900", lineHeight: 23, marginVertical: 10 }}>{result.narrative.summary || "AI 코칭 설명이 준비되지 않았습니다."}</Text>{actions.length ? actions.map((action, index) => <ActionRow action={action} index={index} key={`${action.featureId}-${index}`} />) : <Text style={styles.caption}>측정 그래프와 점수는 정상적으로 확인할 수 있습니다.</Text>}{result.narrative.exerciseVideos?.length ? <View style={{ borderTopColor: colors.border, borderTopWidth: 1, marginTop: 10, paddingTop: 8 }}><Text style={[styles.caption, { marginBottom: 4 }]}>추천 자세 연습 영상</Text>{result.narrative.exerciseVideos.map((video) => <Pressable accessibilityRole="link" key={video.id} onPress={() => void openExerciseVideo(video.url)} style={{ justifyContent: "center", minHeight: 40 }}><Text style={{ color: colors.lime, fontSize: 10, fontWeight: "800" }}>{video.title} →</Text></Pressable>)}</View> : null}<Text style={[styles.caption, { fontSize: 9, marginTop: 10 }]}>{result.narrative.disclaimer}</Text></View>
         <FullLink label="전체 기록과 과거 스켈레톤 보기" onPress={() => router.push("/history")} style={{ marginTop: 8 }} />
       </> : null}
     </Screen>

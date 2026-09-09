@@ -5,6 +5,7 @@ import math
 import secrets
 from contextlib import asynccontextmanager
 from typing import Literal
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
 
 import oci
@@ -858,6 +859,32 @@ def _mobile_action(action: object, kind: str) -> dict | None:
     return {"featureId": feature_id, "kind": kind, "text": action["text"], "measurementReference": measurement}
 
 
+def _mobile_exercise_video(item: object) -> dict | None:
+    if not isinstance(item, dict):
+        return None
+    video_id, title, value = item.get("id"), item.get("title"), item.get("url")
+    if not all(isinstance(field, str) and field.strip() for field in (video_id, title, value)):
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or parsed.hostname != "www.youtube.com" or parsed.path != "/watch":
+        return None
+    if not parse_qs(parsed.query).get("v"):
+        return None
+    feature_id = item.get("feature_id", item.get("feature"))
+    feature_id = {
+        "Amplitude of pelvis oscillation": "feature1",
+        "Elbow angle": "feature2",
+        "Trunk flexion angle": "feature3",
+        "Postural lean angle": "feature4",
+    }.get(feature_id, feature_id)
+    return {
+        "id": video_id,
+        "title": title,
+        "url": value,
+        "featureId": feature_id if isinstance(feature_id, str) else None,
+    }
+
+
 def _mobile_evidence(item: object, index: int) -> dict | None:
     if not isinstance(item, dict):
         return None
@@ -913,10 +940,14 @@ def _mobile_result(job: dict, report: dict) -> dict:
     narrative_status = "success" if raw_narrative.get("status") == "success" else "unavailable"
     narrative = {
         "status": narrative_status,
+        "errorCode": raw_narrative.get("error_code", raw_narrative.get("errorCode")) if narrative_status == "unavailable" and isinstance(raw_narrative.get("error_code", raw_narrative.get("errorCode")), str) else None,
         "model": raw_narrative.get("model") if isinstance(raw_narrative.get("model"), str) else None,
         "summary": raw_narrative.get("overall_summary", raw_narrative.get("summary")) if isinstance(raw_narrative.get("overall_summary", raw_narrative.get("summary")), str) else None,
         "priorityActions": [action for action in priority_actions if action is not None],
         "maintainActions": [action for action in maintain_actions if action is not None],
+        "exerciseVideos": [video for item in raw_narrative.get(
+            "exercise_videos", raw_narrative.get("exerciseVideos", [])
+        ) if (video := _mobile_exercise_video(item)) is not None],
         "disclaimer": raw_narrative.get("disclaimer", "이 내용은 러닝 동작 참고용이며 의료 진단이나 부상 예측이 아닙니다."),
         "validatorVersion": raw_narrative.get("validator_version", raw_narrative.get("validatorVersion", "unvalidated")),
     }

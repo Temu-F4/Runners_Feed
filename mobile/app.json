@@ -2,12 +2,13 @@
   "expo": {
     "name": "Runners Feed",
     "slug": "runners-eye",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "portrait",
     "scheme": "runnersfeed",
     "userInterfaceStyle": "dark",
     "android": {
       "package": "com.temuf4.runnersfeed",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#090b0a"
       }

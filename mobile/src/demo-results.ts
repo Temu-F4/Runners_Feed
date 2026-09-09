@@ -54,9 +54,9 @@ export function demoResult(id: string): AnalysisResult | null {
     postureScore: scored.length === 3 ? Math.round(scored.reduce((sum, score) => sum + score, 0) / 3) : null,
     runMetrics: { pacePerKm: "4'25\"/km", cadenceSpm: 176, strideLengthM: null, estimationBasis: "development fixture" },
     narrative: llmFailure
-      ? { status: "unavailable", model: null, summary: null, priorityActions: [], maintainActions: [], disclaimer: "개발용 LLM 실패 fixture입니다. 의료 진단이나 부상 예측이 아닙니다.", validatorVersion: "service-narrative-2" }
-      : { status: "success", model: "fixture", summary: "팔 동작은 대체로 안정적입니다. 몸통과 상체 기울기는 그래프의 기준 구간을 확인해 보세요. 다음 촬영에서도 같은 조건을 유지하세요.", priorityActions: [], maintainActions: [], disclaimer: "개발·시연 전용 데이터이며 의료 진단이나 부상 예측이 아닙니다.", validatorVersion: "service-narrative-2" },
-    media: null, runtimeMetadata: { promptVersion: "demo", model: "fixture", validatorVersion: "service-narrative-2", inputTokens: null, outputTokens: null },
+      ? { status: "unavailable", errorCode: "development_fixture", model: null, summary: null, priorityActions: [], maintainActions: [], exerciseVideos: [], disclaimer: "개발용 LLM 실패 fixture입니다. 의료 진단이나 부상 예측이 아닙니다.", validatorVersion: "service-narrative-3" }
+      : { status: "success", errorCode: null, model: "fixture", summary: "팔 동작은 유지하고 몸통과 상체 기울기는 기준 구간에 맞춰 천천히 조정하세요.", priorityActions: [], maintainActions: [], exerciseVideos: [{ id: "arm_drill", title: "팔꿈치와 팔 흔들기: 초보자 연습", url: "https://www.youtube.com/watch?v=0pHOZva0Gic", featureId: "feature2" }], disclaimer: "개발·시연 전용 데이터이며 의료 진단이나 부상 예측이 아닙니다.", validatorVersion: "service-narrative-3" },
+    media: null, runtimeMetadata: { promptVersion: "demo", model: "fixture", validatorVersion: "service-narrative-3", inputTokens: null, outputTokens: null },
   };
 }
 

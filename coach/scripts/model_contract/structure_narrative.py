@@ -9,10 +9,16 @@ import re
 from pathlib import Path
 from typing import Any
 
-MAX_SUMMARY_CHARS = 600
+try:
+    from coach.scripts.model_contract.exercise_video_tool import recommend_exercise_videos
+except ModuleNotFoundError:  # Direct execution inside the coach container.
+    from scripts.model_contract.exercise_video_tool import recommend_exercise_videos
+
+MAX_SUMMARY_CHARS = 250
 MAX_ACTIONS = 3
-BLOCKED_MARKUP = ("```", "<script", "<table", "</", "|---", "# ")
+BLOCKED_MARKUP = ("```", "<", ">", "|---", "# ", "**", "__", "[", "](")
 BLOCKED_MEDICAL = ("진단", "부상 확정", "부상이 발생", "질환", "치료가 필요")
+BLOCKED_MEASUREMENT = ("점수", "퍼센트", "백분율", "각도", "cm", "센티미터", "단위", "feature", "피처")
 
 
 def _load_object(path: Path) -> dict[str, Any]:
@@ -52,15 +58,21 @@ def _validate_summary(summary: str) -> str:
     if not summary or len(summary) > MAX_SUMMARY_CHARS:
         raise ValueError("overall_summary is empty or too long")
     lowered = summary.lower()
+    if re.match(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", summary):
+        raise ValueError("overall_summary contains a list")
     if any(token in lowered for token in BLOCKED_MARKUP):
         raise ValueError("overall_summary contains markup")
     if any(token in summary for token in BLOCKED_MEDICAL):
         raise ValueError("overall_summary contains a medical claim")
+    if any(token in lowered for token in BLOCKED_MEASUREMENT):
+        raise ValueError("overall_summary contains a score, unit, or feature identifier")
     if re.search(r"\d", summary):
         raise ValueError("overall_summary must not contain unverifiable numbers")
+    if summary[-1] not in ".!?。":
+        raise ValueError("overall_summary must end with sentence punctuation")
     sentences = [part for part in re.split(r"(?<=[.!?。])\s*", summary) if part.strip()]
-    if not 3 <= len(sentences) <= 5:
-        raise ValueError("overall_summary must contain 3 to 5 sentences")
+    if len(sentences) != 1:
+        raise ValueError("overall_summary must contain exactly one sentence")
     return summary
 
 
@@ -70,6 +82,7 @@ def build_structured_narrative(run_dir: Path) -> dict[str, Any]:
         (output_dir / "running_report.md").read_text(encoding="utf-8")
     )
     features = _load_object(output_dir / "feature_results.service.json")
+    raw_features = _load_object(output_dir / "feature_results.json")
     priority: list[dict[str, Any]] = []
     maintain: list[dict[str, Any]] = []
     for feature_id in ("feature2", "feature3", "feature4"):
@@ -83,12 +96,13 @@ def build_structured_narrative(run_dir: Path) -> dict[str, Any]:
     result = {
         "status": "success",
         "model": os.getenv("COACH_LLM_MODEL", "gpt-5.6-luna"),
-        "prompt_version": "sehyeon-narrative-v2",
+        "prompt_version": "sehyeon-5ccb8bc-narrative-v3",
         "overall_summary": summary,
         "priority_actions": priority,
         "maintain_actions": maintain,
         "disclaimer": "러닝 동작 참고용이며 의료 진단이나 부상 예측이 아닙니다.",
-        "validator_version": "service-narrative-2",
+        "exercise_videos": recommend_exercise_videos(raw_features),
+        "validator_version": "service-narrative-3",
     }
     actions = priority + maintain
     if len(actions) > MAX_ACTIONS or len({item["feature_id"] for item in actions}) != len(actions):

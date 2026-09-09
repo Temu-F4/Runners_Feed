@@ -7,3 +7,9 @@ The model algorithms are preserved. Upstream now includes `feature1()`'s return,
 The incomplete, unused `scripts/hpe/pose_track.py`, notebooks, media, generated results, caches, and model binaries are intentionally excluded. Runtime weights are mounted separately and verified with the hashes in the manifest.
 
 Quality status remains `pending_modeler_approval` until the golden videos pass on a real RunPod CUDA worker.
+
+The upstream Agent/report additions from commit `5ccb8bc1773286aa19bbfd31e567806a82f3818e`
+are preserved beside the active integration files with a `.5ccb8bc.upstream` suffix. The
+service-owned prompt, validator, API adapter, and mobile contract consume the compatible
+parts without replacing the validated `57e4938` HPE/feature algorithm or changing the
+RunPod model identity.

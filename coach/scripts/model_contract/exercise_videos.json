@@ -1,0 +1,99 @@
+[
+  {
+    "id": "pelvis_drills",
+    "feature": "Amplitude of pelvis oscillation",
+    "title": "골반 진동 줄이기: 운동 4가지",
+    "url": "https://www.youtube.com/watch?v=dHozl0guCjo",
+    "conditions": [
+      "reduce_bounce"
+    ],
+    "requires_forward_lean": true,
+    "review_status": "title_description_screened_not_full_video_reviewed"
+  },
+  {
+    "id": "pelvis_education",
+    "feature": "Amplitude of pelvis oscillation",
+    "title": "골반 진동 이해하기: 얼마나 움직여야 할까?",
+    "url": "https://www.youtube.com/watch?v=yiv_z-Cj7Lg",
+    "conditions": [
+      "maintain",
+      "reduce_bounce"
+    ],
+    "requires_forward_lean": false,
+    "review_status": "title_description_screened_not_full_video_reviewed"
+  },
+  {
+    "id": "arm_drill",
+    "feature": "Elbow angle",
+    "title": "팔꿈치와 팔 흔들기: 초보자 연습",
+    "url": "https://www.youtube.com/watch?v=0pHOZva0Gic",
+    "conditions": [
+      "adjust_arms",
+      "maintain"
+    ],
+    "requires_forward_lean": false,
+    "review_status": "title_description_screened_not_full_video_reviewed"
+  },
+  {
+    "id": "arm_relaxed",
+    "feature": "Elbow angle",
+    "title": "힘을 빼고 팔 흔들기 연습",
+    "url": "https://www.youtube.com/watch?v=0WrRg4Z97B4",
+    "conditions": [
+      "adjust_arms",
+      "maintain"
+    ],
+    "requires_forward_lean": true,
+    "review_status": "title_description_screened_not_full_video_reviewed"
+  },
+  {
+    "id": "trunk_form",
+    "feature": "Trunk flexion angle",
+    "title": "몸통 자세와 기울기 이해하기",
+    "url": "https://www.youtube.com/watch?v=gYajoeR_UF8&t=201s",
+    "conditions": [
+      "increase_lean",
+      "decrease_lean",
+      "maintain"
+    ],
+    "requires_forward_lean": false,
+    "review_status": "title_description_screened_not_full_video_reviewed"
+  },
+  {
+    "id": "trunk_posture",
+    "feature": "Trunk flexion angle",
+    "title": "달릴 때 몸통 자세 점검하기",
+    "url": "https://www.youtube.com/watch?v=q7FQ-3YdzNg",
+    "conditions": [
+      "increase_lean",
+      "decrease_lean",
+      "maintain"
+    ],
+    "requires_forward_lean": false,
+    "review_status": "title_description_screened_not_full_video_reviewed"
+  },
+  {
+    "id": "posture_education",
+    "feature": "Postural lean angle",
+    "title": "달릴 때 전신 자세 점검하기",
+    "url": "https://www.youtube.com/watch?v=lWWZQpwKjhs",
+    "conditions": [
+      "increase_lean",
+      "decrease_lean",
+      "maintain"
+    ],
+    "requires_forward_lean": false,
+    "review_status": "title_description_screened_not_full_video_reviewed"
+  },
+  {
+    "id": "posture_lean",
+    "feature": "Postural lean angle",
+    "title": "앞으로 기울어지는 감각 연습",
+    "url": "https://www.youtube.com/watch?v=ScHGRirmsgc",
+    "conditions": [
+      "increase_lean"
+    ],
+    "requires_forward_lean": true,
+    "review_status": "title_description_screened_not_full_video_reviewed"
+  }
+]

@@ -4,7 +4,7 @@ from unittest import TestCase
 from unittest.mock import patch
 from uuid import uuid4
 
-from app.main import MobileJobRequest, _mobile_result, _mobile_signals, _mobile_stage, model_quality_health
+from app.main import MobileJobRequest, _mobile_exercise_video, _mobile_result, _mobile_signals, _mobile_stage, model_quality_health
 
 
 class MobileContractTests(TestCase):
@@ -138,8 +138,14 @@ class MobileContractTests(TestCase):
             }],
             "narrative": {
                 "status": "success",
+                "error_code": "should_not_be_used",
                 "priority_actions": [{"feature_id": "feature1", "text": "상체를 세워 보세요."}],
                 "maintain_actions": [],
+                "exercise_videos": [{
+                    "id": "trunk_form", "title": "몸통 자세 점검",
+                    "url": "https://www.youtube.com/watch?v=gYajoeR_UF8",
+                    "feature": "Trunk flexion angle",
+                }],
             },
         }
 
@@ -157,6 +163,9 @@ class MobileContractTests(TestCase):
         self.assertEqual(result["features"][0]["denominatorPolicy"], "all_frames")
         self.assertEqual(result["evidence"][0]["evidenceId"], "paper-1")
         self.assertEqual(result["narrative"]["priorityActions"][0]["featureId"], "feature1")
+        self.assertEqual(result["narrative"]["exerciseVideos"][0]["id"], "trunk_form")
+        self.assertEqual(result["narrative"]["exerciseVideos"][0]["featureId"], "feature3")
+        self.assertIsNone(result["narrative"]["errorCode"])
         home_signal = _mobile_signals(result["features"])[0]
         self.assertEqual(home_signal["featureId"], "feature1")
         self.assertEqual(home_signal["value"], result["features"][0]["representativeValue"])
@@ -180,6 +189,27 @@ class MobileContractTests(TestCase):
 
         self.assertEqual(result["runMetrics"]["pacePerKm"], "4:25")
         self.assertEqual(result["runMetrics"]["cadenceSpm"], 181)
+
+    def test_mobile_result_preserves_unavailable_narrative_error_code(self) -> None:
+        job = {"job_id": uuid4(), "created_at": "now", "completed_at": "now"}
+        result = _mobile_result(job, {
+            "metrics": [], "features": {},
+            "narrative": {"status": "unavailable", "error_code": "llm_request_failed"},
+        })
+        self.assertEqual(result["narrative"]["status"], "unavailable")
+        self.assertEqual(result["narrative"]["errorCode"], "llm_request_failed")
+
+    def test_mobile_exercise_video_rejects_non_youtube_or_malformed_urls(self) -> None:
+        for url in (
+            "http://www.youtube.com/watch?v=unsafe",
+            "https://youtube.com/watch?v=wrong-host",
+            "https://www.youtube.com/embed/not-watch",
+            "https://www.youtube.com/watch",
+        ):
+            with self.subTest(url=url):
+                self.assertIsNone(_mobile_exercise_video({
+                    "id": "video", "title": "exercise", "url": url,
+                }))
 
     def test_mobile_result_maps_runtime_metadata_without_persisting_signed_media(self) -> None:
         job = {"job_id": uuid4(), "created_at": "now", "completed_at": "now"}

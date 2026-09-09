@@ -3,10 +3,12 @@
   "model_id": "sehyeon-57e4938",
   "algorithm_version": "57e4938ff93360cd171016b6615b3d3b94bf27e3",
   "source": "github:J-sehyeon/Oracle_Project@57e4938ff93360cd171016b6615b3d3b94bf27e3",
+  "agent_source": "github:J-sehyeon/Oracle_Project@5ccb8bc1773286aa19bbfd31e567806a82f3818e",
   "compatibility_patches": [
     "cadence/pace validates positive finite time and distance without mutating shared feature scale",
     "elbow measurement handles empty groups, includes the last frame, and preserves frame indices",
-    "agent reads normalized service features from the service workspace and standard OpenAI environment variables"
+    "agent reads normalized service features from the service workspace and standard OpenAI environment variables",
+    "5ccb8bc one-sentence prompt guardrails, report format, and curated exercise videos are adapted by the service contract"
   ],
   "entrypoints": {
     "pose": "scripts/hpe/hpe.py",
@@ -17,7 +19,12 @@
     "scripts/hpe/hpe.py",
     "scripts/hpe/utils.py",
     "scripts/features/feature_extract.py",
-    "scripts/features/utils.py"
+    "scripts/features/utils.py",
+    "scripts/Agent/Running_coach.5ccb8bc.upstream.py",
+    "scripts/Agent/prompts.5ccb8bc.upstream.py",
+    "scripts/Agent/report_format.5ccb8bc.upstream.py",
+    "scripts/Agent/exercise_video_tool.5ccb8bc.upstream.py",
+    "scripts/Agent/exercise_videos.5ccb8bc.upstream.json"
   ],
   "input": {
     "video_extensions": [".mp4", ".mov"],

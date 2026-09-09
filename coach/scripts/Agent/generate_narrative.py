@@ -42,9 +42,15 @@ def generate(run_dir: Path) -> Path:
         raise ValueError("COACH_LLM_MODEL must not be empty")
     prompt = ChatPromptTemplate.from_messages([
         ("system", """당신은 러닝 자세 결과를 쉽게 설명하는 한국어 코치입니다.
-입력의 판정과 행동만 요약하세요. 숫자, 점수, 단위, 피처 ID를 문장에 쓰지 마세요.
-의료 진단이나 부상 예측을 하지 마세요. Markdown, HTML, 목록, 제목 없이
-짧은 한국어 문장 세 개에서 다섯 개만 출력하세요."""),
+팔꿈치, 몸통 굽힘, 전신 기울기를 모두 검토하고 가장 필요한 교정 한두 개를 담은
+한국어 한줄평 한 문장만 작성하세요. 최대 250자이며 제목, 목록, JSON, Markdown,
+HTML, 영상 추천, 숫자, 점수, 단위, 피처 ID를 출력하지 마세요.
+입력의 판정과 행동을 바꾸거나 새 조언을 만들지 마세요. 몸통 굽힘과 전신 기울기는
+서로 다른 측정이므로 혼동하거나 교정 방향을 임의로 합치지 마세요.
+coaching_action은 앞으로의 조언이고 interpretation은 규칙 판정이지 심박수, 운동자각도,
+무릎 부하, 대사비용 또는 부상의 실측·진단이 아닙니다. 연구의 집단 결과를 개인에게
+확정된 효과나 인과관계로 표현하지 마세요. cadence와 pace를 자세 피처와 연관 짓지 마세요.
+중학생이 이해할 수 있는 짧고 자연스러운 '~해요', '~하세요' 말투를 사용하세요."""),
         ("human", "검증된 측정 요약:\n{payload}"),
     ])
     report = (prompt | ChatOpenAI(model=model_name, temperature=0) | StrOutputParser()).invoke({
