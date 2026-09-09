@@ -125,6 +125,12 @@ export interface ValidatedNarrative {
   summary: string | null;
   priorityActions: CoachingAction[];
   maintainActions: CoachingAction[];
+  exerciseVideos: Array<{
+    id: string;
+    title: string;
+    url: string;
+    featureId: string | null;
+  }>;
   disclaimer: string;
   validatorVersion: string;
 }

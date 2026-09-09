@@ -12,7 +12,7 @@ class StructuredNarrativeTests(unittest.TestCase):
             run_dir = Path(directory)
             output_dir = run_dir / "outputs"
             output_dir.mkdir()
-            summary = "팔 동작은 안정적입니다. 몸통 자세는 조정이 필요합니다. 다음 러닝에서 자연스럽게 연습해 보세요."
+            summary = "팔 동작은 유지하고 몸통 자세는 천천히 조정하세요."
             (output_dir / "running_report.md").write_text(summary, encoding="utf-8")
             (output_dir / "feature_results.service.json").write_text(
                 json.dumps({
@@ -33,25 +33,42 @@ class StructuredNarrativeTests(unittest.TestCase):
                 }),
                 encoding="utf-8",
             )
+            (output_dir / "feature_results.json").write_text(
+                json.dumps({
+                    "Elbow angle": {
+                        "value": [80, 90],
+                        "range": {"section": "70°-90° 진동 구간"},
+                        "instruction": "좋아요. 현재 동작을 유지하세요.",
+                    },
+                    "Trunk flexion angle": {
+                        "value": 8,
+                        "instruction": "몸통을 조금 기울이세요.",
+                    },
+                }),
+                encoding="utf-8",
+            )
 
             result = build_structured_narrative(run_dir)
 
             self.assertEqual(result["overall_summary"], summary)
             self.assertEqual(result["priority_actions"][0]["feature_id"], "feature3")
             self.assertEqual(result["maintain_actions"][0]["feature_id"], "feature2")
-            self.assertEqual(result["validator_version"], "service-narrative-2")
+            self.assertEqual(result["validator_version"], "service-narrative-3")
+            self.assertTrue(result["exercise_videos"])
 
     def test_rejects_numbers_markup_and_medical_claims(self) -> None:
         for summary in (
-            "점수는 90점입니다. 자세가 좋습니다. 유지하세요.",
-            "```코드```입니다. 자세가 좋습니다. 유지하세요.",
-            "부상이 발생합니다. 자세를 바꾸세요. 조심하세요.",
+            "점수는 90점이므로 자세를 유지하세요.",
+            "```코드``` 자세를 유지하세요.",
+            "부상이 발생하므로 자세를 바꾸세요.",
+            "팔 동작은 안정적입니다. 몸통을 조정하세요.",
         ):
             with self.subTest(summary=summary), tempfile.TemporaryDirectory() as directory:
                 output_dir = Path(directory) / "outputs"
                 output_dir.mkdir()
                 (output_dir / "running_report.md").write_text(summary, encoding="utf-8")
                 (output_dir / "feature_results.service.json").write_text("{}", encoding="utf-8")
+                (output_dir / "feature_results.json").write_text("{}", encoding="utf-8")
                 with self.assertRaises(ValueError):
                     build_structured_narrative(Path(directory))
 

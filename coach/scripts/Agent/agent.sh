@@ -34,12 +34,13 @@ run_dir, code = Path(sys.argv[1]), sys.argv[2]
 payload = {
     "status": "unavailable",
     "model": None,
-    "prompt_version": "sehyeon-narrative-v2",
+    "prompt_version": "sehyeon-5ccb8bc-narrative-v3",
     "overall_summary": None,
     "priority_actions": [],
     "maintain_actions": [],
+    "exercise_videos": [],
     "disclaimer": "러닝 동작 참고용이며 의료 진단이나 부상 예측이 아닙니다.",
-    "validator_version": "service-narrative-2",
+    "validator_version": "service-narrative-3",
     "error_code": code,
 }
 (run_dir / "outputs" / "running_report.json").write_text(

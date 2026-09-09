@@ -140,6 +140,11 @@ class MobileContractTests(TestCase):
                 "status": "success",
                 "priority_actions": [{"feature_id": "feature1", "text": "상체를 세워 보세요."}],
                 "maintain_actions": [],
+                "exercise_videos": [{
+                    "id": "trunk_form", "title": "몸통 자세 점검",
+                    "url": "https://www.youtube.com/watch?v=gYajoeR_UF8",
+                    "feature": "Trunk flexion angle",
+                }],
             },
         }
 
@@ -157,6 +162,7 @@ class MobileContractTests(TestCase):
         self.assertEqual(result["features"][0]["denominatorPolicy"], "all_frames")
         self.assertEqual(result["evidence"][0]["evidenceId"], "paper-1")
         self.assertEqual(result["narrative"]["priorityActions"][0]["featureId"], "feature1")
+        self.assertEqual(result["narrative"]["exerciseVideos"][0]["id"], "trunk_form")
         home_signal = _mobile_signals(result["features"])[0]
         self.assertEqual(home_signal["featureId"], "feature1")
         self.assertEqual(home_signal["value"], result["features"][0]["representativeValue"])

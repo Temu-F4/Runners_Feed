@@ -244,6 +244,9 @@ def _narrative(output_dir: Path) -> dict[str, Any]:
             "maintain_actions": structured.get(
                 "maintain_actions", structured.get("maintainActions", [])
             ),
+            "exercise_videos": structured.get(
+                "exercise_videos", structured.get("exerciseVideos", [])
+            ),
             "disclaimer": structured.get(
                 "disclaimer",
                 "이 내용은 러닝 동작 참고용이며 의료 진단이나 부상 예측이 아닙니다.",

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Linking, Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 
@@ -138,7 +138,7 @@ export default function ResultScreen() {
         </View> : null}
 
         {result.runtimeMetadata ? <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 8, padding: 11 }}><Text style={styles.caption}>리포트 생성 정보</Text><Text style={[styles.caption, { fontFamily: fonts.mono, fontSize: 8, marginTop: 7 }]}>prompt {result.runtimeMetadata.promptVersion ?? "—"} · model {result.runtimeMetadata.model ?? result.narrative.model ?? "—"}{`\n`}validator {result.runtimeMetadata.validatorVersion ?? result.narrative.validatorVersion} · tokens {result.runtimeMetadata.inputTokens ?? "—"}/{result.runtimeMetadata.outputTokens ?? "—"}</Text></View> : null}
-        <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderTopColor: colors.lime, borderTopWidth: 2, borderWidth: 1, marginTop: 14, padding: 14 }}><SectionHeading label="AI 러닝 코치 종합 리포트" meta={formatDate(result.completedAt)} /><Text style={{ color: colors.primary, fontSize: 17, fontWeight: "900", lineHeight: 23, marginVertical: 10 }}>{result.narrative.summary || "AI 코칭 설명이 준비되지 않았습니다."}</Text>{actions.length ? actions.map((action, index) => <ActionRow action={action} index={index} key={`${action.featureId}-${index}`} />) : <Text style={styles.caption}>측정 그래프와 점수는 정상적으로 확인할 수 있습니다.</Text>}<Text style={[styles.caption, { fontSize: 9, marginTop: 10 }]}>{result.narrative.disclaimer}</Text></View>
+        <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderTopColor: colors.lime, borderTopWidth: 2, borderWidth: 1, marginTop: 14, padding: 14 }}><SectionHeading label="AI 러닝 코치 종합 리포트" meta={formatDate(result.completedAt)} /><Text style={{ color: colors.primary, fontSize: 17, fontWeight: "900", lineHeight: 23, marginVertical: 10 }}>{result.narrative.summary || "AI 코칭 설명이 준비되지 않았습니다."}</Text>{actions.length ? actions.map((action, index) => <ActionRow action={action} index={index} key={`${action.featureId}-${index}`} />) : <Text style={styles.caption}>측정 그래프와 점수는 정상적으로 확인할 수 있습니다.</Text>}{result.narrative.exerciseVideos?.length ? <View style={{ borderTopColor: colors.border, borderTopWidth: 1, marginTop: 10, paddingTop: 8 }}><Text style={[styles.caption, { marginBottom: 4 }]}>추천 자세 연습 영상</Text>{result.narrative.exerciseVideos.map((video) => <Pressable accessibilityRole="link" key={video.id} onPress={() => void Linking.openURL(video.url)} style={{ justifyContent: "center", minHeight: 40 }}><Text style={{ color: colors.lime, fontSize: 10, fontWeight: "800" }}>{video.title} →</Text></Pressable>)}</View> : null}<Text style={[styles.caption, { fontSize: 9, marginTop: 10 }]}>{result.narrative.disclaimer}</Text></View>
         <FullLink label="전체 기록과 과거 스켈레톤 보기" onPress={() => router.push("/history")} style={{ marginTop: 8 }} />
       </> : null}
     </Screen>
