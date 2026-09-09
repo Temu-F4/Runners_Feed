@@ -42,6 +42,7 @@ function verdictLabel(feature: FeatureAnalysis) {
   if (feature.verdict === "maintain") return "좋은 구간";
   if (feature.verdict === "improve") return "조정 필요";
   if (feature.verdict === "excluded") return "분석 제외";
+  if (feature.verdict === "unavailable") return "측정 불가";
   return "검토 중";
 }
 
@@ -64,7 +65,7 @@ function VerticalObservationCell({ feature }: { feature: FeatureAnalysis | null 
     : 50;
   return <View style={{ borderLeftColor: colors.border, borderLeftWidth: 1, flex: 1.45, minHeight: 92, padding: 10 }}>
     <Text style={{ color: colors.muted, fontSize: 8 }}>수직 진폭</Text>
-    <Text style={{ color: inRange ? colors.lime : value === null ? colors.muted : colors.amber, fontSize: 8, fontWeight: "800", marginTop: 5 }}>{value === null ? "측정 대기" : inRange ? "관찰 범위 안" : "관찰 범위 밖"}</Text>
+    <Text style={{ color: inRange ? colors.lime : value === null ? colors.muted : colors.amber, fontSize: 8, fontWeight: "800", marginTop: 5 }}>{value === null ? "측정 불가" : inRange ? "관찰 범위 안" : "관찰 범위 밖"}</Text>
     <View style={{ backgroundColor: colors.surfaceRaised, height: 5, marginTop: 9, position: "relative" }}><View style={{ backgroundColor: "rgba(201,255,56,0.28)", height: 5, left: 0, position: "absolute", right: 0 }} />{value !== null && range ? <View style={{ backgroundColor: inRange ? colors.lime : colors.amber, borderRadius: 4, height: 9, left: `${position}%`, marginLeft: -3, marginTop: -2, position: "absolute", width: 6 }} /> : null}</View>
     <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 6 }}>{range ? range.min.toFixed(3) : "0.028"}</Text><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 7, fontWeight: "800" }}>{value === null ? "—" : value.toFixed(3)}</Text><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 6 }}>{range ? range.max.toFixed(3) : "0.061"}</Text></View>
   </View>;

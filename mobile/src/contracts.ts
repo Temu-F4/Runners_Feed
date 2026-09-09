@@ -15,7 +15,7 @@ export type JobStage =
   | "result";
 
 export type ConfidenceLevel = "high" | "medium" | "low" | "excluded";
-export type FeatureVerdict = "improve" | "maintain" | "review" | "excluded";
+export type FeatureVerdict = "improve" | "maintain" | "review" | "excluded" | "unavailable";
 
 export interface ReferenceRange {
   kind: "recommended" | "reference";
