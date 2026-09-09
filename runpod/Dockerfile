@@ -1,4 +1,13 @@
 FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
+
+ARG BUILD_CREATED=unknown
+ARG BUILD_REVISION=unknown
+ARG BUILD_SOURCE=https://github.com/Temu-F4/Runners_Feed
+
+LABEL org.opencontainers.image.created="${BUILD_CREATED}" \
+      org.opencontainers.image.revision="${BUILD_REVISION}" \
+      org.opencontainers.image.source="${BUILD_SOURCE}"
+
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 RUN python3 -m venv /opt/venv

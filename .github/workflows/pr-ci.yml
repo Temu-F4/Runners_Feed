@@ -50,6 +50,39 @@ jobs:
       - name: Run deterministic worker unit tests
         run: python -m unittest discover -s worker -p 'test_*.py'
 
+  runpod-tests:
+    name: RunPod server tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install RunPod API test dependencies
+        run: >-
+          python -m pip install
+          'fastapi==0.115.12'
+          'httpx==0.28.1'
+      - name: Run RunPod server unit tests
+        env:
+          PYTHONPATH: .
+        run: python -m unittest discover -s runpod -p 'test_*.py'
+
+  runpod-image-build:
+    name: RunPod image build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build RunPod image
+        run: >-
+          docker build
+          --file runpod/Dockerfile
+          --tag runners-feed-runpod:ci
+          .
+
   model-quality-gate:
     name: Model contract and quality gate
     runs-on: ubuntu-latest
@@ -70,7 +103,8 @@ jobs:
             coach/model_plugins/sehyeon-e2fe43e
           python -m compileall -q \
             coach/model_plugins/sehyeon-e2fe43e \
-            coach/scripts/model_contract
+            coach/scripts/model_contract \
+            runpod
 
   mobile-typecheck:
     name: Mobile Expo typecheck

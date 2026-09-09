@@ -6,7 +6,7 @@
 
 ## 실행
 
-저장소 루트에서 `docker build -f runpod/Dockerfile -t runners-feed-runpod:local .`로 빌드한다. 현재 Docker 이미지는 실제 GPU에서 빌드·실행 검증하기 전의 후보다.
+저장소 루트에서 `docker build -f runpod/Dockerfile -t runners-feed-runpod:local .`로 빌드한다. GitHub release workflow는 `ghcr.io/temu-f4/runners-feed-runpod:sha-<commit>` immutable image를 별도로 publish한다. 이 이미지는 RunPod Persistent Pod의 이미지로 지정한다.
 
 Pod에는 GPU 한 개와 HTTP 8000 포트를 지정한다. GPU는 CUDA 및 NVENC를 지원해야 한다. `/workspace/runpod-state`를 영속 볼륨에 두고 `/models`에 manifest가 지정한 두 ONNX 파일을 설치한다. 가중치는 시작할 때 SHA-256으로 검증한다.
 
@@ -27,6 +27,6 @@ Pod에는 GPU 한 개와 HTTP 8000 포트를 지정한다. GPU는 CUDA 및 NVENC
 
 ## 검증 및 현재 한계
 
-`python -m unittest runpod.test_state`로 동시 재전달·충돌·재시작·완료 재조회 정책을 검증한다. CUDA/가중치/OCI 서명 URL을 사용하는 실제 시험은 별도다. 실제 영상의 POST→GET complete→manifest 검사→OCI 후처리→모바일 결과, 진행 중 및 완료 후 같은 attempt 재전달을 모두 확인해야 한다.
+`python -m unittest discover -s runpod -p 'test_*.py'`로 인증, 동시 재전달·충돌·재시작·완료 재조회 정책을 검증한다. CI의 RunPod image build는 이미지 구성만 검증하며 CUDA/가중치/OCI 서명 URL을 사용하는 실제 시험은 별도다. 실제 영상의 POST→GET complete→manifest 검사→OCI 후처리→모바일 결과, 진행 중 및 완료 후 같은 attempt 재전달을 모두 확인해야 한다.
 
 서버 종료가 추론 완료와 겹치거나 manifest 게시 후 상태 저장 전에 중단되면 failed로 보수적으로 처리한다. 이 경우 산출물이 존재할 수 있으나 같은 attempt를 재추론하지 않는다. 디스크 보관 용량·작업 보관 기간은 운영 전 확정해야 한다. GPU 실측, 이미지 빌드, OCI·모바일 E2E 및 모델 품질 승인은 아직 완료되지 않았다.
