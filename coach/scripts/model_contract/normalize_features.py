@@ -143,10 +143,15 @@ def normalize(raw: dict[str, Any], *, fps: float | None = None, source_frame_cou
         if not isinstance(feature, dict):
             raise ValueError(f"raw feature is missing or invalid: {raw_name}")
         feature_id = definition["id"]
+        representative_value = (
+            _finite(feature.get("value"))
+            if feature_id == "feature1"
+            else _value_at(feature, definition["value_path"], raw_name)
+        )
         item = {
-            "value": _value_at(feature, definition["value_path"], raw_name),
+            "value": representative_value,
             "unit": definition["unit"],
-            "representative_value": _value_at(feature, definition["value_path"], raw_name),
+            "representative_value": representative_value,
             "aggregation": definition["aggregation"], "measurement_source": "2d_pose",
             "source_feature": raw_name, "verdict": _verdict(feature),
             "confidence_level": "high", "confidence_pct": None,
@@ -161,7 +166,12 @@ def normalize(raw: dict[str, Any], *, fps: float | None = None, source_frame_cou
             item["reference_range"] = {"kind": "reference", "min": reference[0], "max": reference[1], "unit": definition["unit"], "criterion_version": CRITERION_VERSION, "evidence_ids": []}
         if feature_id == "feature1":
             low, high = definition["reference_range"]
-            item["verdict"] = "maintain" if low <= item["representative_value"] <= high else "improve"
+            item["verdict"] = (
+                "unavailable"
+                if item["representative_value"] is None
+                else "maintain" if low <= item["representative_value"] <= high
+                else "improve"
+            )
             item["research_reference"] = definition["research_reference"]
         item["series"] = _elbow_series(feature.get("value"), fps, feature.get("range", {}).get("frame_indices") if isinstance(feature.get("range"), dict) else None) if feature_id == "feature2" else list(pose_series.get(feature_id, []))
         policy = _denominator_policy(definition, denominator_policy)

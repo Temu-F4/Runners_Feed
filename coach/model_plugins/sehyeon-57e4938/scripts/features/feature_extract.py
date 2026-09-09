@@ -74,6 +74,22 @@ def cadence_pace(ps: PoseSequence):
 def feature1(ps: PoseSequence):
     strides = ps.gct()
 
+    # A video can contain a valid tracked runner without a ground-contact
+    # phase that satisfies the model's stricter GCT detector.  In that case
+    # the feature is not measurable; do not invent a whole-video substitute
+    # or divide by zero and discard the other feature results.
+    if not strides:
+        return {
+            "value": None,
+            "range": {
+                "section": "측정 불가",
+                "criterion": "ground-contact phase required",
+            },
+            "instruction": "접지 구간을 확인할 수 있는 측면 영상을 사용해 주세요.",
+            "outcome": "골반 진동 진폭을 계산할 접지 구간이 검출되지 않았습니다.",
+            "description": "접지 구간이 검출되지 않아 골반 진동 진폭을 계산하지 않았습니다.",
+        }
+
     # 각 스트라이드별로 골반의 수직 진동 평균
     res = 0
     for i in range(len(strides)):

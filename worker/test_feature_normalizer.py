@@ -165,6 +165,22 @@ class FeatureNormalizerTests(unittest.TestCase):
         self.assertEqual(outside["verdict"], "improve")
         self.assertIsNone(inside["score"])
 
+    def test_feature1_without_ground_contact_is_unavailable_not_fatal(self):
+        raw = self._raw()
+        raw["Amplitude of pelvis oscillation"] = {
+            "value": None,
+            "range": {"section": "측정 불가"},
+            "instruction": "접지 구간을 확인할 수 있는 측면 영상을 사용해 주세요.",
+            "outcome": "접지 구간이 검출되지 않았습니다.",
+        }
+
+        result = normalize(raw, source_frame_count=10)
+
+        self.assertIsNone(result["feature1"]["value"])
+        self.assertIsNone(result["feature1"]["representative_value"])
+        self.assertEqual(result["feature1"]["verdict"], "unavailable")
+        self.assertIsNone(result["feature1"]["score"])
+
     def test_confidence_is_explicitly_assumed_without_percentage(self):
         item = normalize(self._raw())["feature2"]
         self.assertEqual(item["confidence_level"], "high")
