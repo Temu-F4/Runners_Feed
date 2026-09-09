@@ -13,11 +13,14 @@ test_root="$(mktemp -d)"
 trap 'rm -rf "${test_root}"' EXIT
 
 mkdir -p "${test_root}/bin" "${test_root}/state"
-printf 'API_KEY=test\n' >"${test_root}/prod.env"
+printf 'API_KEY=test\nCOACH_MODEL_ID=sehyeon-e2fe43e\n' >"${test_root}/prod.env"
 
 cat >"${test_root}/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 printf '%s|%s\n' "${IMAGE_TAG:-unset}" "$*" >>"${MOCK_LOG}"
+if [[ "$*" == *"compose"*"config --format json"* ]]; then
+  printf '{"services":{"coach-worker":{"environment":{"COACH_MODEL_ID":"sehyeon-e2fe43e"}}}}\n'
+fi
 exit 0
 EOF
 
@@ -41,7 +44,7 @@ EOF
 
 cat >"${test_root}/verify_model_candidate.sh" <<'EOF'
 #!/usr/bin/env bash
-printf 'canary|%s\n' "${IMAGE_TAG:-unset}" >>"${MOCK_LOG}"
+printf 'canary|%s|%s\n' "${IMAGE_TAG:-unset}" "${COACH_MODEL_ID:-unset}" >>"${MOCK_LOG}"
 exit 0
 EOF
 
@@ -70,7 +73,7 @@ printf 'IMAGE_TAG=%s\n' "${PREVIOUS_TAG}" >"${test_root}/state/last-successful.e
 run_deploy "${SUCCESS_TAG}"
 grep -qx "TARGET_TAG=${SUCCESS_TAG}" "${test_root}/state/model-candidate.env"
 grep -qx "PREVIOUS_TAG=${PREVIOUS_TAG}" "${test_root}/state/model-candidate.env"
-grep -qx "MODEL_ID=sehyeon-57e4938" "${test_root}/state/model-candidate.env"
+grep -qx "MODEL_ID=sehyeon-e2fe43e" "${test_root}/state/model-candidate.env"
 rm "${test_root}/state/model-candidate.env"
 
 printf 'IMAGE_TAG=%s\n' "${PREVIOUS_TAG}" >"${test_root}/state/last-successful.env"
@@ -87,8 +90,8 @@ grep -q "${FAILED_TAG}|compose" "${test_root}/docker.log"
 grep -q "${PREVIOUS_TAG}|compose" "${test_root}/docker.log"
 grep -q "verify|${FAILED_TAG}|0" "${test_root}/docker.log"
 grep -q "verify|${PREVIOUS_TAG}|1" "${test_root}/docker.log"
-grep -q "canary|${FAILED_TAG}" "${test_root}/docker.log"
-if grep -q "canary|${PREVIOUS_TAG}" "${test_root}/docker.log"; then
+grep -q "canary|${FAILED_TAG}|sehyeon-e2fe43e" "${test_root}/docker.log"
+if grep -q "canary|${PREVIOUS_TAG}|" "${test_root}/docker.log"; then
   echo "Rollback must not be blocked by the candidate canary" >&2
   exit 1
 fi

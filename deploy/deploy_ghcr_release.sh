@@ -58,6 +58,28 @@ compose() {
     "$@"
 }
 
+resolve_active_model_id() {
+  compose config --format json | python3 -c '
+import json, sys
+config = json.load(sys.stdin)
+value = config.get("services", {}).get("coach-worker", {}).get("environment", {}).get("COACH_MODEL_ID")
+if not isinstance(value, str) or not value:
+    raise SystemExit("coach-worker COACH_MODEL_ID is missing from Compose config")
+print(value)
+'
+}
+
+# The candidate canary and the deployed worker must use the exact same model.
+# Resolve through Compose so shell variables and the production env file follow
+# the same precedence rules as `compose up`.
+COACH_MODEL_ID="$(resolve_active_model_id)"
+export COACH_MODEL_ID
+if [[ ! "${COACH_MODEL_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+  echo "Invalid resolved COACH_MODEL_ID: ${COACH_MODEL_ID}" >&2
+  exit 2
+fi
+echo "Deploying model contract: ${COACH_MODEL_ID}"
+
 verify_release() {
   local target_tag="$1"
   local allow_legacy_quality="${2:-0}"
