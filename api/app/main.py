@@ -799,6 +799,9 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
     score = _finite_number(raw.get("score"))
     score_method = raw.get("score_method", raw.get("scoreMethod"))
     confidence_assumed = raw.get("confidence_assumed", raw.get("confidenceAssumed")) is True
+    visualization = raw.get("visualization")
+    if not isinstance(visualization, dict):
+        visualization = None
     return {
         "featureId": feature_id,
         "label": metric.get("label") if isinstance(metric.get("label"), str) else feature_id,
@@ -823,6 +826,7 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
         "sourceFrameCount": raw.get("source_frame_count", raw.get("sourceFrameCount")),
         "evaluationCoveragePct": _finite_number(raw.get("evaluation_coverage_pct", raw.get("evaluationCoveragePct"))),
         "confidenceAssumed": confidence_assumed,
+        "visualization": visualization,
     }
 
 

@@ -197,6 +197,7 @@ def _metrics(features: dict) -> list[dict[str, Any]]:
             "confidence_assumed",
             "limitation",
             "series",
+            "visualization",
         ):
             if key in feature:
                 metric[key] = feature[key]

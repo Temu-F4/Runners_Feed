@@ -53,6 +53,9 @@ class FeatureNormalizerTests(unittest.TestCase):
         self.assertEqual(result["feature2"]["reference_range"]["min"], 70.0)
         self.assertEqual(result["feature2"]["score"], 100.0)
         self.assertEqual(result["feature2"]["denominator_policy"], "evaluated_frames")
+        self.assertEqual(result["feature1"]["visualization"]["kind"], "range_bar")
+        self.assertEqual(result["feature2"]["visualization"]["x_axis"], "measurable_frame")
+        self.assertEqual(result["feature3"]["visualization"]["x_axis"], "video_frame")
         self.assertEqual(result["feature2"]["series"][1], {
             "frame_index": 1,
             "timestamp_ms": 50,

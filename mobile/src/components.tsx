@@ -433,7 +433,7 @@ export function FeatureFrameChart({ feature }: { feature: FeatureAnalysis }) {
   const lastPoint = valid[valid.length - 1];
   const bandTop = range ? yPosition(range.max, domain.min, domain.max, top, plotHeight) : null;
   const bandBottom = range ? yPosition(range.min, domain.min, domain.max, top, plotHeight) : null;
-  const evaluatedAxis = feature.denominatorPolicy === "evaluated_frames";
+  const evaluatedAxis = feature.visualization?.x_axis === "measurable_frame";
   const axisStart = evaluatedAxis ? 1 : (points[0]?.frameIndex ?? 1);
   const axisEnd = evaluatedAxis ? points.length : (points[points.length - 1]?.frameIndex ?? points.length);
   return (

@@ -11,10 +11,10 @@ from typing import Any
 CRITERION_VERSION = "sehyeon-57e4938"
 CONFIDENCE_LIMITATION = "초기 버전에서는 유효한 측정 결과를 신뢰 가능한 것으로 가정합니다."
 FEATURES = {
-    "Amplitude of pelvis oscillation": {"id": "feature1", "unit": "ratio", "value_path": "value", "aggregation": "mean across detected ground-contact phases", "reference_range": (0.028, 0.061), "research_reference": {"mean": 0.046, "standard_deviation": 0.007, "observed_min": 0.028, "observed_max": 0.061}},
-    "Elbow angle": {"id": "feature2", "unit": "degree", "value_path": "range.mean", "aggregation": "mean across valid frames", "reference_range": (70.0, 110.0), "upper_inclusive": True, "denominator_policy": "evaluated_frames"},
-    "Trunk flexion angle": {"id": "feature3", "unit": "degree", "value_path": "value", "aggregation": "model GCT aggregate; score across all video frames", "reference_range": (10.9, 18.9), "upper_inclusive": False, "denominator_policy": "all_frames"},
-    "Postural lean angle": {"id": "feature4", "unit": "degree", "value_path": "value", "aggregation": "model GCT aggregate; score across all video frames", "reference_range": (1.7, 4.3), "upper_inclusive": False, "denominator_policy": "all_frames"},
+    "Amplitude of pelvis oscillation": {"id": "feature1", "unit": "ratio", "value_path": "value", "aggregation": "mean across detected ground-contact phases", "reference_range": (0.028, 0.061), "research_reference": {"mean": 0.046, "standard_deviation": 0.007, "observed_min": 0.028, "observed_max": 0.061}, "visualization": {"kind": "range_bar", "x_axis": "aggregate_ratio", "placement": "summary_metrics"}},
+    "Elbow angle": {"id": "feature2", "unit": "degree", "value_path": "range.mean", "aggregation": "mean across valid frames", "reference_range": (70.0, 110.0), "upper_inclusive": True, "denominator_policy": "evaluated_frames", "visualization": {"kind": "line", "x_axis": "measurable_frame", "placement": "feature_grid"}},
+    "Trunk flexion angle": {"id": "feature3", "unit": "degree", "value_path": "value", "aggregation": "model GCT aggregate; score across all video frames", "reference_range": (10.9, 18.9), "upper_inclusive": False, "denominator_policy": "all_frames", "visualization": {"kind": "line", "x_axis": "video_frame", "placement": "feature_grid"}},
+    "Postural lean angle": {"id": "feature4", "unit": "degree", "value_path": "value", "aggregation": "model GCT aggregate; score across all video frames", "reference_range": (1.7, 4.3), "upper_inclusive": False, "denominator_policy": "all_frames", "visualization": {"kind": "line", "x_axis": "video_frame", "placement": "feature_grid"}},
 }
 
 def _finite(value: Any) -> float | None:
@@ -151,6 +151,7 @@ def normalize(raw: dict[str, Any], *, fps: float | None = None, source_frame_cou
             "source_feature": raw_name, "verdict": _verdict(feature),
             "confidence_level": "high", "confidence_pct": None,
             "confidence_assumed": True, "limitation": CONFIDENCE_LIMITATION,
+            "visualization": definition["visualization"],
         }
         for source_key, target_key in (("range", "source_range"), ("boundary", "source_boundary"), ("instruction", "coaching_action"), ("outcome", "interpretation"), ("description", "description")):
             if source_key in feature:
