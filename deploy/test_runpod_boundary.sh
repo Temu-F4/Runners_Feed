@@ -38,6 +38,7 @@ grep -q 'coach.dispatch_video_analysis' api/app/main.py
 grep -q 'normalize_features.py' worker/run_coach_postprocess.sh
 grep -q '/app/start_coach_worker.sh' compose.coach.yaml
 grep -q -- '--entrypoint /app/run_coach_postprocess.sh' deploy/verify_model_candidate.sh
+grep -q -- '--profile manual-coach' deploy/verify_model_candidate.sh
 if grep -q 'input.mp4' deploy/verify_model_candidate.sh; then
   echo "Production model canary must consume approved RunPod artifacts, not run local HPE" >&2
   exit 1

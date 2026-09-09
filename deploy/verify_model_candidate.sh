@@ -57,6 +57,7 @@ compose() {
     -f "${PROJECT_DIR}/compose.yaml" \
     -f "${PROJECT_DIR}/compose.coach.yaml" \
     --profile coach \
+    --profile manual-coach \
     "$@"
 }
 
