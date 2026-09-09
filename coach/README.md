@@ -25,9 +25,10 @@ RunPod Pod가 실행 중일 때만 HTTP Proxy API를 직접 사용할 수 있습
 Celery countdown 작업으로 상태를 polling합니다. 계약 상세는
 `docs/RUNPOD_SEHYEON_E2FE43E_HANDOFF.md`를 참고합니다.
 
-서비스 피처 점수의 기본 분모는 `FEATURE_SCORE_DENOMINATOR=all_frames`이며 모델 담당자
-확인 후 `evaluated_frames`로 전환할 수 있습니다. confidence는 계산 확률이 아니라 초기
-가정값이며 `confidence_assumed=true`, `confidence_pct=null`로 전달됩니다.
+서비스 피처 점수는 피처별로 고정합니다. `feature2`는 좋은 프레임/측정 가능 프레임,
+`feature3`과 `feature4`는 좋은 프레임/영상 전체 프레임입니다. `feature1`은 논문 표본의
+관찰 범위만 표시하고 종합 자세 점수에서는 제외합니다. confidence는 계산 확률이 아니라
+초기 가정값이며 `confidence_assumed=true`, `confidence_pct=null`로 전달됩니다.
 
 ## 수동 실행
 

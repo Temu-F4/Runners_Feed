@@ -4,29 +4,19 @@ export function featureScore(feature: FeatureAnalysis): number | null {
   if (typeof feature.score === "number" && Number.isFinite(feature.score)) {
     return Math.max(0, Math.min(100, Math.round(feature.score)));
   }
-  const range = feature.referenceRange;
-  if (!range || range.max <= range.min) return null;
-  const measured = feature.series.filter(
-    (point) => point.value !== null && Number.isFinite(point.value),
-  );
-  if (!measured.length) return null;
-  const passing = measured.filter(
-    (point) => point.value! >= range.min && point.value! <= range.max,
-  ).length;
-  return Math.round((passing / measured.length) * 100);
+  // The backend owns the denominator policy. Recomputing here would silently
+  // turn feature3/4 into evaluated-frame scores when they require all frames.
+  return null;
 }
 
 export function featureScoreLabel(feature: FeatureAnalysis): string {
-  if (feature.scoreMethod) return feature.scoreMethod;
-  const score = featureScore(feature);
-  if (score === null || !feature.referenceRange) return feature.aggregation || "집계값";
-  const measured = feature.series.filter(
-    (point) => point.value !== null && Number.isFinite(point.value),
-  );
-  const passing = measured.filter(
-    (point) => point.value! >= feature.referenceRange!.min && point.value! <= feature.referenceRange!.max,
-  ).length;
-  return `좋은 구간 ${passing} / 전체 ${measured.length} 프레임`;
+  if (typeof feature.goodFrameCount !== "number") return feature.scoreMethod || feature.aggregation || "집계값";
+  const denominator = feature.denominatorPolicy === "evaluated_frames"
+    ? feature.evaluatedFrameCount
+    : feature.sourceFrameCount;
+  if (typeof denominator !== "number") return feature.scoreMethod || feature.aggregation || "집계값";
+  const label = feature.denominatorPolicy === "evaluated_frames" ? "측정 가능" : "영상 전체";
+  return `좋은 구간 ${feature.goodFrameCount} / ${label} ${denominator} 프레임`;
 }
 
 export function overallScore(result: AnalysisResult): number | null {

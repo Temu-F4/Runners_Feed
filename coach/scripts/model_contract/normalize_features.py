@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +12,9 @@ CRITERION_VERSION = "sehyeon-e2fe43e"
 CONFIDENCE_LIMITATION = "초기 버전에서는 유효한 측정 결과를 신뢰 가능한 것으로 가정합니다."
 FEATURES = {
     "Amplitude of pelvis oscillation": {"id": "feature1", "unit": "ratio", "value_path": "value", "aggregation": "mean across detected ground-contact phases", "reference_range": (0.028, 0.061), "research_reference": {"mean": 0.046, "standard_deviation": 0.007, "observed_min": 0.028, "observed_max": 0.061}},
-    "Elbow angle": {"id": "feature2", "unit": "degree", "value_path": "range.mean", "aggregation": "mean across valid frames", "reference_range": (70.0, 110.0), "upper_inclusive": True},
-    "Trunk flexion angle": {"id": "feature3", "unit": "degree", "value_path": "value", "aggregation": "mean across detected ground-contact phases", "reference_range": (10.9, 18.9), "upper_inclusive": False},
-    "Postural lean angle": {"id": "feature4", "unit": "degree", "value_path": "value", "aggregation": "mean across detected ground-contact phases", "reference_range": (1.7, 4.3), "upper_inclusive": False},
+    "Elbow angle": {"id": "feature2", "unit": "degree", "value_path": "range.mean", "aggregation": "mean across valid frames", "reference_range": (70.0, 110.0), "upper_inclusive": True, "denominator_policy": "evaluated_frames"},
+    "Trunk flexion angle": {"id": "feature3", "unit": "degree", "value_path": "value", "aggregation": "model GCT aggregate; score across all video frames", "reference_range": (10.9, 18.9), "upper_inclusive": False, "denominator_policy": "all_frames"},
+    "Postural lean angle": {"id": "feature4", "unit": "degree", "value_path": "value", "aggregation": "model GCT aggregate; score across all video frames", "reference_range": (1.7, 4.3), "upper_inclusive": False, "denominator_policy": "all_frames"},
 }
 
 def _finite(value: Any) -> float | None:
@@ -98,10 +97,10 @@ def _elbow_series(values: object, fps: float | None) -> list[dict[str, Any]]:
             points.append({"frame_index": frame_index, "timestamp_ms": round(frame_index / fps * 1000) if fps and fps > 0 else None, "value": number, "confidence_pct": None})
     return points
 
-def _denominator_policy(value: str | None = None) -> str:
-    policy = value or os.getenv("FEATURE_SCORE_DENOMINATOR", "all_frames")
+def _denominator_policy(definition: dict[str, Any], override: str | None = None) -> str:
+    policy = override or definition.get("denominator_policy", "all_frames")
     if policy not in {"all_frames", "evaluated_frames"}:
-        raise ValueError("FEATURE_SCORE_DENOMINATOR must be all_frames or evaluated_frames")
+        raise ValueError("denominator policy must be all_frames or evaluated_frames")
     return policy
 
 def _score_item(item: dict[str, Any], definition: dict[str, Any], source_count: int, policy: str) -> None:
@@ -133,7 +132,6 @@ def _score_item(item: dict[str, Any], definition: dict[str, Any], source_count: 
         item["representative_comparison"] = {"series_mean": round(series_mean, 6), "absolute_delta": round(delta, 6), "tolerance": 1.0, "matches": delta <= 1.0}
 
 def normalize(raw: dict[str, Any], *, fps: float | None = None, source_frame_count: int | None = None, pose_series: dict[str, list[dict[str, Any]]] | None = None, denominator_policy: str | None = None) -> dict[str, Any]:
-    policy = _denominator_policy(denominator_policy)
     explicit_source_count = isinstance(source_frame_count, int) and source_frame_count >= 0
     source_count = source_frame_count if explicit_source_count else 0
     pose_series = pose_series or {}
@@ -159,9 +157,11 @@ def normalize(raw: dict[str, Any], *, fps: float | None = None, source_frame_cou
         if reference:
             item["reference_range"] = {"kind": "reference", "min": reference[0], "max": reference[1], "unit": definition["unit"], "criterion_version": CRITERION_VERSION, "evidence_ids": []}
         if feature_id == "feature1":
-            item["verdict"] = "review"
+            low, high = definition["reference_range"]
+            item["verdict"] = "maintain" if low <= item["representative_value"] <= high else "improve"
             item["research_reference"] = definition["research_reference"]
         item["series"] = _elbow_series(feature.get("value"), fps) if feature_id == "feature2" else list(pose_series.get(feature_id, []))
+        policy = _denominator_policy(definition, denominator_policy)
         _score_item(item, definition, source_count if explicit_source_count else len(item["series"]), policy)
         normalized[feature_id] = item
     return normalized

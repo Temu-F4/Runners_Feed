@@ -44,6 +44,7 @@ class MobileContractTests(TestCase):
         self.assertIsNone(result["features"][0]["referenceRange"])
         self.assertEqual(result["features"][0]["confidenceLevel"], "excluded")
         self.assertEqual(result["narrative"]["status"], "unavailable")
+        self.assertEqual(result["runMetrics"]["pacePerKm"], None)
 
     @patch("app.main.get_job_stages")
     def test_mobile_failed_stage_matches_the_actual_failed_pipeline_stage(self, stages) -> None:
@@ -119,6 +120,24 @@ class MobileContractTests(TestCase):
         self.assertEqual(result["features"][0]["denominatorPolicy"], "all_frames")
         self.assertEqual(result["evidence"][0]["evidenceId"], "paper-1")
         self.assertEqual(result["narrative"]["priorityActions"][0]["featureId"], "feature1")
+
+    def test_mobile_result_maps_optional_run_metrics(self) -> None:
+        job = {
+            "job_id": uuid4(),
+            "created_at": "2026-09-07T00:00:00Z",
+            "completed_at": "2026-09-07T00:01:00Z",
+        }
+        report = {
+            "metrics": [],
+            "features": {},
+            "narrative": {"status": "disabled"},
+            "run_metrics": {"pace_per_km": "4:25", "cadence_spm": 181},
+        }
+
+        result = _mobile_result(job, report)
+
+        self.assertEqual(result["runMetrics"]["pacePerKm"], "4:25")
+        self.assertEqual(result["runMetrics"]["cadenceSpm"], 181)
 
     @patch("app.main.get_model_quality_summary")
     def test_quality_health_accepts_initial_sample_for_current_release(

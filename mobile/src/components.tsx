@@ -433,6 +433,9 @@ export function FeatureFrameChart({ feature }: { feature: FeatureAnalysis }) {
   const lastPoint = valid[valid.length - 1];
   const bandTop = range ? yPosition(range.max, domain.min, domain.max, top, plotHeight) : null;
   const bandBottom = range ? yPosition(range.min, domain.min, domain.max, top, plotHeight) : null;
+  const evaluatedAxis = feature.denominatorPolicy === "evaluated_frames";
+  const axisStart = evaluatedAxis ? 1 : (points[0]?.frameIndex ?? 1);
+  const axisEnd = evaluatedAxis ? points.length : (points[points.length - 1]?.frameIndex ?? points.length);
   return (
     <View style={{ gap: spacing.xs }}>
       <Svg accessibilityLabel={`${feature.label} 프레임별 측정 그래프`} height={height} role="img" viewBox={`0 0 ${width} ${height}`} width="100%">
@@ -443,10 +446,11 @@ export function FeatureFrameChart({ feature }: { feature: FeatureAnalysis }) {
         {lastPoint ? <Circle cx={left + plotWidth} cy={yPosition(lastPoint.value!, domain.min, domain.max, top, plotHeight)} fill={colors.lime} r="4" /> : null}
       </Svg>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <Text style={styles.caption}>F{String(points[0]?.frameIndex ?? 1).padStart(2, "0")}</Text>
-        <Text style={styles.caption}>{range ? `정상 ${formatValue(range.min, range.unit)} ~ ${formatValue(range.max, range.unit)}` : "정상 범위 미제공"}</Text>
-        <Text style={styles.caption}>F{String(points[points.length - 1]?.frameIndex ?? points.length).padStart(2, "0")}</Text>
+        <Text style={styles.caption}>{evaluatedAxis ? "M" : "F"}{String(axisStart).padStart(2, "0")}</Text>
+        <Text style={styles.caption}>{range ? `좋은 구간 ${formatValue(range.min, range.unit)} ~ ${formatValue(range.max, range.unit)}` : "좋은 구간 미제공"}</Text>
+        <Text style={styles.caption}>{evaluatedAxis ? "M" : "F"}{String(axisEnd).padStart(2, "0")}</Text>
       </View>
+      <Text style={[styles.caption, { fontSize: 9, textAlign: "center" }]}>{evaluatedAxis ? "M = 측정 가능한 팔꿈치 각도 순번" : "F = 원본 영상 프레임"}</Text>
     </View>
   );
 }

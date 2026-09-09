@@ -231,6 +231,9 @@ def build_report(run_dir: Path) -> dict[str, Any]:
         _load_json(output_dir / "feature_results.service.json")
     )
     video = details.get("video", {})
+    run_metrics = details.get("run_metrics")
+    if not isinstance(run_metrics, dict):
+        run_metrics = None
     scored = [
         feature.get("score") for feature_id, feature in features.items()
         if feature_id in {"feature2", "feature3", "feature4"}
@@ -253,6 +256,9 @@ def build_report(run_dir: Path) -> dict[str, Any]:
         "metrics": _metrics(features),
         "features": features,
         "posture_score": round(sum(scored) / len(scored), 2) if scored else None,
+        # These values are supplied by the analysis pipeline when available. The
+        # adapter intentionally does not invent pace or cadence from video length.
+        "run_metrics": run_metrics,
         "evidence": [],
         "narrative": _narrative(output_dir),
         "notice": (

@@ -50,7 +50,7 @@ The same attempt_id may be submitted again only when OCI was interrupted before 
 
 After validating the manifest and downloaded artifacts, OCI runs the source feature extractor and preserves its feature_results.json. The normalizer creates feature_results.service.json; the report and skeleton adapters consume service data while retaining the model raw result separately.
 
-Frame scoring stores source, evaluated, and good frame counts plus evaluation coverage. The current `FEATURE_SCORE_DENOMINATOR=all_frames` policy calculates `good/source * 100`; model-owner approval can switch the single policy setting to `evaluated_frames`. Feature1 is measurement-only and excluded from posture scoring. The overall score is the arithmetic mean of feature2, feature3, and feature4 when available.
+Frame scoring stores source, evaluated, and good frame counts plus evaluation coverage. Feature2 uses `good/evaluated * 100`; feature3 and feature4 use `good/source * 100` across the full video. Feature1 shows whether its aggregate is inside the paper sample's observed 0.028–0.061 range and remains excluded from posture scoring. The overall score is the arithmetic mean of feature2, feature3, and feature4 when available.
 
 Initial confidence is an explicit assumption: `confidence_level=high`, `confidence_pct=null`, and `confidence_assumed=true`. It means the valid measurement is treated as usable, not that posture quality is high; posture quality remains represented by score and verdict.
 

@@ -52,6 +52,7 @@ class FeatureNormalizerTests(unittest.TestCase):
         self.assertEqual(result["feature1"]["research_reference"]["mean"], 0.046)
         self.assertEqual(result["feature2"]["reference_range"]["min"], 70.0)
         self.assertEqual(result["feature2"]["score"], 100.0)
+        self.assertEqual(result["feature2"]["denominator_policy"], "evaluated_frames")
         self.assertEqual(result["feature2"]["series"][1], {
             "frame_index": 1,
             "timestamp_ms": 50,
@@ -126,6 +127,31 @@ class FeatureNormalizerTests(unittest.TestCase):
         self.assertEqual(result["feature3"]["good_frame_count"], 2)
         self.assertEqual(result["feature4"]["good_frame_count"], 2)
         self.assertIsNone(result["feature1"]["score"])
+
+    def test_default_denominators_are_feature_specific(self):
+        pose = {
+            "feature3": [{"value": 12.0}, {"value": 20.0}],
+            "feature4": [{"value": 3.0}, {"value": 6.0}],
+        }
+
+        result = normalize(self._raw(), source_frame_count=4, pose_series=pose)
+
+        self.assertEqual(result["feature2"]["denominator_policy"], "evaluated_frames")
+        self.assertEqual(result["feature2"]["score"], 100.0)
+        self.assertEqual(result["feature3"]["denominator_policy"], "all_frames")
+        self.assertEqual(result["feature3"]["score"], 25.0)
+        self.assertEqual(result["feature4"]["denominator_policy"], "all_frames")
+        self.assertEqual(result["feature4"]["score"], 25.0)
+
+    def test_feature1_verdict_uses_observed_range_without_scoring(self):
+        inside = normalize(self._raw())["feature1"]
+        raw = self._raw()
+        raw["Amplitude of pelvis oscillation"]["value"] = 0.07
+        outside = normalize(raw)["feature1"]
+
+        self.assertEqual(inside["verdict"], "maintain")
+        self.assertEqual(outside["verdict"], "improve")
+        self.assertIsNone(inside["score"])
 
     def test_confidence_is_explicitly_assumed_without_percentage(self):
         item = normalize(self._raw())["feature2"]

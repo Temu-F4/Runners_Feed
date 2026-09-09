@@ -908,6 +908,16 @@ def _mobile_result(job: dict, report: dict) -> dict:
     }
     video = report.get("video", {}) if isinstance(report.get("video", {}), dict) else {}
     tracking = report.get("tracking", {}) if isinstance(report.get("tracking", {}), dict) else {}
+    raw_run_metrics = report.get("run_metrics", report.get("runMetrics"))
+    raw_run_metrics = raw_run_metrics if isinstance(raw_run_metrics, dict) else {}
+    pace = raw_run_metrics.get("pace_per_km", raw_run_metrics.get("pacePerKm"))
+    basis = raw_run_metrics.get("estimation_basis", raw_run_metrics.get("estimationBasis"))
+    run_metrics = {
+        "pacePerKm": pace if isinstance(pace, str) else None,
+        "cadenceSpm": _finite_number(raw_run_metrics.get("cadence_spm", raw_run_metrics.get("cadenceSpm"))),
+        "strideLengthM": _finite_number(raw_run_metrics.get("stride_length_m", raw_run_metrics.get("strideLengthM"))),
+        "estimationBasis": basis if isinstance(basis, str) else None,
+    }
     evidence = [_mobile_evidence(item, index) for index, item in enumerate(report.get("evidence", []) if isinstance(report.get("evidence", []), list) else [])]
     return {
         "jobId": str(job["job_id"]),
@@ -921,6 +931,7 @@ def _mobile_result(job: dict, report: dict) -> dict:
         "evidence": [item for item in evidence if item is not None],
         "narrative": narrative,
         "postureScore": _finite_number(report.get("posture_score", report.get("postureScore"))),
+        "runMetrics": run_metrics,
     }
 
 
