@@ -9,5 +9,5 @@
     "feature3": {"min": 0.0, "max": 180.0, "unit": "degree"},
     "feature4": {"min": -90.0, "max": 90.0, "unit": "degree"}
   },
-  "approval_status": "pending_modeler_approval"
+  "approval_status": "approved"
 }

@@ -57,6 +57,7 @@ compose() {
     -f "${PROJECT_DIR}/compose.yaml" \
     -f "${PROJECT_DIR}/compose.coach.yaml" \
     --profile coach \
+    --profile manual-coach \
     "$@"
 }
 
@@ -95,12 +96,14 @@ trap cleanup EXIT
 
 mkdir -p "${run_dir}"
 mkdir -p "${run_dir}/outputs"
-cp "${GOLDEN_DIR}/user_info.json" "${run_dir}/user_info.json"
-cp "${GOLDEN_DIR}/outputs/details.json" "${run_dir}/outputs/details.json"
-cp "${GOLDEN_DIR}/outputs/pose_predictions.json" \
+install -m 0644 "${GOLDEN_DIR}/user_info.json" "${run_dir}/user_info.json"
+install -m 0644 "${GOLDEN_DIR}/outputs/details.json" \
+  "${run_dir}/outputs/details.json"
+install -m 0644 "${GOLDEN_DIR}/outputs/pose_predictions.json" \
   "${run_dir}/outputs/pose_predictions.json"
-cp "${GOLDEN_DIR}/outputs/rendered.mp4" "${run_dir}/outputs/rendered.mp4"
-cp "${GOLDEN_DIR}/outputs/pose_manifest.json" \
+install -m 0644 "${GOLDEN_DIR}/outputs/rendered.mp4" \
+  "${run_dir}/outputs/rendered.mp4"
+install -m 0644 "${GOLDEN_DIR}/outputs/pose_manifest.json" \
   "${run_dir}/outputs/pose_manifest.json"
 
 echo "Running approved RunPod-output canary with ${IMAGE_PREFIX}-coach-worker:${TARGET_TAG}"

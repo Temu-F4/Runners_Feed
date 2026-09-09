@@ -12,12 +12,18 @@ for path in \
   worker/video_analysis_contract.py \
   worker/run_coach_postprocess.sh \
   api/migrations/010_gpu_video_attempts.sql \
+  api/migrations/011_gpu_attempt_status_contract.sql \
   coach/model_plugins/sehyeon-57e4938/model_manifest.json; do
   [[ -f "${path}" ]] || {
     echo "Required RunPod boundary file is missing: ${path}" >&2
     exit 1
   }
 done
+
+grep -q 'DROP CONSTRAINT IF EXISTS inference_gpu_attempts_status_check' \
+  api/migrations/011_gpu_attempt_status_contract.sql
+grep -q "'GPU_SUCCESS', 'POSTPROCESSING'" \
+  api/migrations/011_gpu_attempt_status_contract.sql
 
 grep -q -- '--queues=gpu_dispatch,postprocess,coach' compose.coach.yaml
 if grep -q '^  gpu-dispatch-worker:' compose.coach.yaml; then
@@ -32,6 +38,8 @@ grep -q 'coach.dispatch_video_analysis' api/app/main.py
 grep -q 'normalize_features.py' worker/run_coach_postprocess.sh
 grep -q '/app/start_coach_worker.sh' compose.coach.yaml
 grep -q -- '--entrypoint /app/run_coach_postprocess.sh' deploy/verify_model_candidate.sh
+grep -q -- '--profile manual-coach' deploy/verify_model_candidate.sh
+grep -q -- 'install -m 0644' deploy/verify_model_candidate.sh
 if grep -q 'input.mp4' deploy/verify_model_candidate.sh; then
   echo "Production model canary must consume approved RunPod artifacts, not run local HPE" >&2
   exit 1
