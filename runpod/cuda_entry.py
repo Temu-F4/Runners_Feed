@@ -5,9 +5,7 @@ import runpy
 import sys
 from pathlib import Path
 
-import onnxruntime as ort
-
-original = ort.InferenceSession
+original = None
 evidence = []
 
 
@@ -46,8 +44,10 @@ def checked_session(*args, **kwargs):
 
 
 if __name__ == '__main__':
+    import onnxruntime as ort
     import rtmlib
 
+    original = ort.InferenceSession
     ort.InferenceSession = checked_session
     rtmlib.RTMDet = compatible_rtmdet_class(rtmlib.RTMDet)
     entry, *arguments = sys.argv[1:]
