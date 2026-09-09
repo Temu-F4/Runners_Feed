@@ -333,6 +333,20 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
     except Retry:
         raise
     except RunPodTransientError as error:
+        if self.request.retries >= 20:
+            if attempt_id is not None:
+                try:
+                    fail_gpu_attempt_and_job(job_id, attempt_id, error)
+                except Exception:
+                    LOGGER.exception("Failed to persist exhausted GPU submit for %s", job_id)
+            elif mark_job_failed(job_id, error) is False:
+                LOGGER.warning("GPU submit exhausted after job reached a final state: %s", job_id)
+            if stage_recorder is not None:
+                try:
+                    stage_recorder.skip_pending()
+                except Exception:
+                    LOGGER.exception("Failed to skip stages after exhausted GPU submit for %s", job_id)
+            raise
         raise self.retry(exc=error, countdown=_poll_interval(), max_retries=20)
     except Exception as error:
         if attempt_id is not None:

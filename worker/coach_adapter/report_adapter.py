@@ -233,31 +233,12 @@ def _narrative(output_dir: Path) -> dict[str, Any]:
             "validator_version": structured.get(
                 "validator_version", structured.get("validatorVersion", "unvalidated")
             ),
+            "prompt_version": structured.get("prompt_version"),
+            "error_code": structured.get("error_code"),
         }
-    report_path = output_dir / "running_report.md"
-    if not report_path.is_file():
-        return {
-            "status": "disabled",
-            "message": "AI 코칭은 설정되지 않았지만 측정 결과는 정상 생성됐습니다.",
-        }
-
-    report = report_path.read_text(encoding="utf-8").strip()
-    if not report:
-        return {
-            "status": "unavailable",
-            "message": "AI 코칭 결과가 비어 있습니다.",
-            "error_code": "empty_coach_report",
-        }
-
     return {
-        "status": "success",
-        "model": "gpt-5.6-luna",
-        "overall_summary": report,
-        "findings": [],
-        "coaching_points": [],
-        "disclaimer": (
-            "이 내용은 러닝 동작 참고용이며 의료 진단이나 부상 예측이 아닙니다."
-        ),
+        "status": "disabled",
+        "message": "검증된 AI 코칭은 없지만 측정 결과는 정상 생성됐습니다.",
     }
 
 
@@ -276,6 +257,7 @@ def build_report(run_dir: Path) -> dict[str, Any]:
         and isinstance(feature, dict)
         and isinstance(feature.get("score"), (int, float))
     ]
+    narrative = _narrative(output_dir)
 
     return {
         "schema_version": "coach-1.0",
@@ -291,12 +273,19 @@ def build_report(run_dir: Path) -> dict[str, Any]:
         "tracking": _tracking_summary(details, predictions),
         "metrics": _metrics(features),
         "features": features,
-        "posture_score": round(sum(scored) / len(scored), 2) if scored else None,
+        "posture_score": round(sum(scored) / 3, 2) if len(scored) == 3 else None,
         # These values are supplied by the analysis pipeline when available. The
         # adapter intentionally does not invent pace or cadence from video length.
         "run_metrics": run_metrics,
         "evidence": [],
-        "narrative": _narrative(output_dir),
+        "narrative": narrative,
+        "runtime_metadata": {
+            "prompt_version": narrative.get("prompt_version"),
+            "model": narrative.get("model"),
+            "validator_version": narrative.get("validator_version"),
+            "input_tokens": None,
+            "output_tokens": None,
+        },
         "notice": (
             "Coach 계산 결과를 서비스 형식으로 표시합니다. 촬영 각도와 가림에 "
             "영향을 받으며 의료 진단이나 부상 예측이 아닙니다."

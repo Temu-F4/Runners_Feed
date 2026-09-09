@@ -701,7 +701,7 @@ def _mobile_stage(job: dict) -> tuple[str, float | None]:
 def _mobile_job(job: dict) -> dict:
     stage, progress = _mobile_stage(job)
     status = job["status"]
-    return {
+    result = {
         "jobId": str(job["job_id"]),
         "title": job["case_id"],
         "caseId": job["case_id"],
@@ -726,6 +726,16 @@ def _mobile_job(job: dict) -> dict:
             else None
         ),
     }
+    result["postureScore"] = None
+    if status == "SUCCESS" and job.get("result_report_object"):
+        try:
+            report = ObjectStorageGateway().load_result_json(job["result_report_object"])
+            result["postureScore"] = _finite_number(
+                report.get("posture_score", report.get("postureScore"))
+            ) if isinstance(report, dict) else None
+        except Exception:
+            LOGGER.warning("Unable to load score summary for %s", job.get("job_id"), exc_info=True)
+    return result
 
 
 def _finite_number(value: object) -> float | None:
@@ -923,6 +933,8 @@ def _mobile_result(job: dict, report: dict) -> dict:
         "estimationBasis": basis if isinstance(basis, str) else None,
     }
     evidence = [_mobile_evidence(item, index) for index, item in enumerate(report.get("evidence", []) if isinstance(report.get("evidence", []), list) else [])]
+    runtime = report.get("runtime_metadata", report.get("runtimeMetadata"))
+    runtime = runtime if isinstance(runtime, dict) else {}
     return {
         "jobId": str(job["job_id"]),
         "modelId": job.get("model_id"),
@@ -936,6 +948,15 @@ def _mobile_result(job: dict, report: dict) -> dict:
         "narrative": narrative,
         "postureScore": _finite_number(report.get("posture_score", report.get("postureScore"))),
         "runMetrics": run_metrics,
+        # Signed media URLs are intentionally minted on demand by result-video-url.
+        "media": None,
+        "runtimeMetadata": {
+            "promptVersion": runtime.get("prompt_version", runtime.get("promptVersion")) if isinstance(runtime.get("prompt_version", runtime.get("promptVersion")), str) else None,
+            "model": runtime.get("model") if isinstance(runtime.get("model"), str) else None,
+            "validatorVersion": runtime.get("validator_version", runtime.get("validatorVersion")) if isinstance(runtime.get("validator_version", runtime.get("validatorVersion")), str) else None,
+            "inputTokens": _finite_number(runtime.get("input_tokens", runtime.get("inputTokens"))),
+            "outputTokens": _finite_number(runtime.get("output_tokens", runtime.get("outputTokens"))),
+        },
     }
 
 

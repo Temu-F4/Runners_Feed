@@ -343,6 +343,7 @@ function seriesPath(
   top: number,
   width: number,
   height: number,
+  xValues?: number[],
 ) {
   const paths: string[] = [];
   let path = "";
@@ -352,7 +353,10 @@ function seriesPath(
       path = "";
       return;
     }
-    const x = left + (index / Math.max(values.length - 1, 1)) * width;
+    const xDomain = xValues && xValues.length === values.length ? xValues : values.map((_, itemIndex) => itemIndex);
+    const xMin = Math.min(...xDomain);
+    const xMax = Math.max(...xDomain);
+    const x = left + (((xDomain[index] ?? xMin) - xMin) / Math.max(xMax - xMin, 1)) * width;
     const y = yPosition(value, min, max, top, height);
     path += path ? ` L ${x} ${y}` : `M ${x} ${y}`;
   });
@@ -429,13 +433,28 @@ export function FeatureFrameChart({ feature }: { feature: FeatureAnalysis }) {
   const top = 14;
   const plotWidth = 264;
   const plotHeight = 92;
-  const paths = seriesPath(values, domain.min, domain.max, left, top, plotWidth, plotHeight);
-  const lastPoint = valid[valid.length - 1];
+  const evaluatedAxis = feature.visualization?.x_axis === "measurable_frame";
+  const sourceEnd = Math.max(
+    feature.sourceFrameCount ? feature.sourceFrameCount - 1 : 0,
+    ...points.map((point) => point.frameIndex),
+  );
+  const xValues = evaluatedAxis
+    ? points.map((_, index) => index)
+    : points.map((point) => point.frameIndex);
+  if (!evaluatedAxis && sourceEnd > 0) {
+    // Anchor the domain to the full video so missing frames keep their real spacing.
+    xValues.push(sourceEnd);
+    values.push(null);
+  }
+  const paths = seriesPath(values, domain.min, domain.max, left, top, plotWidth, plotHeight, xValues);
+  const lastPoint = valid[valid.length - 1]!;
   const bandTop = range ? yPosition(range.max, domain.min, domain.max, top, plotHeight) : null;
   const bandBottom = range ? yPosition(range.min, domain.min, domain.max, top, plotHeight) : null;
-  const evaluatedAxis = feature.visualization?.x_axis === "measurable_frame";
   const axisStart = evaluatedAxis ? 1 : (points[0]?.frameIndex ?? 1);
-  const axisEnd = evaluatedAxis ? points.length : (points[points.length - 1]?.frameIndex ?? points.length);
+  const axisEnd = evaluatedAxis ? points.length : sourceEnd;
+  const lastX = evaluatedAxis
+    ? left + plotWidth
+    : left + (lastPoint.frameIndex / Math.max(sourceEnd, 1)) * plotWidth;
   return (
     <View style={{ gap: spacing.xs }}>
       <Svg accessibilityLabel={`${feature.label} 프레임별 측정 그래프`} height={height} role="img" viewBox={`0 0 ${width} ${height}`} width="100%">
@@ -443,7 +462,7 @@ export function FeatureFrameChart({ feature }: { feature: FeatureAnalysis }) {
         <Line stroke={colors.border} strokeWidth="1" x1={left} x2={left + plotWidth} y1={top + plotHeight} y2={top + plotHeight} />
         {bandTop !== null && bandBottom !== null ? <Rect fill="rgba(201,255,56,0.14)" height={Math.max(1, bandBottom - bandTop)} width={plotWidth} x={left} y={bandTop} /> : null}
         {paths.map((path, index) => <Path d={path} fill="none" key={index} stroke={colors.primary} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />)}
-        {lastPoint ? <Circle cx={left + plotWidth} cy={yPosition(lastPoint.value!, domain.min, domain.max, top, plotHeight)} fill={colors.lime} r="4" /> : null}
+        {lastPoint ? <Circle cx={lastX} cy={yPosition(lastPoint.value!, domain.min, domain.max, top, plotHeight)} fill={colors.lime} r="4" /> : null}
       </Svg>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
         <Text style={styles.caption}>{evaluatedAxis ? "M" : "F"}{String(axisStart).padStart(2, "0")}</Text>

@@ -139,6 +139,19 @@ class MobileContractTests(TestCase):
         self.assertEqual(result["runMetrics"]["pacePerKm"], "4:25")
         self.assertEqual(result["runMetrics"]["cadenceSpm"], 181)
 
+    def test_mobile_result_maps_runtime_metadata_without_persisting_signed_media(self) -> None:
+        job = {"job_id": uuid4(), "created_at": "now", "completed_at": "now"}
+        result = _mobile_result(job, {
+            "metrics": [], "features": {}, "narrative": {"status": "disabled"},
+            "runtime_metadata": {
+                "prompt_version": "v2", "model": "model", "validator_version": "validator",
+                "input_tokens": 12, "output_tokens": 8,
+            },
+        })
+        self.assertIsNone(result["media"])
+        self.assertEqual(result["runtimeMetadata"]["promptVersion"], "v2")
+        self.assertEqual(result["runtimeMetadata"]["validatorVersion"], "validator")
+
     @patch("app.main.get_model_quality_summary")
     def test_quality_health_accepts_initial_sample_for_current_release(
         self,

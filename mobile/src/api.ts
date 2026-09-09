@@ -7,6 +7,7 @@ import type {
   DashboardResponse,
   MobileProfile,
 } from "./contracts";
+import { demoResult } from "./demo-results";
 
 export class ApiError extends Error {
   status: number;
@@ -122,6 +123,10 @@ export function getJob(token: string, jobId: string) {
 }
 
 export function getResult(token: string, jobId: string) {
+  if (__DEV__) {
+    const fixture = demoResult(jobId);
+    if (fixture) return Promise.resolve(fixture);
+  }
   return request<AnalysisResult>(`/mobile/v1/jobs/${jobId}/result`, token);
 }
 
