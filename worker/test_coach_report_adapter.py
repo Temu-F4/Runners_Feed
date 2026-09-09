@@ -76,7 +76,7 @@ class CoachReportAdapterTest(unittest.TestCase):
 
         report = build_report(self.run_dir)
 
-        self.assertEqual(report["run_metrics"]["pace_per_km"], "4:25")
+        self.assertEqual(report["run_metrics"]["pace_per_km"], "4'25\"/km")
         self.assertEqual(report["run_metrics"]["cadence_spm"], 181)
 
     def test_adapts_model_cadence_and_decimal_pace(self) -> None:
@@ -91,7 +91,7 @@ class CoachReportAdapterTest(unittest.TestCase):
         report = build_report(self.run_dir)
 
         self.assertEqual(report["run_metrics"]["cadence_spm"], 180.4)
-        self.assertEqual(report["run_metrics"]["pace_per_km"], "4:25 /km")
+        self.assertEqual(report["run_metrics"]["pace_per_km"], "4'25\"/km")
 
     def test_does_not_publish_unvalidated_coach_markdown(self) -> None:
         coaching = "수직진동 — 논문 표본과 유사: 현재 리듬을 유지하세요."

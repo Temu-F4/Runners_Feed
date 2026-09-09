@@ -5,7 +5,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 
 import { createResultVideoUrl, getResult } from "../../src/api";
 import { useAuth } from "../../src/auth";
-import { AppHeader, Button, FeatureFrameChart, LoadingState, Screen } from "../../src/components";
+import { AppHeader, Button, FeatureFrameChart, FeatureMiniChart, LoadingState, Screen } from "../../src/components";
 import { FullLink, ProfileChip, SectionHeading } from "../../src/coach-ui";
 import type { AnalysisResult, CoachingAction, FeatureAnalysis } from "../../src/contracts";
 import { featureScore, featureScoreLabel, overallScore } from "../../src/scoring";
@@ -47,6 +47,12 @@ function verdictLabel(feature: FeatureAnalysis) {
 
 function RunMetricCell({ label, value }: { label: string; value: string }) {
   return <View style={{ flex: 1, minHeight: 92, padding: 10 }}><Text style={{ color: colors.muted, fontSize: 8 }}>{label}</Text><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 14, fontWeight: "900", marginTop: 9 }}>{value}</Text></View>;
+}
+
+function paceLabel(value: string | null | undefined) {
+  if (!value) return "—";
+  const match = value.trim().match(/^(\d+)[:'](\d{1,2})(?:\"?\s*\/?\s*km)?$/);
+  return match ? `${Number(match[1])}'${String(Number(match[2])).padStart(2, "0")}"/km` : value;
 }
 
 function VerticalObservationCell({ feature }: { feature: FeatureAnalysis | null }) {
@@ -104,14 +110,14 @@ export default function ResultScreen() {
       {error ? <Pressable onPress={() => router.replace({ pathname: "/result/[jobId]", params: { jobId } })} style={{ borderColor: colors.red, borderWidth: 1, marginBottom: 10, minHeight: 48, padding: 10 }}><Text style={{ color: colors.red, fontSize: 11 }}>{error} · 다시 시도</Text></Pressable> : null}
       {result ? <>
         <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", marginBottom: 8 }}>
-          <RunMetricCell label="페이스" value={result.runMetrics?.pacePerKm ?? "—"} />
+          <RunMetricCell label="페이스" value={paceLabel(result.runMetrics?.pacePerKm)} />
           <View style={{ borderLeftColor: colors.border, borderLeftWidth: 1, flex: 1 }}><RunMetricCell label="케이던스" value={result.runMetrics?.cadenceSpm == null ? "—" : `${result.runMetrics.cadenceSpm} spm`} /></View>
           <VerticalObservationCell feature={vertical} />
         </View>
         <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, padding: 14 }}>
           <SectionHeading label="종합 자세 점수" meta={formatDate(result.completedAt)} />
           <View style={{ alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}><View style={{ flex: 1, paddingRight: 10 }}><Text style={styles.caption}>팔꿈치·몸통·상체 기울기 3개 자세 피처의 평균입니다.</Text></View><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 31, fontWeight: "900" }}>{overallScore(result) ?? "—"}<Text style={{ color: colors.muted, fontSize: 9 }}>/100</Text></Text></View>
-          <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", flexWrap: "wrap", marginTop: 9 }}>{postureFeatures.map((feature) => { const score = featureScore(feature); return <Pressable key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 76, padding: 9, width: "50%" }}><Text style={{ color: colors.muted, fontSize: 8 }}>{shortLabel(feature)}</Text><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 18, fontWeight: "900", marginTop: 6 }}>{score ?? "—"}<Text style={{ color: colors.muted, fontSize: 7 }}>/100</Text></Text><Text numberOfLines={1} style={{ color: colors.muted, fontSize: 7, marginTop: 5 }}>{feature.denominatorPolicy === "evaluated_frames" ? "측정 가능 프레임 기준" : "영상 전체 프레임 기준"}</Text></Pressable>; })}<View accessibilityLabel="향후 feature5 영역" style={{ borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 76, width: "50%" }} /></View>
+          <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", flexWrap: "wrap", marginTop: 9 }}>{postureFeatures.map((feature) => { const score = featureScore(feature); const active = feature.featureId === selected?.featureId; return <Pressable accessibilityLabel={`${shortLabel(feature)} 점수 ${score ?? "미제공"}, 프레임 그래프 보기`} key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ backgroundColor: active ? colors.surfaceRaised : colors.background, borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 154, padding: 9, width: "50%" }}><View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}><Text style={{ color: active ? colors.lime : colors.muted, fontSize: 8, fontWeight: "800" }}>{shortLabel(feature)}</Text><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 14, fontWeight: "900" }}>{score ?? "—"}<Text style={{ color: colors.muted, fontSize: 6 }}>/100</Text></Text></View><View style={{ marginTop: 7 }}><FeatureMiniChart feature={feature} /></View><Text numberOfLines={1} style={{ color: colors.muted, fontSize: 7, marginTop: 3 }}>{feature.denominatorPolicy === "evaluated_frames" ? "측정 가능 프레임 기준" : "영상 전체 프레임 기준"}</Text></Pressable>; })}<View accessibilityLabel="향후 feature5 영역" style={{ borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 154, width: "50%" }} /></View>
         </View>
 
         {storedMediaUrl ? <StoredResultVideo uri={storedMediaUrl} skeleton={showingSkeleton} /> : <Button label="저장된 결과 영상 보기" onPress={() => void openVideo()} loading={videoLoading} kind="secondary" style={{ marginTop: 8 }} />}

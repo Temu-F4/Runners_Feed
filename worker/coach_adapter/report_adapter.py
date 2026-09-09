@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -79,13 +80,30 @@ def _metric_value(raw: object, expected_unit: str) -> float | None:
 def _format_pace(decimal_minutes: float) -> str:
     total_seconds = round(decimal_minutes * 60)
     minutes, seconds = divmod(total_seconds, 60)
-    return f"{minutes}:{seconds:02d} /km"
+    return f"{minutes}'{seconds:02d}\"/km"
+
+
+def _pace_display(raw: object) -> str | None:
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        value = float(raw)
+        return _format_pace(value) if math.isfinite(value) and value > 0 else None
+    if not isinstance(raw, str):
+        return None
+    value = raw.strip()
+    match = re.fullmatch(r"(\d+)[:'](\d{1,2})(?:\"?\s*/?\s*km)?", value)
+    if match:
+        return f"{int(match.group(1))}'{int(match.group(2)):02d}\"/km"
+    return value or None
 
 
 def _run_metrics(output_dir: Path, details: dict) -> dict[str, Any] | None:
     configured = details.get("run_metrics")
     if isinstance(configured, dict):
-        return configured
+        normalized = dict(configured)
+        normalized["pace_per_km"] = _pace_display(
+            configured.get("pace_per_km", configured.get("pacePerKm"))
+        )
+        return normalized
     raw_path = output_dir / "feature_results.json"
     if not raw_path.is_file():
         return None

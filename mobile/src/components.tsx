@@ -474,6 +474,45 @@ export function FeatureFrameChart({ feature }: { feature: FeatureAnalysis }) {
   );
 }
 
+export function FeatureMiniChart({ feature }: { feature: FeatureAnalysis }) {
+  const points = feature.series;
+  const valid = points.filter((point) => point.value !== null && Number.isFinite(point.value));
+  if (valid.length < 2) {
+    return <View style={{ alignItems: "center", height: 62, justifyContent: "center" }}><Text style={[styles.caption, { fontSize: 8 }]}>그래프 데이터 없음</Text></View>;
+  }
+  const range = feature.referenceRange;
+  const values = points.map((point) => point.value);
+  const domain = chartDomain(chartValues(values), range?.min, range?.max);
+  const width = 140;
+  const height = 62;
+  const left = 5;
+  const top = 6;
+  const plotWidth = 130;
+  const plotHeight = 48;
+  const evaluatedAxis = feature.visualization?.x_axis === "measurable_frame";
+  const sourceEnd = Math.max(
+    feature.sourceFrameCount ? feature.sourceFrameCount - 1 : 0,
+    ...points.map((point) => point.frameIndex),
+  );
+  const xValues = evaluatedAxis
+    ? points.map((_, index) => index)
+    : points.map((point) => point.frameIndex);
+  if (!evaluatedAxis && sourceEnd > 0) {
+    xValues.push(sourceEnd);
+    values.push(null);
+  }
+  const paths = seriesPath(values, domain.min, domain.max, left, top, plotWidth, plotHeight, xValues);
+  const bandTop = range ? yPosition(range.max, domain.min, domain.max, top, plotHeight) : null;
+  const bandBottom = range ? yPosition(range.min, domain.min, domain.max, top, plotHeight) : null;
+  return (
+    <Svg accessibilityLabel={`${feature.label} 미니 프레임 그래프`} height={height} role="img" viewBox={`0 0 ${width} ${height}`} width="100%">
+      <Line stroke={colors.border} strokeWidth="1" x1={left} x2={left + plotWidth} y1={top + plotHeight} y2={top + plotHeight} />
+      {bandTop !== null && bandBottom !== null ? <Rect fill="rgba(201,255,56,0.14)" height={Math.max(1, bandBottom - bandTop)} width={plotWidth} x={left} y={bandTop} /> : null}
+      {paths.map((path, index) => <Path d={path} fill="none" key={index} stroke={colors.primary} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />)}
+    </Svg>
+  );
+}
+
 function confidenceLabel(level: FeatureAnalysis["confidenceLevel"], assumed = false) {
   if (assumed) return "측정 가능 · 초기 신뢰도 가정";
   if (level === "high") return "신뢰도 높음";
