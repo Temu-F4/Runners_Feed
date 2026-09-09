@@ -90,6 +90,15 @@ class FeatureNormalizerTests(unittest.TestCase):
             [0, 2],
         )
 
+    def test_preserves_model_elbow_frame_indices(self):
+        raw = self._raw()
+        raw["Elbow angle"]["range"]["frame_indices"] = [20, 21]
+
+        result = normalize(raw, fps=10.0)
+
+        self.assertEqual([point["frame_index"] for point in result["feature2"]["series"]], [20, 21])
+        self.assertEqual([point["timestamp_ms"] for point in result["feature2"]["series"]], [2000, 2100])
+
     def test_rejects_missing_representative_value(self):
         raw = self._raw()
         del raw["Elbow angle"]["range"]["mean"]

@@ -91,7 +91,7 @@ SUPPORTED_VIDEO_CONTENT_TYPES = {
 
 
 def _model_id() -> str:
-    return os.getenv("COACH_MODEL_ID", "sehyeon-e2fe43e").strip()
+    return os.getenv("COACH_MODEL_ID", "sehyeon-57e4938").strip()
 
 
 def _model_release() -> str:

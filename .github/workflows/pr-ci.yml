@@ -67,9 +67,9 @@ jobs:
       - name: Validate model plugin manifest and Python syntax
         run: |
           python coach/scripts/model_contract/validate_plugin.py \
-            coach/model_plugins/sehyeon-e2fe43e
+            coach/model_plugins/sehyeon-57e4938
           python -m compileall -q \
-            coach/model_plugins/sehyeon-e2fe43e \
+            coach/model_plugins/sehyeon-57e4938 \
             coach/scripts/model_contract
 
   mobile-typecheck:

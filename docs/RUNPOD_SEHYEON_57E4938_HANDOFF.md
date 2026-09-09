@@ -1,4 +1,4 @@
-# RunPod HPE handoff: sehyeon-e2fe43e
+# RunPod HPE handoff: sehyeon-57e4938
 
 ## Boundary
 
@@ -25,8 +25,8 @@ This repository contains the OCI client and the complete request/manifest contra
 ## Installed model release
 
 - Source: J-sehyeon/Oracle_Project
-- Commit: e2fe43e9bb0ee13bd445d8a6d4db240dba84eacc
-- Plugin: coach/model_plugins/sehyeon-e2fe43e
+- Commit: 57e4938ff93360cd171016b6615b3d3b94bf27e3
+- Plugin: coach/model_plugins/sehyeon-57e4938
 - HPE entrypoint: scripts/hpe/hpe.py
 - HPE support source: scripts/hpe/utils.py
 - Runtime weights: mounted outside Git and verified using model_manifest.json
@@ -49,6 +49,8 @@ The same attempt_id may be submitted again only when OCI was interrupted before 
 ## OCI continuation
 
 After validating the manifest and downloaded artifacts, OCI runs the source feature extractor and preserves its feature_results.json. The normalizer creates feature_results.service.json; the report and skeleton adapters consume service data while retaining the model raw result separately.
+
+The source feature output also carries `cadence` in spm and decimal `pace` in min/km. OCI preserves those raw scalars and the report adapter converts them to `runMetrics.cadenceSpm` and a validated `M:SS /km` display value. The model-owned narrative reads normalized features without the full frame series; a service wrapper turns its Markdown summary plus deterministic feature actions into `running_report.json` before the final report adapter runs.
 
 Frame scoring stores source, evaluated, and good frame counts plus evaluation coverage. Feature2 uses `good/evaluated * 100`; feature3 and feature4 use `good/source * 100` across the full video. Feature1 shows whether its aggregate is inside the paper sample's observed 0.028–0.061 range and remains excluded from posture scoring. The overall score is the arithmetic mean of feature2, feature3, and feature4 when available.
 

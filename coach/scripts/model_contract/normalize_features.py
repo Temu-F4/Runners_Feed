@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-CRITERION_VERSION = "sehyeon-e2fe43e"
+CRITERION_VERSION = "sehyeon-57e4938"
 CONFIDENCE_LIMITATION = "초기 버전에서는 유효한 측정 결과를 신뢰 가능한 것으로 가정합니다."
 FEATURES = {
     "Amplitude of pelvis oscillation": {"id": "feature1", "unit": "ratio", "value_path": "value", "aggregation": "mean across detected ground-contact phases", "reference_range": (0.028, 0.061), "research_reference": {"mean": 0.046, "standard_deviation": 0.007, "observed_min": 0.028, "observed_max": 0.061}},
@@ -87,13 +87,15 @@ def derive_pose_series(predictions: dict[str, Any], fps: float | None) -> dict[s
                 output[feature_id].append({"frame_index": frame_index, "timestamp_ms": timestamp, "value": value, "confidence_pct": None})
     return output
 
-def _elbow_series(values: object, fps: float | None) -> list[dict[str, Any]]:
+def _elbow_series(values: object, fps: float | None, frame_indices: object = None) -> list[dict[str, Any]]:
     if not isinstance(values, list):
         return []
     points = []
-    for frame_index, value in enumerate(values):
+    indexed_frames = frame_indices if isinstance(frame_indices, list) else []
+    for sample_index, value in enumerate(values):
         number = _finite(value)
         if number is not None:
+            frame_index = indexed_frames[sample_index] if sample_index < len(indexed_frames) and isinstance(indexed_frames[sample_index], int) else sample_index
             points.append({"frame_index": frame_index, "timestamp_ms": round(frame_index / fps * 1000) if fps and fps > 0 else None, "value": number, "confidence_pct": None})
     return points
 
@@ -160,7 +162,7 @@ def normalize(raw: dict[str, Any], *, fps: float | None = None, source_frame_cou
             low, high = definition["reference_range"]
             item["verdict"] = "maintain" if low <= item["representative_value"] <= high else "improve"
             item["research_reference"] = definition["research_reference"]
-        item["series"] = _elbow_series(feature.get("value"), fps) if feature_id == "feature2" else list(pose_series.get(feature_id, []))
+        item["series"] = _elbow_series(feature.get("value"), fps, feature.get("range", {}).get("frame_indices") if isinstance(feature.get("range"), dict) else None) if feature_id == "feature2" else list(pose_series.get(feature_id, []))
         policy = _denominator_policy(definition, denominator_policy)
         _score_item(item, definition, source_count if explicit_source_count else len(item["series"]), policy)
         normalized[feature_id] = item

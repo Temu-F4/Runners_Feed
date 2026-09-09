@@ -23,12 +23,18 @@ API가 작업을 넣으면 `coach-worker`는 RunPod에 원본 영상의 HPE·대
 RunPod Pod가 실행 중일 때만 HTTP Proxy API를 직접 사용할 수 있습니다. Worker는 장시간
 동기 HTTP 요청을 유지하지 않고 빠른 submit 응답의 `remote_job_id`를 저장한 뒤 별도
 Celery countdown 작업으로 상태를 polling합니다. 계약 상세는
-`docs/RUNPOD_SEHYEON_E2FE43E_HANDOFF.md`를 참고합니다.
+`docs/RUNPOD_SEHYEON_57E4938_HANDOFF.md`를 참고합니다.
 
 서비스 피처 점수는 피처별로 고정합니다. `feature2`는 좋은 프레임/측정 가능 프레임,
 `feature3`과 `feature4`는 좋은 프레임/영상 전체 프레임입니다. `feature1`은 논문 표본의
 관찰 범위만 표시하고 종합 자세 점수에서는 제외합니다. confidence는 계산 확률이 아니라
 초기 가정값이며 `confidence_assumed=true`, `confidence_pct=null`로 전달됩니다.
+
+세현 `57e4938`의 `cadence`(spm)와 `pace`(decimal min/km)는 원본
+`feature_results.json`에 그대로 보존됩니다. Report Adapter가 이를 앱의
+`runMetrics.cadenceSpm`과 `runMetrics.pacePerKm` 형식으로 변환합니다. Agent는 정규화된
+피처 계약을 읽고 Markdown 설명을 생성하며, 서비스 wrapper가 검증 가능한
+`running_report.json`으로 구조화합니다.
 
 ## 수동 실행
 

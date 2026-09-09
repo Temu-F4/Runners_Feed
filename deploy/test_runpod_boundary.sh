@@ -12,7 +12,7 @@ for path in \
   worker/video_analysis_contract.py \
   worker/run_coach_postprocess.sh \
   api/migrations/010_gpu_video_attempts.sql \
-  coach/model_plugins/sehyeon-e2fe43e/model_manifest.json; do
+  coach/model_plugins/sehyeon-57e4938/model_manifest.json; do
   [[ -f "${path}" ]] || {
     echo "Required RunPod boundary file is missing: ${path}" >&2
     exit 1
@@ -36,6 +36,6 @@ if grep -q 'input.mp4' deploy/verify_model_candidate.sh; then
   echo "Production model canary must consume approved RunPod artifacts, not run local HPE" >&2
   exit 1
 fi
-grep -q 'sehyeon-e2fe43e' compose.yaml compose.coach.yaml
+grep -q 'sehyeon-57e4938' compose.yaml compose.coach.yaml
 
 echo "RunPod video-analysis boundary contract passed"

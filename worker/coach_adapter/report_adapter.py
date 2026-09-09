@@ -65,6 +65,43 @@ def _percentage(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator * 100, 2)
 
 
+def _metric_value(raw: object, expected_unit: str) -> float | None:
+    if isinstance(raw, dict):
+        if raw.get("unit") != expected_unit:
+            return None
+        raw = raw.get("value")
+    if not isinstance(raw, (int, float)) or isinstance(raw, bool):
+        return None
+    value = float(raw)
+    return value if math.isfinite(value) and value > 0 else None
+
+
+def _format_pace(decimal_minutes: float) -> str:
+    total_seconds = round(decimal_minutes * 60)
+    minutes, seconds = divmod(total_seconds, 60)
+    return f"{minutes}:{seconds:02d} /km"
+
+
+def _run_metrics(output_dir: Path, details: dict) -> dict[str, Any] | None:
+    configured = details.get("run_metrics")
+    if isinstance(configured, dict):
+        return configured
+    raw_path = output_dir / "feature_results.json"
+    if not raw_path.is_file():
+        return None
+    raw = _load_json(raw_path)
+    cadence = _metric_value(raw.get("cadence"), "spm")
+    pace = _metric_value(raw.get("pace"), "min_per_km")
+    if cadence is None and pace is None:
+        return None
+    return {
+        "cadence_spm": round(cadence, 1) if cadence is not None else None,
+        "pace_per_km": _format_pace(pace) if pace is not None else None,
+        "stride_length_m": None,
+        "estimation_basis": "model cadence/pace estimate from two detected gait events",
+    }
+
+
 def _tracking_summary(details: dict, predictions: dict) -> dict[str, Any]:
     frames = predictions.get("frames", [])
     if not isinstance(frames, list):
@@ -231,9 +268,7 @@ def build_report(run_dir: Path) -> dict[str, Any]:
         _load_json(output_dir / "feature_results.service.json")
     )
     video = details.get("video", {})
-    run_metrics = details.get("run_metrics")
-    if not isinstance(run_metrics, dict):
-        run_metrics = None
+    run_metrics = _run_metrics(output_dir, details)
     scored = [
         feature.get("score") for feature_id, feature in features.items()
         if feature_id in {"feature2", "feature3", "feature4"}

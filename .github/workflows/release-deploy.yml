@@ -92,7 +92,7 @@ jobs:
       - name: Run model contract and quality gate
         run: |
           python3 coach/scripts/model_contract/validate_plugin.py \
-            coach/model_plugins/sehyeon-e2fe43e
+            coach/model_plugins/sehyeon-57e4938
           python3 coach/scripts/model_contract/quality_gate.py \
             coach/tests/fixtures/model-golden \
             coach/scripts/model_contract/quality_baseline.example.json

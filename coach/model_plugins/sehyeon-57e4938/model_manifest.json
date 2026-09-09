@@ -1,11 +1,12 @@
 {
   "contract_version": "coach-model-1.0",
-  "model_id": "sehyeon-e2fe43e",
-  "algorithm_version": "e2fe43e9bb0ee13bd445d8a6d4db240dba84eacc",
-  "source": "github:J-sehyeon/Oracle_Project@e2fe43e9bb0ee13bd445d8a6d4db240dba84eacc",
+  "model_id": "sehyeon-57e4938",
+  "algorithm_version": "57e4938ff93360cd171016b6615b3d3b94bf27e3",
+  "source": "github:J-sehyeon/Oracle_Project@57e4938ff93360cd171016b6615b3d3b94bf27e3",
   "compatibility_patches": [
-    "feature1 returns its computed result",
-    "agent reads the service workspace and standard OpenAI environment variables"
+    "cadence/pace validates positive finite time and distance without mutating shared feature scale",
+    "elbow measurement handles empty groups, includes the last frame, and preserves frame indices",
+    "agent reads normalized service features from the service workspace and standard OpenAI environment variables"
   ],
   "entrypoints": {
     "pose": "scripts/hpe/hpe.py",
@@ -14,7 +15,9 @@
   },
   "source_files": [
     "scripts/hpe/hpe.py",
-    "scripts/hpe/utils.py"
+    "scripts/hpe/utils.py",
+    "scripts/features/feature_extract.py",
+    "scripts/features/utils.py"
   ],
   "input": {
     "video_extensions": [".mp4", ".mov"],
@@ -31,9 +34,13 @@
   },
   "features": [
     {"id": "feature1", "raw_name": "Amplitude of pelvis oscillation", "unit": "ratio", "description": "Pelvis vertical movement normalized by runner height"},
-    {"id": "feature2", "raw_name": "Elbow angle", "unit": "degree", "description": "Mean left elbow angle with the original frame series preserved"},
+    {"id": "feature2", "raw_name": "Elbow angle", "unit": "degree", "description": "Mean direction-aware elbow angle over the selected measurable window"},
     {"id": "feature3", "raw_name": "Trunk flexion angle", "unit": "degree", "description": "Mean trunk flexion angle during detected ground-contact phases"},
     {"id": "feature4", "raw_name": "Postural lean angle", "unit": "degree", "description": "Mean postural lean angle during detected ground-contact phases"}
+  ],
+  "run_metrics": [
+    {"raw_name": "cadence", "unit": "spm"},
+    {"raw_name": "pace", "unit": "min_per_km"}
   ],
   "weights": [
     {"path": "detectors/rtmdet-nano-person-320x320/end2end.onnx", "sha256": "dae7d98b247441ec4e408381c72087be5bbf325df939704bb978e21725a948ea"},

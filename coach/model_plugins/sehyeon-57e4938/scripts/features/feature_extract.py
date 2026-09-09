@@ -41,6 +41,36 @@ ps = PoseSequence(pose_data, detail_data, user_data)
 ps.cal_stride()
 ps.pixel2m()
 
+def cadence_pace(ps: PoseSequence):
+    """Return cadence (spm) and pace (decimal min/km) when measurable."""
+    try:
+        fps = float(ps.details['video']['fps'])
+        gct_frame = ps.gct()
+        if len(gct_frame) >= 2:
+            start = int(gct_frame[0][0])
+            end = int(gct_frame[1][0])
+        else:
+            start = int(ps.strides.frame.iloc[0])
+            end = int(ps.strides.frame.iloc[4])
+        interval = end - start
+        if fps <= 0 or interval <= 0:
+            raise ValueError("invalid cadence interval")
+        start_scale = ps.pixel2m(frame=start, update_state=False)
+        end_scale = ps.pixel2m(frame=end, update_state=False)
+        m_per_pixel = float((start_scale + end_scale) / 2)
+        displacement = ps.df[f'{ps.direction}_heel_x'].loc[[start, end]].diff().loc[end]
+        distance_m = abs(float(displacement)) * m_per_pixel
+        if not np.isfinite(distance_m) or distance_m <= 0:
+            raise ValueError("invalid running distance")
+    except (IndexError, KeyError, TypeError, ValueError, AttributeError):
+        print("케이던스 및 페이스 검출 불가")
+        return None, None
+
+    time_seconds = interval / fps
+    cadence_spm = (2 / time_seconds) * 60
+    pace_min_per_km = (time_seconds / distance_m * 1000) / 60
+    return float(cadence_spm), float(pace_min_per_km)
+
 def feature1(ps: PoseSequence):
     strides = ps.gct()
 
@@ -131,7 +161,7 @@ def feature1(ps: PoseSequence):
 
     return res
 
-def feature2(ps: PoseSequence, tolerance: float = 5.0):
+def feature2(ps: PoseSequence, tolerance: float = 10.0):
     """
     elbow:
         프레임별 팔꿈치 각도가 들어 있는 기존 NumPy 배열
@@ -139,9 +169,22 @@ def feature2(ps: PoseSequence, tolerance: float = 5.0):
     tolerance:
         논문의 목표 각도와 비교할 때 적용하는 허용오차
     """
-    elbow = ps.joint_angle('left_elbow', smooth=True, negative=False)
+    elbow = ps.joint_angle(f'{ps.direction}_elbow', smooth=True, negative=False)
 
-    elbow_array = np.asarray(elbow)
+    # Select the contiguous arm window closest to the middle of the video.
+    indices = (
+        np.where(ps.df[f'{ps.direction}_elbow_x'] < ps.df[['hip_center_x', 'neck_x']].mean(axis=1))[0]
+        if ps.direction == "right"
+        else np.where(ps.df[f'{ps.direction}_elbow_x'] > ps.df[['hip_center_x', 'neck_x']].mean(axis=1))[0]
+    )
+    groups = [group for group in np.split(indices, np.where(np.diff(indices) != 1)[0] + 1) if group.size]
+    if not groups:
+        selected_group = np.asarray([], dtype=int)
+        elbow_array = np.asarray([], dtype=float)
+    else:
+        middle_frame = (len(ps.df) - 1) / 2
+        selected_group = min(groups, key=lambda group: abs(float(np.mean(group)) - middle_frame))
+        elbow_array = np.asarray(elbow[int(selected_group[0]):int(selected_group[-1]) + 1])
     valid_elbow = elbow_array[np.isfinite(elbow_array)]
 
     if valid_elbow.size == 0:
@@ -153,6 +196,7 @@ def feature2(ps: PoseSequence, tolerance: float = 5.0):
                 "amplitude": None,
                 "section": "측정 불가",
                 "paper_reference": None,
+                "frame_indices": selected_group.tolist(),
             },
             "instruction": "유효한 팔꿈치 각도가 없습니다. 자세 추정 결과를 확인해주세요.",
             "outcome": "판정 불가",
@@ -179,6 +223,7 @@ def feature2(ps: PoseSequence, tolerance: float = 5.0):
                 "amplitude": range_value,
                 "section": section,
                 "paper_reference": paper_reference,
+                "frame_indices": selected_group.tolist(),
             },
 
             "instruction": instruction,
@@ -415,7 +460,12 @@ def numpy_json_default(obj):
     )
 
 if __name__ == "__main__":
+    cadence, pace = cadence_pace(ps=ps)
     features = {
+        # Preserve the upstream raw scalar output. Units are pinned in the
+        # model manifest and converted by the service report adapter.
+        'cadence': cadence,
+        'pace': pace,
         'Amplitude of pelvis oscillation': feature1(ps=ps),
         'Elbow angle': feature2(ps=ps),
         'Trunk flexion angle': feature3(ps=ps),
