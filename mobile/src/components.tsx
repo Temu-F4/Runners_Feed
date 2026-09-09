@@ -395,7 +395,10 @@ export function TrendChart({ trend }: { trend: TrendSummary | null }) {
 
 export function RangeBar({ feature }: { feature: FeatureAnalysis }) {
   const range = feature.referenceRange;
-  if (!range || feature.representativeValue === null || range.max <= range.min) {
+  if (feature.representativeValue === null) {
+    return <EmptyState title="측정 불가" message={feature.interpretation || feature.limitation || "이 영상에서는 해당 지표를 계산할 수 없었습니다."} />;
+  }
+  if (!range || range.max <= range.min) {
     return <EmptyState title="기준 범위 없음" message="이 지표에는 현재 비교 가능한 기준 범위가 제공되지 않았습니다." />;
   }
   const span = range.max - range.min;
@@ -525,6 +528,7 @@ function verdictLabel(verdict: FeatureAnalysis["verdict"]) {
   if (verdict === "improve") return "개선 우선";
   if (verdict === "maintain") return "현재 유지";
   if (verdict === "excluded") return "분석 제외";
+  if (verdict === "unavailable") return "측정 불가";
   return "검토 필요";
 }
 

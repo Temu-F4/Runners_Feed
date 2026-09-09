@@ -785,7 +785,7 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
     if confidence_level not in {"high", "medium", "low", "excluded"}:
         confidence_level = "excluded"
     verdict = raw.get("verdict")
-    if verdict not in {"improve", "maintain", "review", "excluded"}:
+    if verdict not in {"improve", "maintain", "review", "excluded", "unavailable"}:
         verdict = "review"
     priority = raw.get("priority")
     if not isinstance(priority, int) or priority < 1:

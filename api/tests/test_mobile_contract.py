@@ -190,6 +190,25 @@ class MobileContractTests(TestCase):
         self.assertEqual(result["runMetrics"]["pacePerKm"], "4:25")
         self.assertEqual(result["runMetrics"]["cadenceSpm"], 181)
 
+    def test_mobile_result_preserves_unavailable_feature(self) -> None:
+        job = {"job_id": uuid4(), "created_at": "now", "completed_at": "now"}
+        result = _mobile_result(job, {
+            "metrics": [{"id": "feature1", "label": "골반 수직 진폭", "value": None, "unit": "ratio"}],
+            "features": {
+                "feature1": {
+                    "verdict": "unavailable",
+                    "representative_value": None,
+                    "interpretation": "접지 구간이 검출되지 않았습니다.",
+                }
+            },
+            "narrative": {"status": "unavailable"},
+        })
+
+        feature = result["features"][0]
+        self.assertEqual(feature["verdict"], "unavailable")
+        self.assertIsNone(feature["representativeValue"])
+        self.assertEqual(feature["interpretation"], "접지 구간이 검출되지 않았습니다.")
+
     def test_mobile_result_preserves_unavailable_narrative_error_code(self) -> None:
         job = {"job_id": uuid4(), "created_at": "now", "completed_at": "now"}
         result = _mobile_result(job, {

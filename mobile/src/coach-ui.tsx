@@ -111,7 +111,7 @@ function signalTone(signal: PostureSignal) {
 }
 
 export function signalStatus(signal: PostureSignal) {
-  if (signal.value === null) return "데이터 없음";
+  if (signal.value === null || signal.verdict === "unavailable") return "측정 불가";
   if (signal.featureId === "feature1") {
     const range = signal.referenceRange;
     return range && signal.value >= range.min && signal.value <= range.max ? "관찰 범위 안" : "관찰 범위 밖";
