@@ -1,7 +1,13 @@
+import os
 import unittest
 from unittest.mock import Mock, patch
 
-from coach_tasks import dispatch_video_analysis, poll_video_analysis
+from coach_tasks import (
+    _poll_interval,
+    _transient_retry_interval,
+    dispatch_video_analysis,
+    poll_video_analysis,
+)
 
 
 SNAPSHOT = {
@@ -12,7 +18,12 @@ SNAPSHOT = {
 
 
 class AsyncRunPodTaskTests(unittest.TestCase):
-    @patch("coach_tasks._poll_interval", return_value=10)
+    def test_poll_and_transient_retry_defaults_are_independent(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(_poll_interval(), 3)
+            self.assertEqual(_transient_retry_interval(), 10)
+
+    @patch("coach_tasks._poll_interval", return_value=3)
     @patch("coach_tasks.celery_app.send_task")
     @patch("coach_tasks.get_gpu_attempt")
     @patch("coach_tasks.create_gpu_attempt")
@@ -29,7 +40,7 @@ class AsyncRunPodTaskTests(unittest.TestCase):
         get_attempt.assert_not_called()
         send_task.assert_called_once()
 
-    @patch("coach_tasks._poll_interval", return_value=10)
+    @patch("coach_tasks._poll_interval", return_value=3)
     @patch("coach_tasks.celery_app.send_task")
     @patch("coach_tasks.client_from_environment")
     @patch("coach_tasks.get_gpu_attempt")
@@ -45,6 +56,28 @@ class AsyncRunPodTaskTests(unittest.TestCase):
         }
         result = poll_video_analysis.run("job-1", "attempt-1")
         self.assertEqual(result["status"], "running")
+        send_task.assert_called_once_with(
+            "coach.poll_video_analysis", args=["job-1", "attempt-1"],
+            queue="gpu_dispatch", countdown=3,
+        )
+
+    @patch("coach_tasks._transient_retry_interval", return_value=10)
+    @patch("coach_tasks.celery_app.send_task")
+    @patch("coach_tasks.client_from_environment")
+    @patch("coach_tasks.get_gpu_attempt")
+    def test_transient_poll_keeps_ten_second_retry_interval(
+        self, get_attempt, client_factory, send_task, _retry_interval
+    ):
+        get_attempt.return_value = {
+            **SNAPSHOT, "status": "RUNNING", "remote_job_id": "remote-1",
+            "manifest_object": None, "elapsed_seconds": 20,
+        }
+        error = __import__("runpod_client").RunPodTransientError("offline")
+        client_factory.return_value.poll.side_effect = error
+
+        result = poll_video_analysis.run("job-1", "attempt-1")
+
+        self.assertEqual(result["status"], "poll_retry")
         send_task.assert_called_once_with(
             "coach.poll_video_analysis", args=["job-1", "attempt-1"],
             queue="gpu_dispatch", countdown=10,

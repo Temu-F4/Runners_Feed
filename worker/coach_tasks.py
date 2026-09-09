@@ -333,7 +333,11 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
     except Retry:
         raise
     except RunPodTransientError as error:
-        raise self.retry(exc=error, countdown=_poll_interval(), max_retries=20)
+        raise self.retry(
+            exc=error,
+            countdown=_transient_retry_interval(),
+            max_retries=20,
+        )
     except Exception as error:
         if attempt_id is not None:
             try:
@@ -354,9 +358,16 @@ def dispatch_video_analysis(self, job_id: str) -> dict:
 
 
 def _poll_interval() -> int:
-    value = int(os.getenv("RUNPOD_POLL_INTERVAL_SECONDS", "10"))
+    value = int(os.getenv("RUNPOD_POLL_INTERVAL_SECONDS", "3"))
     if value < 1:
         raise ValueError("RUNPOD_POLL_INTERVAL_SECONDS must be positive")
+    return value
+
+
+def _transient_retry_interval() -> int:
+    value = int(os.getenv("RUNPOD_TRANSIENT_RETRY_INTERVAL_SECONDS", "10"))
+    if value < 1:
+        raise ValueError("RUNPOD_TRANSIENT_RETRY_INTERVAL_SECONDS must be positive")
     return value
 
 
@@ -436,7 +447,7 @@ def poll_video_analysis(self, job_id: str, attempt_id: str) -> dict:
             "coach.poll_video_analysis",
             args=[job_id, attempt_id],
             queue="gpu_dispatch",
-            countdown=_poll_interval(),
+            countdown=_transient_retry_interval(),
         )
         return {"job_id": job_id, "attempt_id": attempt_id, "status": "poll_retry"}
     except Exception as error:
