@@ -5,6 +5,12 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 CATALOG = Path(__file__).with_name("exercise_videos.json")
+FEATURE_IDS = {
+    "Amplitude of pelvis oscillation": "feature1",
+    "Elbow angle": "feature2",
+    "Trunk flexion angle": "feature3",
+    "Postural lean angle": "feature4",
+}
 
 
 def valid_number(value):
@@ -12,7 +18,13 @@ def valid_number(value):
 
 
 def condition(feature, result):
-    if not isinstance(result, dict) or result.get("range", {}).get("warning"):
+    if not isinstance(result, dict):
+        return None
+    result_range = result.get("range")
+    if result_range is not None and not isinstance(result_range, dict):
+        return None
+    result_range = result_range or {}
+    if result_range.get("warning"):
         return None
     value = result.get("value")
     instruction = result.get("instruction", "")
@@ -21,7 +33,7 @@ def condition(feature, result):
     if feature == "Elbow angle":
         if not isinstance(value, list) or not any(valid_number(v) for v in value):
             return None
-        if result.get("range", {}).get("section") == "측정 불가":
+        if result_range.get("section") == "측정 불가":
             return None
         return "maintain" if "유지" in instruction or "good" in instruction else "adjust_arms"
     if not valid_number(value) or value < 0:
@@ -59,7 +71,7 @@ def recommend_exercise_videos(features: dict, max_per_feature: int = 1) -> list[
         url = urlparse(video["url"])
         if url.scheme != "https" or url.hostname != "www.youtube.com" or url.path != "/watch" or not parse_qs(url.query).get("v"):
             raise ValueError("Invalid catalog YouTube URL")
-        selected.append({"id": video["id"], "title": video["title"], "url": video["url"], "feature": key})
+        selected.append({"id": video["id"], "title": video["title"], "url": video["url"], "feature_id": FEATURE_IDS[key]})
         counts[key] = counts.get(key, 0) + 1
         seen.add(video["url"])
     return selected

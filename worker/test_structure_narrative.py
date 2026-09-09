@@ -62,6 +62,12 @@ class StructuredNarrativeTests(unittest.TestCase):
             "```코드``` 자세를 유지하세요.",
             "부상이 발생하므로 자세를 바꾸세요.",
             "팔 동작은 안정적입니다. 몸통을 조정하세요.",
+            "- 팔 동작을 유지하세요.",
+            "**팔 동작**을 유지하세요.",
+            "<b>팔 동작</b>을 유지하세요.",
+            "자세 점수를 유지하세요.",
+            "각도를 유지하세요.",
+            "팔 동작을 유지하세요",
         ):
             with self.subTest(summary=summary), tempfile.TemporaryDirectory() as directory:
                 output_dir = Path(directory) / "outputs"
@@ -71,6 +77,18 @@ class StructuredNarrativeTests(unittest.TestCase):
                 (output_dir / "feature_results.json").write_text("{}", encoding="utf-8")
                 with self.assertRaises(ValueError):
                     build_structured_narrative(Path(directory))
+
+    def test_ignores_malformed_or_null_range_without_crashing(self) -> None:
+        from coach.scripts.model_contract.exercise_video_tool import recommend_exercise_videos
+
+        for value in (None, "invalid"):
+            with self.subTest(value=value):
+                videos = recommend_exercise_videos({
+                    "Elbow angle": {"value": [90], "range": value, "instruction": "유지하세요."},
+                })
+                self.assertIsInstance(videos, list)
+                if value == "invalid":
+                    self.assertEqual(videos, [])
 
 
 if __name__ == "__main__":

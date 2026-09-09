@@ -16,8 +16,9 @@ except ModuleNotFoundError:  # Direct execution inside the coach container.
 
 MAX_SUMMARY_CHARS = 250
 MAX_ACTIONS = 3
-BLOCKED_MARKUP = ("```", "<script", "<table", "</", "|---", "# ")
+BLOCKED_MARKUP = ("```", "<", ">", "|---", "# ", "**", "__", "[", "](")
 BLOCKED_MEDICAL = ("진단", "부상 확정", "부상이 발생", "질환", "치료가 필요")
+BLOCKED_MEASUREMENT = ("점수", "퍼센트", "백분율", "각도", "cm", "센티미터", "단위", "feature", "피처")
 
 
 def _load_object(path: Path) -> dict[str, Any]:
@@ -57,12 +58,18 @@ def _validate_summary(summary: str) -> str:
     if not summary or len(summary) > MAX_SUMMARY_CHARS:
         raise ValueError("overall_summary is empty or too long")
     lowered = summary.lower()
+    if re.match(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", summary):
+        raise ValueError("overall_summary contains a list")
     if any(token in lowered for token in BLOCKED_MARKUP):
         raise ValueError("overall_summary contains markup")
     if any(token in summary for token in BLOCKED_MEDICAL):
         raise ValueError("overall_summary contains a medical claim")
+    if any(token in lowered for token in BLOCKED_MEASUREMENT):
+        raise ValueError("overall_summary contains a score, unit, or feature identifier")
     if re.search(r"\d", summary):
         raise ValueError("overall_summary must not contain unverifiable numbers")
+    if summary[-1] not in ".!?。":
+        raise ValueError("overall_summary must end with sentence punctuation")
     sentences = [part for part in re.split(r"(?<=[.!?。])\s*", summary) if part.strip()]
     if len(sentences) != 1:
         raise ValueError("overall_summary must contain exactly one sentence")

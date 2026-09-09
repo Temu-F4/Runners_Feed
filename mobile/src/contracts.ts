@@ -121,6 +121,7 @@ export interface CoachingAction {
 
 export interface ValidatedNarrative {
   status: "success" | "unavailable";
+  errorCode: string | null;
   model: string | null;
   summary: string | null;
   priorityActions: CoachingAction[];
