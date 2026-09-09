@@ -8,10 +8,18 @@ import { useAuth } from "../src/auth";
 import { AppHeader, Button, Screen } from "../src/components";
 import { ProfileChip } from "../src/coach-ui";
 import { colors, fonts, spacing, styles } from "../src/theme";
+import { DEMO_FIXTURES_ENABLED } from "../src/config";
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const MIN_VIDEO_MS = 3_000;
 const MAX_VIDEO_MS = 10_000;
+const demoFixtures = [
+  ["전체 흐름", "demo-flow", "progress"],
+  ["정상", "demo-normal", "result"],
+  ["부분 측정", "demo-partial", "result"],
+  ["LLM 실패", "demo-llm-failure", "result"],
+  ["최종 실패", "demo-failed", "progress"],
+] as const;
 
 type UploadValidation = "idle" | "valid" | "invalid_type" | "too_large" | "too_short" | "too_long" | "unreadable";
 type SelectedVideo = { uri: string; name: string; mimeType: string; duration?: number | null; size?: number | null; validation: UploadValidation };
@@ -115,7 +123,7 @@ export default function UploadScreen() {
       <View style={{ alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", marginTop: 9, minHeight: 66, padding: 10 }}><View><Text style={{ color: colors.primary, fontSize: 11, fontWeight: "800" }}>이번 분석 대상 키</Text><Text style={[styles.caption, { fontSize: 9, marginTop: 5 }]}>프로필 기본값 · 이번 분석에만 변경</Text></View><View style={{ alignItems: "center", flexDirection: "row", gap: 4 }}><TextInput keyboardType="decimal-pad" onChangeText={setHeight} placeholder="175" placeholderTextColor={colors.muted} value={height} style={{ backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, color: colors.lime, fontFamily: fonts.mono, fontSize: 16, fontWeight: "900", height: 44, paddingHorizontal: 9, textAlign: "right", width: 66 }} /><Text style={styles.caption}>cm</Text></View></View>
       <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 8, minHeight: 44, padding: 10 }}><Text style={styles.caption}>영상 보관 및 삭제 안내</Text><Text style={[styles.caption, { fontSize: 9, lineHeight: 14, marginTop: 5 }]}>원본·렌더링 영상·상세 추론 데이터는 약 24시간 후 삭제됩니다. 리포트와 스켈레톤은 기록에 남습니다.</Text></View>
       <Button label={video && video.validation === "valid" ? "확인하고 분석 시작  →" : "먼저 영상을 선택하세요"} onPress={() => void start()} disabled={!video || video.validation !== "valid"} loading={busy} style={{ marginTop: 10 }} />
-      {__DEV__ ? <View style={{ borderColor: colors.amber, borderWidth: 1, marginTop: 10, padding: 10 }}><Text style={{ color: colors.amber, fontSize: 10, fontWeight: "900" }}>개발 전용 fixture · 실제 분석 결과 아님</Text><View style={{ flexDirection: "row", gap: 5, marginTop: 8 }}>{[["정상", "demo-normal"], ["부분 측정", "demo-partial"], ["LLM 실패", "demo-llm-failure"]].map(([label, id]) => <Pressable key={id} onPress={() => router.push({ pathname: "/result/[jobId]", params: { jobId: id } })} style={{ alignItems: "center", borderColor: colors.border, borderWidth: 1, flex: 1, justifyContent: "center", minHeight: 40 }}><Text style={styles.caption}>{label}</Text></Pressable>)}</View></View> : null}
+      {DEMO_FIXTURES_ENABLED ? <View style={{ borderColor: colors.amber, borderWidth: 1, marginTop: 10, padding: 10 }}><Text style={{ color: colors.amber, fontSize: 10, fontWeight: "900" }}>개발 전용 fixture · 실제 분석 결과 아님</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 8 }}>{demoFixtures.map(([label, id, screen]) => <Pressable accessibilityLabel={`${label} 개발 fixture`} accessibilityRole="button" key={id} onPress={() => router.push({ pathname: screen === "progress" ? "/progress/[jobId]" : "/result/[jobId]", params: { jobId: id } })} style={{ alignItems: "center", borderColor: colors.border, borderWidth: 1, justifyContent: "center", minHeight: 40, width: "48%" }}><Text style={styles.caption}>{label}</Text></Pressable>)}</View></View> : null}
       {busy ? <View style={{ backgroundColor: colors.surfaceRaised, height: 6, overflow: "hidden", marginTop: 6 }}><View style={{ backgroundColor: colors.lime, height: "100%", width: `${Math.max(2, progress * 100)}%` }} /></View> : null}
       {video && video.validation !== "valid" ? <Text style={{ color: colors.red, fontSize: 12, marginTop: spacing.md }}>{validationMessage(video.validation)}</Text> : null}
       {error ? <Text style={{ color: colors.red, fontSize: 11, marginTop: spacing.md }}>{error}</Text> : null}

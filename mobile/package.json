@@ -8,7 +8,7 @@
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "test": "jest --runInBand",
+    "test": "node --experimental-strip-types --test src/*.test.mjs",
     "doctor": "npx --yes expo-doctor@latest"
   },
   "dependencies": {

@@ -23,6 +23,7 @@ import type {
 } from "./contracts";
 import { colors, formatDate, formatValue, spacing, styles } from "./theme";
 import { featureScore, featureScoreLabel } from "./scoring";
+import { scoreCohortJobs } from "./signal-data";
 
 export function Screen({
   children,
@@ -196,12 +197,12 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 }
 
 const stageLabels: Record<JobStage, string> = {
-  upload: "영상 업로드",
-  queue: "분석 대기",
-  keypoints: "관절 위치 추출",
-  features: "자세 특성값 계산",
-  validation: "결과 검증",
-  result: "결과 준비",
+  upload: "업로드 중",
+  queue: "분석 대기 중",
+  keypoints: "움직임 분석 중",
+  features: "결과 정리 중",
+  validation: "결과 정리 중",
+  result: "완료",
 };
 
 export function stageLabel(stage: JobStage) {
@@ -258,8 +259,7 @@ export function JobCard({ job, onPress }: { job: ActiveAnalysisJob; onPress: () 
 }
 
 export function ScoreTrendChart({ jobs }: { jobs: ActiveAnalysisJob[] }) {
-  const scored = jobs
-    .filter((job) => job.status === "SUCCESS" && typeof job.postureScore === "number")
+  const scored = scoreCohortJobs(jobs)
     .slice(0, 8)
     .reverse();
   if (scored.length < 2) {

@@ -19,6 +19,7 @@ from job_repository import (
     get_gpu_attempt,
     mark_job_failed,
     mark_job_processing,
+    mark_job_stage_running_if_pending,
     save_remote_job_id,
     start_gpu_attempt,
 )
@@ -414,6 +415,8 @@ def poll_video_analysis(self, job_id: str, attempt_id: str) -> dict:
             attempt_id=attempt_id,
         )
         if response["status"] in {"queued", "running"}:
+            if response["status"] == "running":
+                mark_job_stage_running_if_pending(job_id, "video_analysis")
             celery_app.send_task(
                 "coach.poll_video_analysis",
                 args=[job_id, attempt_id],

@@ -11,6 +11,8 @@ import {
 } from "./api";
 import type { MobileProfile } from "./contracts";
 import { NATIVE_REDIRECT_URI } from "./config";
+import { DEMO_MODE } from "./config";
+import { demoProfile } from "./demo-results";
 import { deleteStoredToken, getStoredToken, setStoredToken } from "./token-storage";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -45,6 +47,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const bootstrap = async () => {
     setError(null);
+    if (DEMO_MODE) {
+      setToken("development-fixture");
+      setProfile(demoProfile);
+      return;
+    }
     try {
       const stored = await getStoredToken(TOKEN_KEY);
       if (stored) {

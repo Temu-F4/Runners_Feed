@@ -75,6 +75,8 @@ export interface PostureSignal {
   message: string;
   confidencePct: number | null;
   confidenceLevel: ConfidenceLevel;
+  confidenceAssumed?: boolean;
+  score?: number | null;
 }
 
 export interface TrendPoint {

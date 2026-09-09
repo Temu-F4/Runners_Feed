@@ -30,7 +30,7 @@ export default function DashboardScreen() {
   const { token, profile, signInWithKakao, signOut } = useAuth();
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [height, setHeight] = useState(profile?.heightCm ? String(profile.heightCm) : "");
-  const [selectedFeature, setSelectedFeature] = useState("vertical");
+  const [selectedFeature, setSelectedFeature] = useState("feature1");
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -108,7 +108,7 @@ export default function DashboardScreen() {
 
       {loading && !dashboard ? <LoadingState message="최근 분석을 불러오는 중입니다." /> : null}
       <ScoreOverview jobs={dashboard?.jobs ?? []} onPress={() => router.push("/history")} />
-      <ImprovementChips signals={dashboard?.prioritySignals ?? []} onPress={() => latestJob ? router.push(jobPath(latestJob)) : router.push("/upload")} />
+      <ImprovementChips signals={dashboard?.latestSignals ?? []} onPress={() => latestJob ? router.push(jobPath(latestJob)) : router.push("/upload")} />
 
       <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, marginTop: 12, padding: 13 }}>
         <SectionHeading label="최근 분석 자세" meta={latestDate} />

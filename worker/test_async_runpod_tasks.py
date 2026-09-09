@@ -57,11 +57,12 @@ class AsyncRunPodTaskTests(unittest.TestCase):
         send_task.assert_called_once()
 
     @patch("coach_tasks._poll_interval", return_value=10)
+    @patch("coach_tasks.mark_job_stage_running_if_pending")
     @patch("coach_tasks.celery_app.send_task")
     @patch("coach_tasks.client_from_environment")
     @patch("coach_tasks.get_gpu_attempt")
     def test_running_poll_schedules_next_poll(
-        self, get_attempt, client_factory, send_task, _interval
+        self, get_attempt, client_factory, send_task, mark_running, _interval
     ):
         get_attempt.return_value = {
             **SNAPSHOT, "status": "RUNNING", "remote_job_id": "remote-1",
@@ -76,6 +77,25 @@ class AsyncRunPodTaskTests(unittest.TestCase):
             "coach.poll_video_analysis", args=["job-1", "attempt-1"],
             queue="gpu_dispatch", countdown=10,
         )
+        mark_running.assert_called_once_with("job-1", "video_analysis")
+
+    @patch("coach_tasks._poll_interval", return_value=10)
+    @patch("coach_tasks.mark_job_stage_running_if_pending")
+    @patch("coach_tasks.celery_app.send_task")
+    @patch("coach_tasks.client_from_environment")
+    @patch("coach_tasks.get_gpu_attempt")
+    def test_queued_poll_keeps_video_stage_pending(
+        self, get_attempt, client_factory, _send_task, mark_running, _interval
+    ):
+        get_attempt.return_value = {
+            **SNAPSHOT, "status": "RUNNING", "remote_job_id": "remote-1",
+            "manifest_object": None, "elapsed_seconds": 2,
+        }
+        client_factory.return_value.poll.return_value = {
+            "status": "queued", "job_id": "job-1", "attempt_id": "attempt-1"
+        }
+        self.assertEqual(poll_video_analysis.run("job-1", "attempt-1")["status"], "queued")
+        mark_running.assert_not_called()
 
     @patch("coach_tasks.JobStageRecorder")
     @patch("coach_tasks.validate_manifest")

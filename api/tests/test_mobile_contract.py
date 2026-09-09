@@ -4,7 +4,7 @@ from unittest import TestCase
 from unittest.mock import patch
 from uuid import uuid4
 
-from app.main import MobileJobRequest, _mobile_result, _mobile_stage, model_quality_health
+from app.main import MobileJobRequest, _mobile_result, _mobile_signals, _mobile_stage, model_quality_health
 
 
 class MobileContractTests(TestCase):
@@ -58,6 +58,43 @@ class MobileContractTests(TestCase):
 
         self.assertEqual(stage, "features")
         self.assertIsNone(progress)
+
+    @patch("app.main.get_job_stages")
+    def test_processing_without_remote_running_stage_is_waiting(self, stages) -> None:
+        stages.return_value = [
+            {"stage_key": "input_download", "status": "PENDING"},
+            {"stage_key": "video_analysis", "status": "PENDING"},
+        ]
+        stage, progress = _mobile_stage({"job_id": uuid4(), "status": "PROCESSING"})
+        self.assertEqual(stage, "queue")
+        self.assertIsNone(progress)
+
+    @patch("app.main.get_job_stages")
+    def test_remote_running_stage_is_movement_analysis_without_fake_progress(self, stages) -> None:
+        stages.return_value = [
+            {"stage_key": "input_download", "status": "PENDING"},
+            {"stage_key": "video_analysis", "status": "RUNNING"},
+        ]
+        stage, progress = _mobile_stage({"job_id": uuid4(), "status": "PROCESSING"})
+        self.assertEqual(stage, "keypoints")
+        self.assertIsNone(progress)
+
+    def test_success_is_complete(self) -> None:
+        self.assertEqual(
+            _mobile_stage({"job_id": uuid4(), "status": "SUCCESS"}),
+            ("result", 100.0),
+        )
+
+    @patch("app.main.get_job_stages")
+    def test_result_upload_is_still_result_preparation_until_job_succeeds(self, stages) -> None:
+        stages.return_value = [
+            {"stage_key": "video_analysis", "status": "SUCCESS"},
+            {"stage_key": "result_upload", "status": "RUNNING"},
+        ]
+        self.assertEqual(
+            _mobile_stage({"job_id": uuid4(), "status": "PROCESSING"}),
+            ("validation", None),
+        )
 
     def test_mobile_result_preserves_representative_value_and_maps_evidence(self) -> None:
         job = {
@@ -120,6 +157,11 @@ class MobileContractTests(TestCase):
         self.assertEqual(result["features"][0]["denominatorPolicy"], "all_frames")
         self.assertEqual(result["evidence"][0]["evidenceId"], "paper-1")
         self.assertEqual(result["narrative"]["priorityActions"][0]["featureId"], "feature1")
+        home_signal = _mobile_signals(result["features"])[0]
+        self.assertEqual(home_signal["featureId"], "feature1")
+        self.assertEqual(home_signal["value"], result["features"][0]["representativeValue"])
+        self.assertEqual(home_signal["score"], result["features"][0]["score"])
+        self.assertTrue(home_signal["confidenceAssumed"])
 
     def test_mobile_result_maps_optional_run_metrics(self) -> None:
         job = {

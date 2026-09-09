@@ -657,7 +657,7 @@ def _mobile_stage(job: dict) -> tuple[str, float | None]:
     if status == "SUCCESS":
         return "result", 100.0
     if status == "QUEUED":
-        return "queue", 0.0
+        return "queue", None
 
     stages = get_job_stages(str(job["job_id"]))
     if not stages:
@@ -668,8 +668,8 @@ def _mobile_stage(job: dict) -> tuple[str, float | None]:
         "video_analysis": "keypoints",
         "feature_extract": "features",
         "report_generate": "validation",
-        "result_upload": "result",
-        "workspace_cleanup": "result",
+        "result_upload": "validation",
+        "workspace_cleanup": "validation",
     }
     failed = next(
         (
@@ -693,9 +693,9 @@ def _mobile_stage(job: dict) -> tuple[str, float | None]:
     )
     if status in {"FAILED", "ERROR"}:
         return stage_name.get(selected.get("stage_key"), "validation"), None
-    completed = sum(stage.get("status") == "SUCCESS" for stage in stages)
-    progress = round(completed / len(stages) * 100, 1)
-    return stage_name.get(selected.get("stage_key"), "validation"), progress
+    if running is None and not any(stage.get("status") == "SUCCESS" for stage in stages):
+        return "queue", None
+    return stage_name.get(selected.get("stage_key"), "validation"), None
 
 
 def _mobile_job(job: dict) -> dict:
@@ -722,7 +722,7 @@ def _mobile_job(job: dict) -> dict:
         "modelRelease": job.get("model_release"),
         "error": (
             job.get("error_code") or "coach_failed"
-            if status == "FAILED"
+            if status in {"FAILED", "ERROR"}
             else None
         ),
     }
@@ -973,6 +973,8 @@ def _mobile_signals(features: list[dict]) -> list[dict]:
             "message": feature["interpretation"] or feature["limitation"],
             "confidencePct": feature["confidencePct"],
             "confidenceLevel": feature["confidenceLevel"],
+            "confidenceAssumed": feature.get("confidenceAssumed", False),
+            "score": feature.get("score"),
         }
         for feature in features
     ]
@@ -980,6 +982,13 @@ def _mobile_signals(features: list[dict]) -> list[dict]:
 
 def _mobile_dashboard_insights(jobs: list[dict]) -> tuple[list[dict], list[dict], dict | None]:
     successful = [job for job in jobs if job.get("status") == "SUCCESS" and job.get("result_report_object")]
+    if successful:
+        latest = successful[0]
+        successful = [
+            job for job in successful
+            if job.get("model_id") == latest.get("model_id")
+            and job.get("model_release") == latest.get("model_release")
+        ]
     successful.sort(key=lambda job: str(job.get("completed_at") or job.get("created_at") or ""))
     results: list[tuple[dict, dict]] = []
     for job in successful:

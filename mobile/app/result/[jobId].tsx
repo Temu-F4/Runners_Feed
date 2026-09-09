@@ -78,8 +78,8 @@ export default function ResultScreen() {
   const [limitsOpen, setLimitsOpen] = useState(false);
 
   useEffect(() => {
-    if (!token || !jobId) return;
-    getResult(token, jobId).then((value) => { setResult(value); setSelectedId(value.features.find((feature) => feature.featureId === "feature2")?.featureId ?? value.features[0]?.featureId ?? null); }).catch((cause) => setError(cause instanceof Error ? cause.message : "결과를 불러오지 못했습니다.")).finally(() => setLoading(false));
+    if (!jobId || (!token && !jobId.startsWith("demo-"))) return;
+    getResult(token ?? "", jobId).then((value) => { setResult(value); setSelectedId(value.features.find((feature) => feature.featureId === "feature2")?.featureId ?? value.features[0]?.featureId ?? null); }).catch((cause) => setError(cause instanceof Error ? cause.message : "결과를 불러오지 못했습니다.")).finally(() => setLoading(false));
   }, [token, jobId]);
 
   const openVideo = async () => {

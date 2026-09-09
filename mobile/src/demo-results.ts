@@ -1,4 +1,12 @@
-import type { AnalysisResult, FeatureAnalysis } from "./contracts";
+import type { ActiveAnalysisJob, AnalysisResult, DashboardResponse, FeatureAnalysis, MobileProfile } from "./contracts";
+
+const flowPolls = new Map<string, number>();
+
+export const demoProfile: MobileProfile = {
+  userId: "development-fixture", sessionType: "guest", authenticated: false,
+  provider: null, email: null, displayName: "개발 fixture", heightCm: 175,
+  kakaoLoginEnabled: false,
+};
 
 const feature = (
   featureId: string,
@@ -34,7 +42,7 @@ export function demoResult(id: string): AnalysisResult | null {
   const llmFailure = id === "demo-llm-failure";
   const values = partial ? [12, null, null, 15, null, 20] : [12, 13, 14, 15, 19, 16];
   const features = [
-    { ...feature("feature1", "키 대비 골반 수직진동", [0.046], 0.028, 0.061, "all_frames"), unit: "ratio", score: null, visualization: { kind: "range_bar", x_axis: "aggregate_ratio", placement: "summary_metrics" } },
+    { ...feature("feature1", "키 대비 골반 수직진동", [0.046], 0.028, 0.061, "all_frames"), unit: "ratio", referenceRange: { kind: "reference" as const, min: 0.028, max: 0.061, unit: "ratio", criterionVersion: "demo-v1", evidenceIds: [] }, score: null, visualization: { kind: "range_bar" as const, x_axis: "aggregate_ratio" as const, placement: "summary_metrics" as const } },
     feature("feature2", "팔꿈치 각도", [82, 90, 105, 112], 70, 110.0001, "evaluated_frames"),
     feature("feature3", "몸통 굽힘 각도", values, 10.9, 18.9, "all_frames"),
     feature("feature4", "상체 기울기", partial ? [3, null, null, 5, null, 2] : [2, 3, 4, 5, 2, 3], 1.7, 4.3, "all_frames"),
@@ -49,5 +57,46 @@ export function demoResult(id: string): AnalysisResult | null {
       ? { status: "unavailable", model: null, summary: null, priorityActions: [], maintainActions: [], disclaimer: "개발용 LLM 실패 fixture입니다. 의료 진단이나 부상 예측이 아닙니다.", validatorVersion: "service-narrative-2" }
       : { status: "success", model: "fixture", summary: "팔 동작은 대체로 안정적입니다. 몸통과 상체 기울기는 그래프의 기준 구간을 확인해 보세요. 다음 촬영에서도 같은 조건을 유지하세요.", priorityActions: [], maintainActions: [], disclaimer: "개발·시연 전용 데이터이며 의료 진단이나 부상 예측이 아닙니다.", validatorVersion: "service-narrative-2" },
     media: null, runtimeMetadata: { promptVersion: "demo", model: "fixture", validatorVersion: "service-narrative-2", inputTokens: null, outputTokens: null },
+  };
+}
+
+export function demoJob(id: string): ActiveAnalysisJob | null {
+  if (!id.startsWith("demo-")) return null;
+  const nextPoll = (flowPolls.get(id) ?? 0) + 1;
+  flowPolls.set(id, nextPoll);
+  const status = id === "demo-flow"
+    ? nextPoll >= 3 ? "SUCCESS" : nextPoll === 2 ? "PROCESSING" : "QUEUED"
+    : id === "demo-failed" ? "FAILED" : "PROCESSING";
+  return {
+    jobId: id, title: "개발 전용 분석 fixture", caseId: id, status,
+    stage: status === "SUCCESS" ? "result" : status === "FAILED" ? "keypoints" : status === "QUEUED" ? "queue" : "keypoints",
+    progressPct: status === "SUCCESS" ? 100 : null, estimatedCompletionSeconds: null,
+    createdAt: new Date(Date.now() - 15_000).toISOString(), startedAt: new Date(Date.now() - 12_000).toISOString(),
+    completedAt: status === "SUCCESS" ? new Date().toISOString() : null, updatedAt: new Date().toISOString(),
+    heightCm: 175, modelId: "sehyeon-57e4938-demo", modelRelease: "fixture",
+    error: status === "FAILED" ? "개발용 최종 실패" : null, postureScore: status === "SUCCESS" ? 75 : null,
+  };
+}
+
+export function demoDashboard(): DashboardResponse {
+  const result = demoResult("demo-normal")!;
+  const completedJob: ActiveAnalysisJob = {
+    jobId: result.jobId, title: "개발 전용 분석 fixture", caseId: result.jobId,
+    status: "SUCCESS", stage: "result", progressPct: 100, estimatedCompletionSeconds: null,
+    createdAt: result.createdAt, startedAt: result.createdAt, completedAt: result.completedAt,
+    updatedAt: result.completedAt ?? result.createdAt, heightCm: 175,
+    modelId: result.modelId, modelRelease: result.modelRelease, error: null,
+    postureScore: result.postureScore,
+  };
+  const latestSignals = result.features.map((item) => ({
+    featureId: item.featureId, label: item.label, priority: item.priority,
+    verdict: item.verdict, value: item.representativeValue, unit: item.unit,
+    referenceRange: item.referenceRange, message: item.interpretation,
+    confidencePct: item.confidencePct, confidenceLevel: item.confidenceLevel,
+    confidenceAssumed: item.confidenceAssumed, score: item.score,
+  }));
+  return {
+    profile: demoProfile, activeJob: null, jobs: [completedJob], latestSignals,
+    prioritySignals: latestSignals.filter((item) => item.verdict === "improve"), trend: null,
   };
 }

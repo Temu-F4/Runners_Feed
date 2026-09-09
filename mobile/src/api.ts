@@ -1,13 +1,13 @@
 import * as FileSystem from "expo-file-system/legacy";
 
-import { API_BASE_URL } from "./config";
+import { API_BASE_URL, DEMO_FIXTURES_ENABLED, DEMO_MODE } from "./config";
 import type {
   ActiveAnalysisJob,
   AnalysisResult,
   DashboardResponse,
   MobileProfile,
 } from "./contracts";
-import { demoResult } from "./demo-results";
+import { demoDashboard, demoJob, demoResult } from "./demo-results";
 
 export class ApiError extends Error {
   status: number;
@@ -64,6 +64,7 @@ export function getMe(token: string) {
 }
 
 export async function getDashboard(token: string): Promise<DashboardResponse> {
+  if (DEMO_MODE) return demoDashboard();
   const payload = await request<Partial<DashboardResponse> & Pick<DashboardResponse, "profile" | "activeJob" | "jobs">>(
     "/mobile/v1/dashboard",
     token,
@@ -119,11 +120,15 @@ export function listJobs(token: string) {
 }
 
 export function getJob(token: string, jobId: string) {
+  if (DEMO_FIXTURES_ENABLED) {
+    const fixture = demoJob(jobId);
+    if (fixture) return Promise.resolve(fixture);
+  }
   return request<ActiveAnalysisJob>(`/mobile/v1/jobs/${jobId}`, token);
 }
 
 export function getResult(token: string, jobId: string) {
-  if (__DEV__) {
+  if (DEMO_FIXTURES_ENABLED) {
     const fixture = demoResult(jobId);
     if (fixture) return Promise.resolve(fixture);
   }
