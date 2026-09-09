@@ -44,6 +44,8 @@ test("home fixture uses the same measurement, unit, and server score as detail",
     assert.equal(signal.score, feature.score);
     assert.equal(signal.confidencePct, feature.confidencePct);
   }
+  assert.equal(home.jobs[0].jobId, detail.jobId);
+  assert.equal(demoResult(home.jobs[0].jobId).jobId, detail.jobId);
 });
 
 test("score history stays within the latest model and scoring release", () => {

@@ -113,6 +113,9 @@ export function logout(token: string) {
 }
 
 export function listJobs(token: string) {
+  if (DEMO_MODE) {
+    return Promise.resolve({ jobs: demoDashboard().jobs, nextCursor: null });
+  }
   return request<{ jobs: ActiveAnalysisJob[]; nextCursor: string | null }>(
     "/mobile/v1/jobs",
     token,
