@@ -145,7 +145,7 @@ PY
 assert_quality_status() {
   local payload_file="$1"
   local target_tag="$2"
-  local model_id="${COACH_MODEL_ID:-sehyeon-e2fe43e}"
+  local model_id="${COACH_MODEL_ID:-sehyeon-57e4938}"
 
   python3 - "${payload_file}" "${target_tag}" "${model_id}" <<'PY'
 import json

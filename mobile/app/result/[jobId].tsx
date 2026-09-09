@@ -5,7 +5,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 
 import { createResultVideoUrl, getResult } from "../../src/api";
 import { useAuth } from "../../src/auth";
-import { AppHeader, Button, FeatureFrameChart, LoadingState, Screen } from "../../src/components";
+import { AppHeader, Button, FeatureFrameChart, FeatureMiniChart, LoadingState, Screen } from "../../src/components";
 import { FullLink, ProfileChip, SectionHeading } from "../../src/coach-ui";
 import type { AnalysisResult, CoachingAction, FeatureAnalysis } from "../../src/contracts";
 import { featureScore, featureScoreLabel, overallScore } from "../../src/scoring";
@@ -45,6 +45,31 @@ function verdictLabel(feature: FeatureAnalysis) {
   return "검토 중";
 }
 
+function RunMetricCell({ label, value }: { label: string; value: string }) {
+  return <View style={{ flex: 1, minHeight: 92, padding: 10 }}><Text style={{ color: colors.muted, fontSize: 8 }}>{label}</Text><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 14, fontWeight: "900", marginTop: 9 }}>{value}</Text></View>;
+}
+
+function paceLabel(value: string | null | undefined) {
+  if (!value) return "—";
+  const match = value.trim().match(/^(\d+)[:'](\d{1,2})(?:\"?\s*\/?\s*km)?$/);
+  return match ? `${Number(match[1])}'${String(Number(match[2])).padStart(2, "0")}"/km` : value;
+}
+
+function VerticalObservationCell({ feature }: { feature: FeatureAnalysis | null }) {
+  const range = feature?.referenceRange ?? null;
+  const value = feature?.representativeValue ?? null;
+  const inRange = value !== null && range !== null && value >= range.min && value <= range.max;
+  const position = value !== null && range
+    ? Math.max(0, Math.min(100, ((value - range.min) / (range.max - range.min)) * 100))
+    : 50;
+  return <View style={{ borderLeftColor: colors.border, borderLeftWidth: 1, flex: 1.45, minHeight: 92, padding: 10 }}>
+    <Text style={{ color: colors.muted, fontSize: 8 }}>수직 진폭</Text>
+    <Text style={{ color: inRange ? colors.lime : value === null ? colors.muted : colors.amber, fontSize: 8, fontWeight: "800", marginTop: 5 }}>{value === null ? "측정 대기" : inRange ? "관찰 범위 안" : "관찰 범위 밖"}</Text>
+    <View style={{ backgroundColor: colors.surfaceRaised, height: 5, marginTop: 9, position: "relative" }}><View style={{ backgroundColor: "rgba(201,255,56,0.28)", height: 5, left: 0, position: "absolute", right: 0 }} />{value !== null && range ? <View style={{ backgroundColor: inRange ? colors.lime : colors.amber, borderRadius: 4, height: 9, left: `${position}%`, marginLeft: -3, marginTop: -2, position: "absolute", width: 6 }} /> : null}</View>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 6 }}>{range ? range.min.toFixed(3) : "0.028"}</Text><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 7, fontWeight: "800" }}>{value === null ? "—" : value.toFixed(3)}</Text><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 6 }}>{range ? range.max.toFixed(3) : "0.061"}</Text></View>
+  </View>;
+}
+
 export default function ResultScreen() {
   const { jobId: rawJobId } = useLocalSearchParams<{ jobId: string }>();
   const jobId = Array.isArray(rawJobId) ? rawJobId[0] : rawJobId;
@@ -59,8 +84,8 @@ export default function ResultScreen() {
   const [limitsOpen, setLimitsOpen] = useState(false);
 
   useEffect(() => {
-    if (!token || !jobId) return;
-    getResult(token, jobId).then((value) => { setResult(value); setSelectedId(value.features[0]?.featureId ?? null); }).catch((cause) => setError(cause instanceof Error ? cause.message : "결과를 불러오지 못했습니다.")).finally(() => setLoading(false));
+    if (!jobId || (!token && !jobId.startsWith("demo-"))) return;
+    getResult(token ?? "", jobId).then((value) => { setResult(value); setSelectedId(value.features.find((feature) => feature.featureId === "feature2")?.featureId ?? value.features[0]?.featureId ?? null); }).catch((cause) => setError(cause instanceof Error ? cause.message : "결과를 불러오지 못했습니다.")).finally(() => setLoading(false));
   }, [token, jobId]);
 
   const openVideo = async () => {
@@ -75,6 +100,8 @@ export default function ResultScreen() {
   const storedMediaUrl = videoUrl ?? result?.media?.renderedVideoUrl ?? result?.media?.skeletonVideoUrl ?? null;
   const showingSkeleton = !videoUrl && !result?.media?.renderedVideoUrl && Boolean(result?.media?.skeletonVideoUrl);
   const actions = result ? [...result.narrative.priorityActions, ...result.narrative.maintainActions].slice(0, 2) : [];
+  const vertical = result?.features.find((feature) => feature.featureId === "feature1") ?? null;
+  const postureFeatures = result?.features.filter((feature) => ["feature2", "feature3", "feature4"].includes(feature.featureId)) ?? [];
 
   return (
     <Screen>
@@ -82,30 +109,37 @@ export default function ResultScreen() {
       {loading ? <LoadingState message="검증된 결과를 불러오는 중입니다." /> : null}
       {error ? <Pressable onPress={() => router.replace({ pathname: "/result/[jobId]", params: { jobId } })} style={{ borderColor: colors.red, borderWidth: 1, marginBottom: 10, minHeight: 48, padding: 10 }}><Text style={{ color: colors.red, fontSize: 11 }}>{error} · 다시 시도</Text></Pressable> : null}
       {result ? <>
+        <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", marginBottom: 8 }}>
+          <RunMetricCell label="페이스" value={paceLabel(result.runMetrics?.pacePerKm)} />
+          <View style={{ borderLeftColor: colors.border, borderLeftWidth: 1, flex: 1 }}><RunMetricCell label="케이던스" value={result.runMetrics?.cadenceSpm == null ? "—" : `${result.runMetrics.cadenceSpm} spm`} /></View>
+          <VerticalObservationCell feature={vertical} />
+        </View>
         <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, padding: 14 }}>
           <SectionHeading label="종합 자세 점수" meta={formatDate(result.completedAt)} />
           <View style={{ alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}><View style={{ flex: 1, paddingRight: 10 }}><Text style={styles.caption}>팔꿈치·몸통·상체 기울기 3개 자세 피처의 평균입니다.</Text></View><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 31, fontWeight: "900" }}>{overallScore(result) ?? "—"}<Text style={{ color: colors.muted, fontSize: 9 }}>/100</Text></Text></View>
-          <View style={{ marginTop: 9 }}>{result.features.map((feature) => { const score = featureScore(feature); return <Pressable key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", gap: 8, minHeight: 44 }}><Text style={{ color: colors.muted, fontSize: 9, width: 65 }}>{shortLabel(feature)}</Text><View style={{ backgroundColor: colors.border, flex: 1, height: 4 }}><View style={{ backgroundColor: colors.lime, height: 4, width: `${score ?? 0}%` }} /></View><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 10, fontWeight: "800", width: 26 }}>{score ?? "—"}</Text></Pressable>; })}</View>
+          <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", flexWrap: "wrap", marginTop: 9 }}>{postureFeatures.map((feature) => { const score = featureScore(feature); const active = feature.featureId === selected?.featureId; return <Pressable accessibilityLabel={`${shortLabel(feature)} 점수 ${score ?? "미제공"}, 프레임 그래프 보기`} key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ backgroundColor: active ? colors.surfaceRaised : colors.background, borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 154, padding: 9, width: "50%" }}><View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}><Text style={{ color: active ? colors.lime : colors.muted, fontSize: 8, fontWeight: "800" }}>{shortLabel(feature)}</Text><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 14, fontWeight: "900" }}>{score ?? "—"}<Text style={{ color: colors.muted, fontSize: 6 }}>/100</Text></Text></View><View style={{ marginTop: 7 }}><FeatureMiniChart feature={feature} /></View><Text numberOfLines={1} style={{ color: colors.muted, fontSize: 7, marginTop: 3 }}>{feature.denominatorPolicy === "evaluated_frames" ? "측정 가능 프레임 기준" : "영상 전체 프레임 기준"}</Text></Pressable>; })}<View accessibilityLabel="향후 feature5 영역" style={{ borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 154, width: "50%" }} /></View>
         </View>
-
-        {result.runMetrics ? <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 8 }}><View style={{ flexDirection: "row" }}>{[{ label: "예상 페이스", value: result.runMetrics.pacePerKm ?? "—" }, { label: "케이던스", value: result.runMetrics.cadenceSpm === null ? "—" : `${result.runMetrics.cadenceSpm} spm` }, { label: "보폭", value: result.runMetrics.strideLengthM === null ? "—" : `${result.runMetrics.strideLengthM.toFixed(2)} m` }].map((metric, index) => <View key={metric.label} style={{ borderRightColor: colors.border, borderRightWidth: index < 2 ? 1 : 0, flex: 1, padding: 9 }}><Text style={{ color: colors.muted, fontSize: 8 }}>{metric.label}</Text><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 11, fontWeight: "800", marginTop: 5 }}>{metric.value}</Text></View>)}</View><Text style={{ borderTopColor: colors.border, borderTopWidth: 1, color: colors.muted, fontSize: 8, padding: 7, textAlign: "center" }}>{result.runMetrics.estimationBasis ?? "1보폭 측정값으로 1분 기준 근사"}</Text></View> : null}
-
-        <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderTopColor: colors.lime, borderTopWidth: 2, borderWidth: 1, marginTop: 14, padding: 14 }}><SectionHeading label="핵심 피드백" meta={formatDate(result.completedAt)} /><Text style={{ color: colors.primary, fontSize: 17, fontWeight: "900", lineHeight: 23, marginVertical: 10 }}>{result.narrative.summary || "몸통과 팔의 움직임을 먼저 조정해 보세요."}</Text>{actions.length ? actions.map((action, index) => <ActionRow action={action} index={index} key={`${action.featureId}-${index}`} />) : <Text style={styles.caption}>검증된 피드백이 준비되면 이곳에 표시됩니다.</Text>}</View>
 
         {storedMediaUrl ? <StoredResultVideo uri={storedMediaUrl} skeleton={showingSkeleton} /> : <Button label="저장된 결과 영상 보기" onPress={() => void openVideo()} loading={videoLoading} kind="secondary" style={{ marginTop: 8 }} />}
 
         {selected ? <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, marginTop: 12, padding: 13 }}>
-          <SectionHeading label="1보폭 프레임별 자세" meta={`F01–F${String(result.analyzedFrameCount || result.totalFrameCount || selected.series.length).padStart(2, "0")}`} />
-          <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", marginTop: 10 }}>{result.features.map((feature, index) => { const active = feature.featureId === selected.featureId; return <Pressable key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ alignItems: "center", backgroundColor: active ? colors.lime : colors.background, borderRightColor: colors.border, borderRightWidth: index < result.features.length - 1 ? 1 : 0, flex: 1, justifyContent: "center", minHeight: 44 }}><Text numberOfLines={1} style={{ color: active ? colors.limeInk : colors.muted, fontSize: 9, fontWeight: "800" }}>{shortLabel(feature)}</Text></Pressable>; })}</View>
+          <SectionHeading label="영상 전체 프레임별 자세" meta={`F01–F${String(result.totalFrameCount || selected.series.length).padStart(2, "0")}`} />
+          <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", marginTop: 10 }}>{postureFeatures.map((feature, index) => { const active = feature.featureId === selected.featureId; return <Pressable key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ alignItems: "center", backgroundColor: active ? colors.lime : colors.background, borderRightColor: colors.border, borderRightWidth: index < postureFeatures.length - 1 ? 1 : 0, flex: 1, justifyContent: "center", minHeight: 44 }}><Text numberOfLines={1} style={{ color: active ? colors.limeInk : colors.muted, fontSize: 9, fontWeight: "800" }}>{shortLabel(feature)}</Text></Pressable>; })}</View>
           <View style={{ alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between", marginTop: 12 }}><View><Text style={{ color: colors.primary, fontSize: 14, fontWeight: "800" }}>{selected.label}</Text><Text style={{ color: selected.verdict === "improve" ? colors.amber : selected.verdict === "maintain" ? colors.lime : colors.muted, fontSize: 10, marginTop: 5 }}>{verdictLabel(selected)}</Text></View><View style={{ alignItems: "flex-end" }}><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 22, fontWeight: "900" }}>{featureScore(selected) ?? "—"}<Text style={{ color: colors.muted, fontSize: 8 }}>/100</Text></Text><Text style={styles.caption}>{featureScoreLabel(selected)}</Text></View></View>
           <View style={{ borderBottomColor: colors.border, borderBottomWidth: 1, borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingVertical: 9 }}><Text style={styles.caption}>측정 범위 <Text style={{ color: colors.primary, fontFamily: fonts.mono }}>{formatValue(selected.representativeValue, selected.unit)}</Text></Text><Text style={styles.caption}>{selected.referenceRange ? `${formatValue(selected.referenceRange.min, selected.referenceRange.unit)}–${formatValue(selected.referenceRange.max, selected.referenceRange.unit)}` : "기준 준비 중"}</Text></View>
           <FeatureFrameChart feature={selected} />
-          <Pressable onPress={() => setLimitsOpen((open) => !open)} style={{ alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 44 }}><Text style={styles.caption}>분석 신뢰도와 한계</Text><Text style={{ color: colors.primary, fontSize: 9, fontWeight: "800" }}>{selected.confidencePct === null ? "—" : `${selected.confidencePct.toFixed(0)}%`} {limitsOpen ? "↑" : "→"}</Text></Pressable>
-          {limitsOpen ? <Text style={[styles.caption, { paddingBottom: 8 }]}>{selected.limitation || result.narrative.disclaimer}</Text> : null}
+          <View style={{ borderTopColor: colors.border, borderTopWidth: 1, paddingVertical: 9 }}>
+            <Text style={styles.caption}>좋은 프레임 {selected.goodFrameCount ?? "—"} · 점수 분모 {selected.denominatorPolicy === "evaluated_frames" ? `측정 가능 ${selected.evaluatedFrameCount ?? "—"}` : `영상 전체 ${selected.sourceFrameCount ?? result.totalFrameCount ?? "—"}`} 프레임</Text>
+            {selected.denominatorPolicy === "evaluated_frames" ? <Text style={[styles.caption, { marginTop: 4 }]}>원본 영상 {selected.sourceFrameCount ?? result.totalFrameCount ?? "—"} 프레임 중 모델이 선택한 측정 구간만 평가했습니다.</Text> : null}
+            <Text style={[styles.body, { marginTop: 8 }]}>{selected.coachingAction || selected.interpretation || "기본 코칭 문장이 제공되지 않았습니다."}</Text>
+          </View>
+          <Pressable onPress={() => setLimitsOpen((open) => !open)} style={{ alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 44 }}><Text style={styles.caption}>분석 신뢰도와 한계</Text><Text style={{ color: colors.primary, fontSize: 9, fontWeight: "800" }}>{selected.confidenceAssumed ? "초기 가정" : selected.confidencePct === null ? "미제공" : `${selected.confidencePct.toFixed(0)}%`} {limitsOpen ? "↑" : "→"}</Text></Pressable>
+          {limitsOpen ? <Text style={[styles.caption, { paddingBottom: 8 }]}>{selected.confidenceAssumed ? "현재 버전은 모든 유효 측정을 신뢰도 높음으로 가정하며 별도 신뢰도 점수를 계산하지 않습니다. " : ""}{selected.limitation || result.narrative.disclaimer}</Text> : null}
         </View> : null}
 
-        <FullLink label="전체 기록과 과거 스켈레톤 보기" onPress={() => router.push("/history")} style={{ marginTop: 8 }} />
         {result.runtimeMetadata ? <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 8, padding: 11 }}><Text style={styles.caption}>리포트 생성 정보</Text><Text style={[styles.caption, { fontFamily: fonts.mono, fontSize: 8, marginTop: 7 }]}>prompt {result.runtimeMetadata.promptVersion ?? "—"} · model {result.runtimeMetadata.model ?? result.narrative.model ?? "—"}{`\n`}validator {result.runtimeMetadata.validatorVersion ?? result.narrative.validatorVersion} · tokens {result.runtimeMetadata.inputTokens ?? "—"}/{result.runtimeMetadata.outputTokens ?? "—"}</Text></View> : null}
+        <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderTopColor: colors.lime, borderTopWidth: 2, borderWidth: 1, marginTop: 14, padding: 14 }}><SectionHeading label="AI 러닝 코치 종합 리포트" meta={formatDate(result.completedAt)} /><Text style={{ color: colors.primary, fontSize: 17, fontWeight: "900", lineHeight: 23, marginVertical: 10 }}>{result.narrative.summary || "AI 코칭 설명이 준비되지 않았습니다."}</Text>{actions.length ? actions.map((action, index) => <ActionRow action={action} index={index} key={`${action.featureId}-${index}`} />) : <Text style={styles.caption}>측정 그래프와 점수는 정상적으로 확인할 수 있습니다.</Text>}<Text style={[styles.caption, { fontSize: 9, marginTop: 10 }]}>{result.narrative.disclaimer}</Text></View>
+        <FullLink label="전체 기록과 과거 스켈레톤 보기" onPress={() => router.push("/history")} style={{ marginTop: 8 }} />
       </> : null}
     </Screen>
   );

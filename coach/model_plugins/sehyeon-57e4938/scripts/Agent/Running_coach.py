@@ -33,6 +33,18 @@ def main(features_path: Path):
     with open(features_path, "r", encoding="utf-8") as file:
         features = json.load(file)
 
+    # Service-normalized values include the fixed score policies used by the
+    # app. Keep frame series out of the prompt to avoid unnecessary tokens.
+    features = {
+        feature_id: {
+            key: value
+            for key, value in feature.items()
+            if key not in {"series", "description"}
+        }
+        for feature_id, feature in features.items()
+        if isinstance(feature, dict)
+    }
+
 
     # 2. 관련 논문에서 미리 정리한 근거
     paper_evidence = PAPERS[0]
@@ -42,10 +54,7 @@ def main(features_path: Path):
     prompt = ChatPromptTemplate.from_messages([
         (
             "system",
-            (
-                PERSONA,
-                INSTRUCTION
-            )
+            f"{PERSONA}\n{INSTRUCTION}"
         ),
         (
             "human",
@@ -83,5 +92,5 @@ def main(features_path: Path):
     print(report)
 
 if __name__ == "__main__":
-    features_path = RUN_DIR / "outputs" / "feature_results.json"
+    features_path = RUN_DIR / "outputs" / "feature_results.service.json"
     main(features_path)

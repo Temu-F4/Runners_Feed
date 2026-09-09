@@ -67,8 +67,33 @@ class CoachReportAdapterTest(unittest.TestCase):
         self.assertEqual(report["tracking"]["coverage_pct"], 50.0)
         self.assertEqual(report["tracking"]["observed_keypoints_pct"], 50.0)
         self.assertEqual(report["narrative"]["status"], "disabled")
+        self.assertIsNone(report["run_metrics"])
 
-    def test_includes_optional_coach_markdown_without_interpreting_it(self) -> None:
+    def test_passes_through_run_metrics_without_estimating_them(self) -> None:
+        details = json.loads((self.output_dir / "details.json").read_text(encoding="utf-8"))
+        details["run_metrics"] = {"pace_per_km": "4:25", "cadence_spm": 181}
+        (self.output_dir / "details.json").write_text(json.dumps(details), encoding="utf-8")
+
+        report = build_report(self.run_dir)
+
+        self.assertEqual(report["run_metrics"]["pace_per_km"], "4'25\"/km")
+        self.assertEqual(report["run_metrics"]["cadence_spm"], 181)
+
+    def test_adapts_model_cadence_and_decimal_pace(self) -> None:
+        (self.output_dir / "feature_results.json").write_text(
+            json.dumps({
+                "cadence": 180.4,
+                "pace": 4.4167,
+            }),
+            encoding="utf-8",
+        )
+
+        report = build_report(self.run_dir)
+
+        self.assertEqual(report["run_metrics"]["cadence_spm"], 180.4)
+        self.assertEqual(report["run_metrics"]["pace_per_km"], "4'25\"/km")
+
+    def test_does_not_publish_unvalidated_coach_markdown(self) -> None:
         coaching = "수직진동 — 논문 표본과 유사: 현재 리듬을 유지하세요."
         (self.output_dir / "running_report.md").write_text(
             coaching,
@@ -77,8 +102,7 @@ class CoachReportAdapterTest(unittest.TestCase):
 
         report = build_report(self.run_dir)
 
-        self.assertEqual(report["narrative"]["status"], "success")
-        self.assertEqual(report["narrative"]["overall_summary"], coaching)
+        self.assertEqual(report["narrative"]["status"], "disabled")
 
     def test_reads_structured_narrative_without_requiring_model_source_changes(self) -> None:
         (self.output_dir / "running_report.json").write_text(
@@ -121,6 +145,16 @@ class CoachReportAdapterTest(unittest.TestCase):
             json.dumps(features), encoding="utf-8"
         )
         self.assertEqual(build_report(self.run_dir)["posture_score"], 60.0)
+
+    def test_posture_score_is_missing_when_any_required_feature_is_unavailable(self) -> None:
+        features = {
+            "feature2": {"value": 80, "unit": "degree", "score": 30},
+            "feature3": {"value": 12, "unit": "degree", "score": 60},
+        }
+        (self.output_dir / "feature_results.service.json").write_text(
+            json.dumps(features), encoding="utf-8"
+        )
+        self.assertIsNone(build_report(self.run_dir)["posture_score"])
 
     def test_converts_non_finite_feature_value_to_null(self) -> None:
         (self.output_dir / "feature_results.service.json").write_text(

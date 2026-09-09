@@ -104,7 +104,7 @@ case "$path" in
       printf '{"status":"%s","rollbackConditionsTriggered":[]}\n' \
         "${MOCK_QUALITY_STATUS:-ok}" >"$output_file"
     else
-      printf '{"status":"%s","modelId":"sehyeon-e2fe43e","modelRelease":"%s","rollbackConditionsTriggered":[]}\n' \
+      printf '{"status":"%s","modelId":"sehyeon-57e4938","modelRelease":"%s","rollbackConditionsTriggered":[]}\n' \
         "${MOCK_QUALITY_STATUS:-ok}" "${IMAGE_TAG}" >"$output_file"
     fi
     ;;

@@ -24,7 +24,7 @@ for ((index = 1; index <= $#; index++)); do
   fi
 done
 
-printf '{"status":"%s","modelId":"sehyeon-e2fe43e","modelRelease":"%s"}\n' \
+printf '{"status":"%s","modelId":"sehyeon-57e4938","modelRelease":"%s"}\n' \
   "${MOCK_QUALITY_STATUS}" "${MOCK_RESPONSE_TAG}" >"${output_file}"
 printf '%s' "${MOCK_HTTP_STATUS}"
 EOF
@@ -46,7 +46,7 @@ write_candidate() {
   {
     printf 'TARGET_TAG=%s\n' "${TARGET_TAG}"
     printf 'PREVIOUS_TAG=%s\n' "${PREVIOUS_TAG}"
-    printf 'MODEL_ID=sehyeon-e2fe43e\n'
+    printf 'MODEL_ID=sehyeon-57e4938\n'
     printf 'ARMED_AT_EPOCH=%s\n' "$((expires_at - 3600))"
     printf 'EXPIRES_AT_EPOCH=%s\n' "${expires_at}"
   } >"${test_root}/state/model-candidate.env"

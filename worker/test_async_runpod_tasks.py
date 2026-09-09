@@ -23,6 +23,68 @@ class AsyncRunPodTaskTests(unittest.TestCase):
             self.assertEqual(_poll_interval(), 3)
             self.assertEqual(_transient_retry_interval(), 10)
 
+    @patch("coach_tasks.fail_gpu_attempt_and_job")
+    @patch("coach_tasks.JobStageRecorder")
+    @patch("coach_tasks.client_from_environment")
+    @patch("coach_tasks.ObjectStorageGateway")
+    @patch("coach_tasks.build_request", return_value={"job_id": "job-1", "result_prefix": "jobs/job-1"})
+    @patch("coach_tasks.mark_job_processing", return_value=True)
+    @patch("coach_tasks.start_gpu_attempt")
+    @patch("coach_tasks.create_gpu_attempt")
+    def test_exhausted_submit_retries_fail_attempt_and_job(
+        self, create_attempt, start_attempt, _mark_processing, _build, storage_class,
+        client_factory, _recorder, fail_attempt,
+    ):
+        create_attempt.return_value = {
+            "status": "QUEUED", "attempt_id": "attempt-1",
+            "attempt_number": 1, "remote_job_id": None, "manifest_object": None,
+        }
+        start_attempt.return_value = SNAPSHOT
+        storage_class.return_value.create_video_analysis_transfer.return_value = {}
+        client_factory.return_value.submit.side_effect = __import__("runpod_client").RunPodTransientError("offline")
+        dispatch_video_analysis.push_request(retries=20)
+        try:
+            with self.assertRaisesRegex(Exception, "offline"):
+                dispatch_video_analysis.run("job-1")
+        finally:
+            dispatch_video_analysis.pop_request()
+        fail_attempt.assert_called_once()
+
+    @patch("coach_tasks._transient_retry_interval", return_value=10)
+    @patch.object(
+        dispatch_video_analysis,
+        "retry",
+        return_value=RuntimeError("retry scheduled"),
+    )
+    @patch("coach_tasks.JobStageRecorder")
+    @patch("coach_tasks.client_from_environment")
+    @patch("coach_tasks.ObjectStorageGateway")
+    @patch(
+        "coach_tasks.build_request",
+        return_value={"job_id": "job-1", "result_prefix": "jobs/job-1"},
+    )
+    @patch("coach_tasks.mark_job_processing", return_value=True)
+    @patch("coach_tasks.start_gpu_attempt")
+    @patch("coach_tasks.create_gpu_attempt")
+    def test_transient_submit_keeps_ten_second_retry_interval(
+        self, create_attempt, start_attempt, _mark_processing, _build,
+        storage_class, client_factory, _recorder, retry, _retry_interval,
+    ):
+        create_attempt.return_value = {
+            "status": "QUEUED", "attempt_id": "attempt-1",
+            "attempt_number": 1, "remote_job_id": None,
+            "manifest_object": None,
+        }
+        start_attempt.return_value = SNAPSHOT
+        storage_class.return_value.create_video_analysis_transfer.return_value = {}
+        error = __import__("runpod_client").RunPodTransientError("offline")
+        client_factory.return_value.submit.side_effect = error
+
+        with self.assertRaisesRegex(RuntimeError, "retry scheduled"):
+            dispatch_video_analysis.run("job-1")
+
+        retry.assert_called_once_with(exc=error, countdown=10, max_retries=20)
+
     @patch("coach_tasks._poll_interval", return_value=3)
     @patch("coach_tasks.celery_app.send_task")
     @patch("coach_tasks.get_gpu_attempt")
@@ -41,11 +103,12 @@ class AsyncRunPodTaskTests(unittest.TestCase):
         send_task.assert_called_once()
 
     @patch("coach_tasks._poll_interval", return_value=3)
+    @patch("coach_tasks.mark_job_stage_running_if_pending")
     @patch("coach_tasks.celery_app.send_task")
     @patch("coach_tasks.client_from_environment")
     @patch("coach_tasks.get_gpu_attempt")
     def test_running_poll_schedules_next_poll(
-        self, get_attempt, client_factory, send_task, _interval
+        self, get_attempt, client_factory, send_task, mark_running, _interval
     ):
         get_attempt.return_value = {
             **SNAPSHOT, "status": "RUNNING", "remote_job_id": "remote-1",
@@ -60,6 +123,25 @@ class AsyncRunPodTaskTests(unittest.TestCase):
             "coach.poll_video_analysis", args=["job-1", "attempt-1"],
             queue="gpu_dispatch", countdown=3,
         )
+        mark_running.assert_called_once_with("job-1", "video_analysis")
+
+    @patch("coach_tasks._poll_interval", return_value=3)
+    @patch("coach_tasks.mark_job_stage_running_if_pending")
+    @patch("coach_tasks.celery_app.send_task")
+    @patch("coach_tasks.client_from_environment")
+    @patch("coach_tasks.get_gpu_attempt")
+    def test_queued_poll_keeps_video_stage_pending(
+        self, get_attempt, client_factory, _send_task, mark_running, _interval
+    ):
+        get_attempt.return_value = {
+            **SNAPSHOT, "status": "RUNNING", "remote_job_id": "remote-1",
+            "manifest_object": None, "elapsed_seconds": 2,
+        }
+        client_factory.return_value.poll.return_value = {
+            "status": "queued", "job_id": "job-1", "attempt_id": "attempt-1"
+        }
+        self.assertEqual(poll_video_analysis.run("job-1", "attempt-1")["status"], "queued")
+        mark_running.assert_not_called()
 
     @patch("coach_tasks._transient_retry_interval", return_value=10)
     @patch("coach_tasks.celery_app.send_task")
@@ -72,11 +154,10 @@ class AsyncRunPodTaskTests(unittest.TestCase):
             **SNAPSHOT, "status": "RUNNING", "remote_job_id": "remote-1",
             "manifest_object": None, "elapsed_seconds": 20,
         }
-        error = __import__("runpod_client").RunPodTransientError("offline")
-        client_factory.return_value.poll.side_effect = error
-
+        client_factory.return_value.poll.side_effect = __import__(
+            "runpod_client"
+        ).RunPodTransientError("offline")
         result = poll_video_analysis.run("job-1", "attempt-1")
-
         self.assertEqual(result["status"], "poll_retry")
         send_task.assert_called_once_with(
             "coach.poll_video_analysis", args=["job-1", "attempt-1"],

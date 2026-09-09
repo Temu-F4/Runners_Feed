@@ -5,10 +5,10 @@
 
 ## 현재 기준 모델
 
-- model ID: `sehyeon-e2fe43e`
+- model ID: `sehyeon-57e4938`
 - 원본 저장소: `J-sehyeon/Oracle_Project`
-- 원본 commit: `e2fe43e9bb0ee13bd445d8a6d4db240dba84eacc`
-- 플러그인: `coach/model_plugins/sehyeon-e2fe43e/`
+- 원본 commit: `57e4938ff93360cd171016b6615b3d3b94bf27e3`
+- 플러그인: `coach/model_plugins/sehyeon-57e4938/`
 - feature: `feature1`~`feature4`
 
 원본 Python 파일은 플러그인 안에 보존한다. OCI 실행에 필요한 경로, 입력 탐색,

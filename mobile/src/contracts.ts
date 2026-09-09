@@ -57,6 +57,11 @@ export interface FeatureAnalysis {
   sourceFrameCount?: number;
   evaluationCoveragePct?: number | null;
   confidenceAssumed?: boolean;
+  visualization?: {
+    kind: "range_bar" | "line" | string;
+    x_axis: "aggregate_ratio" | "measurable_frame" | "video_frame" | string;
+    placement: "summary_metrics" | "feature_grid" | string;
+  } | null;
 }
 
 export interface PostureSignal {
@@ -70,6 +75,8 @@ export interface PostureSignal {
   message: string;
   confidencePct: number | null;
   confidenceLevel: ConfidenceLevel;
+  confidenceAssumed?: boolean;
+  score?: number | null;
 }
 
 export interface TrendPoint {

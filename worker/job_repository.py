@@ -564,6 +564,25 @@ def mark_job_stage_running(job_id: str, stage_key: str) -> None:
                 )
 
 
+def mark_job_stage_running_if_pending(job_id: str, stage_key: str) -> bool:
+    """Expose a remote stage without resetting its start time on every poll."""
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE inference_job_stages
+                SET status = 'RUNNING',
+                    started_at = NOW(),
+                    updated_at = NOW()
+                WHERE job_id = %s
+                  AND stage_key = %s
+                  AND status = 'PENDING'
+                """,
+                (job_id, stage_key),
+            )
+            return cursor.rowcount == 1
+
+
 def mark_job_stage_finished(
     job_id: str,
     stage_key: str,

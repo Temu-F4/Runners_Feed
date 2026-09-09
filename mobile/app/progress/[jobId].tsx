@@ -8,11 +8,11 @@ import { getJob } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { AppHeader, Button, ErrorState, LoadingState, Screen, stageLabel } from "../../src/components";
 import { ProfileChip } from "../../src/coach-ui";
-import type { ActiveAnalysisJob, JobStage } from "../../src/contracts";
+import type { ActiveAnalysisJob } from "../../src/contracts";
 import { colors, spacing, styles } from "../../src/theme";
+import { pollingIsFinal, progressPhaseIndex } from "../../src/progress-data";
 
 const NOTIFICATION_KEY = "runners-feed.mobile.completion-notifications";
-const stages: JobStage[] = ["upload", "queue", "keypoints", "features", "validation", "result"];
 const notificationsSupported = Constants.appOwnership !== "expo";
 
 async function getNotifications() {
@@ -29,9 +29,16 @@ export default function ProgressScreen() {
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     AsyncStorage.getItem(NOTIFICATION_KEY).then((value) => setNotificationsEnabled(notificationsSupported && value === "true")).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const toggleNotifications = async () => {
@@ -53,22 +60,24 @@ export default function ProgressScreen() {
   };
 
   useEffect(() => {
-    if (!token || !jobId) return;
+    if (!jobId || (!token && !jobId.startsWith("demo-"))) return;
     let mounted = true;
     let timer: ReturnType<typeof setInterval> | undefined;
     let previousStatus: ActiveAnalysisJob["status"] | null = null;
     const poll = async () => {
       try {
-        const next = await getJob(token, jobId);
+        const next = await getJob(token ?? "", jobId);
         if (!mounted) return;
         if (previousStatus !== "SUCCESS" && next.status === "SUCCESS" && notificationsEnabled) {
           void getNotifications().then((Notifications) => Notifications?.scheduleNotificationAsync({ content: { title: "러너스 피드 분석 완료", body: "분석 결과를 확인해 보세요." }, trigger: null }));
         }
         previousStatus = next.status;
         setJob(next);
+        setError(null);
         if (next.status === "SUCCESS") {
+          if (timer) clearInterval(timer);
           router.replace({ pathname: "/result/[jobId]", params: { jobId } });
-        } else if (next.status === "FAILED" || next.status === "ERROR") {
+        } else if (pollingIsFinal(next.status)) {
           if (timer) clearInterval(timer);
         }
       } catch (cause) {
@@ -81,10 +90,17 @@ export default function ProgressScreen() {
       mounted = false;
       if (timer) clearInterval(timer);
     };
-  }, [token, jobId, router, notificationsEnabled]);
+  }, [token, jobId, router, notificationsEnabled, refreshKey]);
 
-  const activeIndex = useMemo(() => (job ? Math.max(0, stages.indexOf(job.stage)) : 0), [job]);
+  const activeIndex = useMemo(() => (job ? progressPhaseIndex[job.stage] : 0), [job]);
   const failed = job?.status === "FAILED" || job?.status === "ERROR";
+  const elapsedSeconds = job?.startedAt
+    ? Math.max(0, Math.floor((now - new Date(job.startedAt).getTime()) / 1000))
+    : null;
+  const retryStatus = () => {
+    setError(null);
+    setRefreshKey((value) => value + 1);
+  };
 
   return (
     <Screen>
@@ -96,16 +112,16 @@ export default function ProgressScreen() {
       </View>
 
       {!job && !error ? <LoadingState message="서버에서 분석 상태를 확인하고 있습니다." /> : null}
-      {error ? <ErrorState message={error} onRetry={() => router.replace({ pathname: "/progress/[jobId]", params: { jobId } })} /> : null}
+      {error ? <ErrorState message={`서버 상태를 일시적으로 확인하지 못했습니다. 기존 분석은 계속될 수 있습니다. ${error}`} onRetry={retryStatus} /> : null}
       {job ? (
         <>
           <View style={{ alignItems: "center", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, flexDirection: "row", gap: 14, minHeight: 136, padding: 14 }}>
             <View style={{ alignItems: "center", borderColor: colors.border, borderRadius: 42, borderTopColor: failed ? colors.red : colors.lime, borderWidth: 7, height: 82, justifyContent: "center", width: 82 }}><Text style={{ color: failed ? colors.red : colors.primary, fontFamily: styles.mono.fontFamily, fontSize: 16, fontWeight: "900" }}>{job.progressPct === null ? "—" : `${Math.round(job.progressPct)}%`}</Text></View>
-            <View style={{ flex: 1 }}><Text style={styles.eyebrow}>현재 단계 · {Math.min(activeIndex + 1, 4).toString().padStart(2, "0")}/04</Text><Text style={{ color: colors.primary, fontSize: 16, fontWeight: "900", lineHeight: 22, marginTop: 8 }}>{failed ? "분석을 완료하지 못했습니다" : stageLabel(job.stage)}</Text><Text style={[styles.caption, { marginTop: 7 }]}>{failed ? job.error ?? "다른 영상으로 다시 시도해 주세요." : job.estimatedCompletionSeconds !== null ? `완료까지 약 ${job.estimatedCompletionSeconds}초` : "분석은 계속 진행됩니다."}</Text></View>
+            <View style={{ flex: 1 }}><Text style={styles.eyebrow}>현재 단계 · {String(activeIndex + 1).padStart(2, "0")}/05</Text><Text style={{ color: colors.primary, fontSize: 16, fontWeight: "900", lineHeight: 22, marginTop: 8 }}>{failed ? "분석을 완료하지 못했습니다" : stageLabel(job.stage)}</Text><Text style={[styles.caption, { marginTop: 7 }]}>{failed ? `서버 분석이 종료되었습니다${job.error ? ` · ${job.error}` : ""}. 영상을 확인한 뒤 다시 선택해 주세요.` : elapsedSeconds === null ? "서버 상태를 기준으로 분석 단계를 표시합니다." : `${elapsedSeconds}초 경과 · 분석률은 별도로 추정하지 않습니다.`}</Text></View>
           </View>
 
           <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", marginTop: 8 }}>
-            {[{ label: "업로드", threshold: 0 }, { label: "관절 추출", threshold: 2 }, { label: "특성값", threshold: 3 }, { label: "검증", threshold: 4 }].map((item, index) => { const active = activeIndex >= item.threshold; return <View key={item.label} style={{ alignItems: "center", backgroundColor: activeIndex === item.threshold ? "rgba(201,255,56,0.05)" : colors.background, borderRightColor: colors.border, borderRightWidth: index < 3 ? 1 : 0, flex: 1, justifyContent: "center", minHeight: 48 }}><Text style={{ color: active ? colors.lime : colors.muted, fontSize: 9 }}>{item.label}</Text></View>; })}
+            {["업로드", "분석 대기", "움직임 분석", "결과 정리", "완료"].map((label, index, items) => { const active = activeIndex >= index; return <View key={label} style={{ alignItems: "center", backgroundColor: activeIndex === index ? "rgba(201,255,56,0.05)" : colors.background, borderRightColor: colors.border, borderRightWidth: index < items.length - 1 ? 1 : 0, flex: 1, justifyContent: "center", minHeight: 48, paddingHorizontal: 2 }}><Text numberOfLines={2} style={{ color: active ? colors.lime : colors.muted, fontSize: 8, textAlign: "center" }}>{label}</Text></View>; })}
           </View>
 
           {menuOpen ? <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, marginTop: 10, padding: 15 }}><Text style={styles.eyebrow}>RUNNING TIP</Text><Text style={{ color: colors.primary, fontSize: 13, fontWeight: "800", lineHeight: 20, marginTop: 9 }}>상체에 힘을 빼고 자연스러운 시선을 유지해 보세요.</Text><Text style={[styles.caption, { marginTop: 7 }]}>분석 완료 후 내 측정값에 맞는 피드백으로 바뀝니다.</Text></View> : null}

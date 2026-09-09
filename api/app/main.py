@@ -91,7 +91,7 @@ SUPPORTED_VIDEO_CONTENT_TYPES = {
 
 
 def _model_id() -> str:
-    return os.getenv("COACH_MODEL_ID", "sehyeon-e2fe43e").strip()
+    return os.getenv("COACH_MODEL_ID", "sehyeon-57e4938").strip()
 
 
 def _model_release() -> str:
@@ -657,7 +657,7 @@ def _mobile_stage(job: dict) -> tuple[str, float | None]:
     if status == "SUCCESS":
         return "result", 100.0
     if status == "QUEUED":
-        return "queue", 0.0
+        return "queue", None
 
     stages = get_job_stages(str(job["job_id"]))
     if not stages:
@@ -668,8 +668,8 @@ def _mobile_stage(job: dict) -> tuple[str, float | None]:
         "video_analysis": "keypoints",
         "feature_extract": "features",
         "report_generate": "validation",
-        "result_upload": "result",
-        "workspace_cleanup": "result",
+        "result_upload": "validation",
+        "workspace_cleanup": "validation",
     }
     failed = next(
         (
@@ -693,15 +693,15 @@ def _mobile_stage(job: dict) -> tuple[str, float | None]:
     )
     if status in {"FAILED", "ERROR"}:
         return stage_name.get(selected.get("stage_key"), "validation"), None
-    completed = sum(stage.get("status") == "SUCCESS" for stage in stages)
-    progress = round(completed / len(stages) * 100, 1)
-    return stage_name.get(selected.get("stage_key"), "validation"), progress
+    if running is None and not any(stage.get("status") == "SUCCESS" for stage in stages):
+        return "queue", None
+    return stage_name.get(selected.get("stage_key"), "validation"), None
 
 
 def _mobile_job(job: dict) -> dict:
     stage, progress = _mobile_stage(job)
     status = job["status"]
-    return {
+    result = {
         "jobId": str(job["job_id"]),
         "title": job["case_id"],
         "caseId": job["case_id"],
@@ -722,10 +722,20 @@ def _mobile_job(job: dict) -> dict:
         "modelRelease": job.get("model_release"),
         "error": (
             job.get("error_code") or "coach_failed"
-            if status == "FAILED"
+            if status in {"FAILED", "ERROR"}
             else None
         ),
     }
+    result["postureScore"] = None
+    if status == "SUCCESS" and job.get("result_report_object"):
+        try:
+            report = ObjectStorageGateway().load_result_json(job["result_report_object"])
+            result["postureScore"] = _finite_number(
+                report.get("posture_score", report.get("postureScore"))
+            ) if isinstance(report, dict) else None
+        except Exception:
+            LOGGER.warning("Unable to load score summary for %s", job.get("job_id"), exc_info=True)
+    return result
 
 
 def _finite_number(value: object) -> float | None:
@@ -799,6 +809,9 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
     score = _finite_number(raw.get("score"))
     score_method = raw.get("score_method", raw.get("scoreMethod"))
     confidence_assumed = raw.get("confidence_assumed", raw.get("confidenceAssumed")) is True
+    visualization = raw.get("visualization")
+    if not isinstance(visualization, dict):
+        visualization = None
     return {
         "featureId": feature_id,
         "label": metric.get("label") if isinstance(metric.get("label"), str) else feature_id,
@@ -823,6 +836,7 @@ def _mobile_feature(metric: dict, raw: dict, notice: str) -> dict | None:
         "sourceFrameCount": raw.get("source_frame_count", raw.get("sourceFrameCount")),
         "evaluationCoveragePct": _finite_number(raw.get("evaluation_coverage_pct", raw.get("evaluationCoveragePct"))),
         "confidenceAssumed": confidence_assumed,
+        "visualization": visualization,
     }
 
 
@@ -908,7 +922,19 @@ def _mobile_result(job: dict, report: dict) -> dict:
     }
     video = report.get("video", {}) if isinstance(report.get("video", {}), dict) else {}
     tracking = report.get("tracking", {}) if isinstance(report.get("tracking", {}), dict) else {}
+    raw_run_metrics = report.get("run_metrics", report.get("runMetrics"))
+    raw_run_metrics = raw_run_metrics if isinstance(raw_run_metrics, dict) else {}
+    pace = raw_run_metrics.get("pace_per_km", raw_run_metrics.get("pacePerKm"))
+    basis = raw_run_metrics.get("estimation_basis", raw_run_metrics.get("estimationBasis"))
+    run_metrics = {
+        "pacePerKm": pace if isinstance(pace, str) else None,
+        "cadenceSpm": _finite_number(raw_run_metrics.get("cadence_spm", raw_run_metrics.get("cadenceSpm"))),
+        "strideLengthM": _finite_number(raw_run_metrics.get("stride_length_m", raw_run_metrics.get("strideLengthM"))),
+        "estimationBasis": basis if isinstance(basis, str) else None,
+    }
     evidence = [_mobile_evidence(item, index) for index, item in enumerate(report.get("evidence", []) if isinstance(report.get("evidence", []), list) else [])]
+    runtime = report.get("runtime_metadata", report.get("runtimeMetadata"))
+    runtime = runtime if isinstance(runtime, dict) else {}
     return {
         "jobId": str(job["job_id"]),
         "modelId": job.get("model_id"),
@@ -921,6 +947,16 @@ def _mobile_result(job: dict, report: dict) -> dict:
         "evidence": [item for item in evidence if item is not None],
         "narrative": narrative,
         "postureScore": _finite_number(report.get("posture_score", report.get("postureScore"))),
+        "runMetrics": run_metrics,
+        # Signed media URLs are intentionally minted on demand by result-video-url.
+        "media": None,
+        "runtimeMetadata": {
+            "promptVersion": runtime.get("prompt_version", runtime.get("promptVersion")) if isinstance(runtime.get("prompt_version", runtime.get("promptVersion")), str) else None,
+            "model": runtime.get("model") if isinstance(runtime.get("model"), str) else None,
+            "validatorVersion": runtime.get("validator_version", runtime.get("validatorVersion")) if isinstance(runtime.get("validator_version", runtime.get("validatorVersion")), str) else None,
+            "inputTokens": _finite_number(runtime.get("input_tokens", runtime.get("inputTokens"))),
+            "outputTokens": _finite_number(runtime.get("output_tokens", runtime.get("outputTokens"))),
+        },
     }
 
 
@@ -937,6 +973,8 @@ def _mobile_signals(features: list[dict]) -> list[dict]:
             "message": feature["interpretation"] or feature["limitation"],
             "confidencePct": feature["confidencePct"],
             "confidenceLevel": feature["confidenceLevel"],
+            "confidenceAssumed": feature.get("confidenceAssumed", False),
+            "score": feature.get("score"),
         }
         for feature in features
     ]
@@ -944,6 +982,13 @@ def _mobile_signals(features: list[dict]) -> list[dict]:
 
 def _mobile_dashboard_insights(jobs: list[dict]) -> tuple[list[dict], list[dict], dict | None]:
     successful = [job for job in jobs if job.get("status") == "SUCCESS" and job.get("result_report_object")]
+    if successful:
+        latest = successful[0]
+        successful = [
+            job for job in successful
+            if job.get("model_id") == latest.get("model_id")
+            and job.get("model_release") == latest.get("model_release")
+        ]
     successful.sort(key=lambda job: str(job.get("completed_at") or job.get("created_at") or ""))
     results: list[tuple[dict, dict]] = []
     for job in successful:

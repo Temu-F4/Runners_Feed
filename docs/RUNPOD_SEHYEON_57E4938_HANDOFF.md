@@ -1,4 +1,4 @@
-# RunPod HPE handoff: sehyeon-e2fe43e
+# RunPod HPE handoff: sehyeon-57e4938
 
 ## Boundary
 
@@ -18,15 +18,15 @@ The same `attempt_id` is the idempotency key. Repeating a submit must return the
 
 `GET /v4/storage-video-analysis/{remote_job_id}` returns `queued` or `running`; `complete` adds `manifest_object`; `failed` adds `error_code` and `error_message`. Every response repeats the matching `job_id` and `attempt_id`. The manifest path is exactly `jobs/{job_id}/video-analysis/{attempt_id}/pose_manifest.json`.
 
-OCI schedules each poll as a separate Celery task; it neither polls in FastAPI nor sleeps in a worker. `RUNPOD_POLL_INTERVAL_SECONDS` defaults to 10 and `RUNPOD_MAX_POLL_SECONDS` defaults to 4200. Temporary transport/5xx/429 errors are retried, while timeout, 404, malformed responses, and explicit remote failure end the attempt and job consistently.
+OCI schedules each poll as a separate Celery task; it neither polls in FastAPI nor sleeps in a worker. `RUNPOD_POLL_INTERVAL_SECONDS` defaults to 3, while temporary submit/poll transport retries retain a separate `RUNPOD_TRANSIENT_RETRY_INTERVAL_SECONDS` default of 10. `RUNPOD_MAX_POLL_SECONDS` defaults to 4200. Temporary transport/5xx/429 errors are retried, while timeout, 404, malformed responses, and explicit remote failure end the attempt and job consistently.
 
 This repository contains the OCI client and the complete request/manifest contract, but not the RunPod HTTP server deployment. The RunPod owner must implement and deploy that endpoint from the exact plugin release below before production activation.
 
 ## Installed model release
 
 - Source: J-sehyeon/Oracle_Project
-- Commit: e2fe43e9bb0ee13bd445d8a6d4db240dba84eacc
-- Plugin: coach/model_plugins/sehyeon-e2fe43e
+- Commit: 57e4938ff93360cd171016b6615b3d3b94bf27e3
+- Plugin: coach/model_plugins/sehyeon-57e4938
 - HPE entrypoint: scripts/hpe/hpe.py
 - HPE support source: scripts/hpe/utils.py
 - Runtime weights: mounted outside Git and verified using model_manifest.json
@@ -50,7 +50,9 @@ The same attempt_id may be submitted again only when OCI was interrupted before 
 
 After validating the manifest and downloaded artifacts, OCI runs the source feature extractor and preserves its feature_results.json. The normalizer creates feature_results.service.json; the report and skeleton adapters consume service data while retaining the model raw result separately.
 
-Frame scoring stores source, evaluated, and good frame counts plus evaluation coverage. The current `FEATURE_SCORE_DENOMINATOR=all_frames` policy calculates `good/source * 100`; model-owner approval can switch the single policy setting to `evaluated_frames`. Feature1 is measurement-only and excluded from posture scoring. The overall score is the arithmetic mean of feature2, feature3, and feature4 when available.
+The source feature output also carries `cadence` in spm and decimal `pace` in min/km. OCI preserves those raw scalars and the report adapter converts them to `runMetrics.cadenceSpm` and a validated `M:SS /km` display value. The model-owned narrative reads normalized features without the full frame series; a service wrapper turns its Markdown summary plus deterministic feature actions into `running_report.json` before the final report adapter runs.
+
+Frame scoring stores source, evaluated, and good frame counts plus evaluation coverage. Feature2 uses `good/evaluated * 100`; feature3 and feature4 use `good/source * 100` across the full video. Feature1 shows whether its aggregate is inside the paper sample's observed 0.028–0.061 range and remains excluded from posture scoring. The overall score is the arithmetic mean of feature2, feature3, and feature4 when available.
 
 Initial confidence is an explicit assumption: `confidence_level=high`, `confidence_pct=null`, and `confidence_assumed=true`. It means the valid measurement is treated as usable, not that posture quality is high; posture quality remains represented by score and verdict.
 

@@ -23,6 +23,7 @@ import type {
 } from "./contracts";
 import { colors, formatDate, formatValue, spacing, styles } from "./theme";
 import { featureScore, featureScoreLabel } from "./scoring";
+import { scoreCohortJobs } from "./signal-data";
 
 export function Screen({
   children,
@@ -196,12 +197,12 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 }
 
 const stageLabels: Record<JobStage, string> = {
-  upload: "영상 업로드",
-  queue: "분석 대기",
-  keypoints: "관절 위치 추출",
-  features: "자세 특성값 계산",
-  validation: "결과 검증",
-  result: "결과 준비",
+  upload: "업로드 중",
+  queue: "분석 대기 중",
+  keypoints: "움직임 분석 중",
+  features: "결과 정리 중",
+  validation: "결과 정리 중",
+  result: "완료",
 };
 
 export function stageLabel(stage: JobStage) {
@@ -258,8 +259,7 @@ export function JobCard({ job, onPress }: { job: ActiveAnalysisJob; onPress: () 
 }
 
 export function ScoreTrendChart({ jobs }: { jobs: ActiveAnalysisJob[] }) {
-  const scored = jobs
-    .filter((job) => job.status === "SUCCESS" && typeof job.postureScore === "number")
+  const scored = scoreCohortJobs(jobs)
     .slice(0, 8)
     .reverse();
   if (scored.length < 2) {
@@ -343,6 +343,7 @@ function seriesPath(
   top: number,
   width: number,
   height: number,
+  xValues?: number[],
 ) {
   const paths: string[] = [];
   let path = "";
@@ -352,7 +353,10 @@ function seriesPath(
       path = "";
       return;
     }
-    const x = left + (index / Math.max(values.length - 1, 1)) * width;
+    const xDomain = xValues && xValues.length === values.length ? xValues : values.map((_, itemIndex) => itemIndex);
+    const xMin = Math.min(...xDomain);
+    const xMax = Math.max(...xDomain);
+    const x = left + (((xDomain[index] ?? xMin) - xMin) / Math.max(xMax - xMin, 1)) * width;
     const y = yPosition(value, min, max, top, height);
     path += path ? ` L ${x} ${y}` : `M ${x} ${y}`;
   });
@@ -429,10 +433,28 @@ export function FeatureFrameChart({ feature }: { feature: FeatureAnalysis }) {
   const top = 14;
   const plotWidth = 264;
   const plotHeight = 92;
-  const paths = seriesPath(values, domain.min, domain.max, left, top, plotWidth, plotHeight);
-  const lastPoint = valid[valid.length - 1];
+  const evaluatedAxis = feature.visualization?.x_axis === "measurable_frame";
+  const sourceEnd = Math.max(
+    feature.sourceFrameCount ? feature.sourceFrameCount - 1 : 0,
+    ...points.map((point) => point.frameIndex),
+  );
+  const xValues = evaluatedAxis
+    ? points.map((_, index) => index)
+    : points.map((point) => point.frameIndex);
+  if (!evaluatedAxis && sourceEnd > 0) {
+    // Anchor the domain to the full video so missing frames keep their real spacing.
+    xValues.push(sourceEnd);
+    values.push(null);
+  }
+  const paths = seriesPath(values, domain.min, domain.max, left, top, plotWidth, plotHeight, xValues);
+  const lastPoint = valid[valid.length - 1]!;
   const bandTop = range ? yPosition(range.max, domain.min, domain.max, top, plotHeight) : null;
   const bandBottom = range ? yPosition(range.min, domain.min, domain.max, top, plotHeight) : null;
+  const axisStart = evaluatedAxis ? 1 : (points[0]?.frameIndex ?? 1);
+  const axisEnd = evaluatedAxis ? points.length : sourceEnd;
+  const lastX = evaluatedAxis
+    ? left + plotWidth
+    : left + (lastPoint.frameIndex / Math.max(sourceEnd, 1)) * plotWidth;
   return (
     <View style={{ gap: spacing.xs }}>
       <Svg accessibilityLabel={`${feature.label} 프레임별 측정 그래프`} height={height} role="img" viewBox={`0 0 ${width} ${height}`} width="100%">
@@ -440,14 +462,54 @@ export function FeatureFrameChart({ feature }: { feature: FeatureAnalysis }) {
         <Line stroke={colors.border} strokeWidth="1" x1={left} x2={left + plotWidth} y1={top + plotHeight} y2={top + plotHeight} />
         {bandTop !== null && bandBottom !== null ? <Rect fill="rgba(201,255,56,0.14)" height={Math.max(1, bandBottom - bandTop)} width={plotWidth} x={left} y={bandTop} /> : null}
         {paths.map((path, index) => <Path d={path} fill="none" key={index} stroke={colors.primary} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />)}
-        {lastPoint ? <Circle cx={left + plotWidth} cy={yPosition(lastPoint.value!, domain.min, domain.max, top, plotHeight)} fill={colors.lime} r="4" /> : null}
+        {lastPoint ? <Circle cx={lastX} cy={yPosition(lastPoint.value!, domain.min, domain.max, top, plotHeight)} fill={colors.lime} r="4" /> : null}
       </Svg>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <Text style={styles.caption}>F{String(points[0]?.frameIndex ?? 1).padStart(2, "0")}</Text>
-        <Text style={styles.caption}>{range ? `정상 ${formatValue(range.min, range.unit)} ~ ${formatValue(range.max, range.unit)}` : "정상 범위 미제공"}</Text>
-        <Text style={styles.caption}>F{String(points[points.length - 1]?.frameIndex ?? points.length).padStart(2, "0")}</Text>
+        <Text style={styles.caption}>{evaluatedAxis ? "M" : "F"}{String(axisStart).padStart(2, "0")}</Text>
+        <Text style={styles.caption}>{range ? `좋은 구간 ${formatValue(range.min, range.unit)} ~ ${formatValue(range.max, range.unit)}` : "좋은 구간 미제공"}</Text>
+        <Text style={styles.caption}>{evaluatedAxis ? "M" : "F"}{String(axisEnd).padStart(2, "0")}</Text>
       </View>
+      <Text style={[styles.caption, { fontSize: 9, textAlign: "center" }]}>{evaluatedAxis ? "M = 측정 가능한 팔꿈치 각도 순번" : "F = 원본 영상 프레임"}</Text>
     </View>
+  );
+}
+
+export function FeatureMiniChart({ feature }: { feature: FeatureAnalysis }) {
+  const points = feature.series;
+  const valid = points.filter((point) => point.value !== null && Number.isFinite(point.value));
+  if (valid.length < 2) {
+    return <View style={{ alignItems: "center", height: 62, justifyContent: "center" }}><Text style={[styles.caption, { fontSize: 8 }]}>그래프 데이터 없음</Text></View>;
+  }
+  const range = feature.referenceRange;
+  const values = points.map((point) => point.value);
+  const domain = chartDomain(chartValues(values), range?.min, range?.max);
+  const width = 140;
+  const height = 62;
+  const left = 5;
+  const top = 6;
+  const plotWidth = 130;
+  const plotHeight = 48;
+  const evaluatedAxis = feature.visualization?.x_axis === "measurable_frame";
+  const sourceEnd = Math.max(
+    feature.sourceFrameCount ? feature.sourceFrameCount - 1 : 0,
+    ...points.map((point) => point.frameIndex),
+  );
+  const xValues = evaluatedAxis
+    ? points.map((_, index) => index)
+    : points.map((point) => point.frameIndex);
+  if (!evaluatedAxis && sourceEnd > 0) {
+    xValues.push(sourceEnd);
+    values.push(null);
+  }
+  const paths = seriesPath(values, domain.min, domain.max, left, top, plotWidth, plotHeight, xValues);
+  const bandTop = range ? yPosition(range.max, domain.min, domain.max, top, plotHeight) : null;
+  const bandBottom = range ? yPosition(range.min, domain.min, domain.max, top, plotHeight) : null;
+  return (
+    <Svg accessibilityLabel={`${feature.label} 미니 프레임 그래프`} height={height} role="img" viewBox={`0 0 ${width} ${height}`} width="100%">
+      <Line stroke={colors.border} strokeWidth="1" x1={left} x2={left + plotWidth} y1={top + plotHeight} y2={top + plotHeight} />
+      {bandTop !== null && bandBottom !== null ? <Rect fill="rgba(201,255,56,0.14)" height={Math.max(1, bandBottom - bandTop)} width={plotWidth} x={left} y={bandTop} /> : null}
+      {paths.map((path, index) => <Path d={path} fill="none" key={index} stroke={colors.primary} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />)}
+    </Svg>
   );
 }
 

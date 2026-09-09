@@ -81,6 +81,11 @@ Set `EXPO_PUBLIC_API_BASE_URL` in `mobile/.env` before starting Expo:
 EXPO_PUBLIC_API_BASE_URL=https://<production-host>/api
 ```
 
+For local or preview screen verification only, set
+`EXPO_PUBLIC_DEMO_FIXTURES=true`. The app then uses clearly labelled
+development fixtures for the home, progress, and result screens. Keep this
+unset or `false` in production builds.
+
 Run the reproducible checks from `mobile/`:
 
 ```bash

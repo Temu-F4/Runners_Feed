@@ -70,7 +70,7 @@ printf 'IMAGE_TAG=%s\n' "${PREVIOUS_TAG}" >"${test_root}/state/last-successful.e
 run_deploy "${SUCCESS_TAG}"
 grep -qx "TARGET_TAG=${SUCCESS_TAG}" "${test_root}/state/model-candidate.env"
 grep -qx "PREVIOUS_TAG=${PREVIOUS_TAG}" "${test_root}/state/model-candidate.env"
-grep -qx "MODEL_ID=sehyeon-e2fe43e" "${test_root}/state/model-candidate.env"
+grep -qx "MODEL_ID=sehyeon-57e4938" "${test_root}/state/model-candidate.env"
 rm "${test_root}/state/model-candidate.env"
 
 printf 'IMAGE_TAG=%s\n' "${PREVIOUS_TAG}" >"${test_root}/state/last-successful.env"

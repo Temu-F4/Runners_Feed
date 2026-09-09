@@ -2,50 +2,11 @@ import React from "react";
 import { Pressable, StyleProp, Text, View, ViewStyle } from "react-native";
 import Svg, { Circle, Line, Path, Rect } from "react-native-svg";
 
-import type { ActiveAnalysisJob, PostureSignal } from "./contracts";
+import type { ActiveAnalysisJob, PostureSignal, ReferenceRange } from "./contracts";
 import { colors, fonts, formatValue, spacing, styles } from "./theme";
+import { displaySignals, scoreCohortJobs, signalScore, type DisplaySignal } from "./signal-data";
 
-export const featureOrder = ["vertical", "elbow", "trunk", "lean"];
-
-const featureMeta: Record<string, { label: string; short: string }> = {
-  vertical: { label: "수직 진동", short: "수직진동" },
-  elbow: { label: "팔꿈치 각도", short: "팔꿈치" },
-  trunk: { label: "몸통 자세", short: "몸통" },
-  lean: { label: "전방 기울기", short: "전방기울기" },
-};
-
-function normalizedId(value: string) {
-  const id = value.toLowerCase();
-  if (id.includes("vertical")) return "vertical";
-  if (id.includes("elbow")) return "elbow";
-  if (id.includes("trunk")) return "trunk";
-  if (id.includes("lean")) return "lean";
-  return id;
-}
-
-export type DisplaySignal = PostureSignal & { displayId: string; short: string };
-
-export function displaySignals(signals: PostureSignal[]): DisplaySignal[] {
-  const byId = new Map(signals.map((signal) => [normalizedId(signal.featureId), signal]));
-  return featureOrder.map((displayId) => {
-    const found = byId.get(displayId);
-    const meta = featureMeta[displayId] ?? { label: displayId, short: displayId };
-    return {
-      featureId: found?.featureId ?? displayId,
-      displayId,
-      label: found?.label || meta.label,
-      short: meta.short,
-      priority: found?.priority ?? null,
-      verdict: found?.verdict ?? "review",
-      value: found?.value ?? null,
-      unit: found?.unit ?? (displayId === "vertical" ? "cm" : "°"),
-      referenceRange: found?.referenceRange ?? null,
-      message: found?.message ?? "분석 결과가 쌓이면 이곳에 표시됩니다.",
-      confidencePct: found?.confidencePct ?? null,
-      confidenceLevel: found?.confidenceLevel ?? "excluded",
-    };
-  });
-}
+export { displaySignals } from "./signal-data";
 
 export function ProfileChip({ height, onPress }: { height: string; onPress: () => void }) {
   return (
@@ -83,7 +44,7 @@ export function SectionHeading({ label, meta, onPress }: { label: string; meta?:
 }
 
 export function ScoreOverview({ jobs, onPress }: { jobs: ActiveAnalysisJob[]; onPress: () => void }) {
-  const scored = jobs.filter((job) => job.status === "SUCCESS" && typeof job.postureScore === "number").slice(0, 4).reverse();
+  const scored = scoreCohortJobs(jobs).slice(0, 4).reverse();
   const latest = scored.at(-1)?.postureScore ?? null;
   const points = scored.length > 1
     ? scored.map((job, index) => {
@@ -115,10 +76,11 @@ export function ScoreOverview({ jobs, onPress }: { jobs: ActiveAnalysisJob[]; on
 
 export function ImprovementChips({ signals, onPress }: { signals: PostureSignal[]; onPress: () => void }) {
   const priorities = signals.filter((signal) => signal.verdict === "improve").sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99)).slice(0, 2);
-  const items = priorities.length ? priorities : [
-    { featureId: "trunk", label: "몸통 각도 범위 늘리기", message: "" },
-    { featureId: "elbow", label: "팔꿈치 70–110° 유지", message: "" },
-  ];
+  const maintain = signals.filter((signal) => signal.verdict === "maintain").slice(0, 2);
+  const items = priorities.length ? priorities : maintain;
+  if (!items.length) {
+    return <View style={{ borderColor: colors.border, borderWidth: 1, marginTop: 7, minHeight: 48, padding: 10 }}><Text style={styles.caption}>표시할 개인 분석 결과가 아직 없습니다.</Text></View>;
+  }
   return (
     <View style={{ flexDirection: "row", gap: 6, marginTop: 7 }}>
       {items.map((signal, index) => (
@@ -150,46 +112,48 @@ function signalTone(signal: PostureSignal) {
 
 export function signalStatus(signal: PostureSignal) {
   if (signal.value === null) return "데이터 없음";
+  if (signal.featureId === "feature1") {
+    const range = signal.referenceRange;
+    return range && signal.value >= range.min && signal.value <= range.max ? "관찰 범위 안" : "관찰 범위 밖";
+  }
   if (signal.verdict === "improve") return "조정 필요";
   if (signal.verdict === "maintain") return "좋은 구간";
   return "검토 중";
 }
 
+function DynamicRangeBar({ value, range }: { value: number; range: ReferenceRange }) {
+  const span = Math.max(range.max - range.min, 0.000001);
+  const domainMin = Math.min(range.min - span, value - span * 0.2);
+  const domainMax = Math.max(range.max + span, value + span * 0.2);
+  const domainSpan = domainMax - domainMin;
+  const bandLeft = ((range.min - domainMin) / domainSpan) * 100;
+  const bandWidth = ((range.max - range.min) / domainSpan) * 100;
+  const marker = Math.max(0, Math.min(100, ((value - domainMin) / domainSpan) * 100));
+  return <View style={{ marginTop: 14 }}><View style={{ backgroundColor: colors.surfaceRaised, height: 9, position: "relative" }}><View style={{ backgroundColor: "rgba(201,255,56,0.28)", height: "100%", left: `${bandLeft}%`, position: "absolute", width: `${bandWidth}%` }} /><View style={{ backgroundColor: colors.lime, height: 17, left: `${marker}%`, marginLeft: -2, marginTop: -4, position: "absolute", width: 4 }} /></View><View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 5 }}><Text style={styles.caption}>{formatValue(range.min, range.unit)}</Text><Text style={styles.caption}>관찰 범위</Text><Text style={styles.caption}>{formatValue(range.max, range.unit)}</Text></View></View>;
+}
+
 export function SignalReading({ signal }: { signal: DisplaySignal }) {
   const range = signal.referenceRange;
-  const score = signal.confidencePct === null ? null : Math.round(signal.confidencePct);
-  if (signal.displayId === "vertical" || !range || signal.value === null) {
+  const score = signalScore(signal);
+  if (signal.displayId === "feature1" || !range || signal.value === null) {
     return (
       <View style={{ marginTop: 12 }}>
         <View style={{ alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between" }}>
           <View><Text style={{ color: colors.primary, fontSize: 14, fontWeight: "800" }}>{signal.label}</Text><Text style={{ color: signalTone(signal), fontSize: 10, marginTop: 5 }}>{signalStatus(signal)}</Text></View>
-          <View style={{ alignItems: "flex-end" }}><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 22, fontWeight: "900" }}>{score ?? "—"}<Text style={{ color: colors.muted, fontSize: 8 }}>/100</Text></Text><Text style={styles.caption}>측정 구간 평균값</Text></View>
+          <View style={{ alignItems: "flex-end" }}><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 22, fontWeight: "900" }}>{formatValue(signal.value, signal.unit)}</Text><Text style={styles.caption}>{signal.displayId === "feature1" ? "점수 없음 · 관찰값" : "측정값"}</Text></View>
         </View>
-        <View style={{ alignItems: "center", flexDirection: "row", gap: 9, marginTop: 14 }}><Text style={styles.caption}>4cm</Text><View style={{ backgroundColor: colors.surfaceRaised, flex: 1, height: 7 }}><View style={{ backgroundColor: colors.lime, height: 15, left: signal.value === null ? "2%" : "55%", marginTop: -4, position: "absolute", width: 3 }} /></View><Text style={styles.caption}>12cm</Text></View>
-        <Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 22, fontWeight: "900", marginTop: 9, textAlign: "center" }}>{formatValue(signal.value, signal.unit)}</Text>
+        {range && signal.value !== null ? <DynamicRangeBar value={signal.value} range={range} /> : null}
       </View>
     );
   }
-  const span = range.max - range.min || 1;
-  const domainMin = Math.min(0, range.min - span);
-  const domainMax = range.max + span;
-  const marker = Math.max(0, Math.min(100, ((signal.value - domainMin) / (domainMax - domainMin)) * 100));
-  const bandLeft = ((range.min - domainMin) / (domainMax - domainMin)) * 100;
-  const bandWidth = ((range.max - range.min) / (domainMax - domainMin)) * 100;
   return (
     <View style={{ marginTop: 12 }}>
       <View style={{ alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between" }}>
         <View><Text style={{ color: colors.primary, fontSize: 14, fontWeight: "800" }}>{signal.label}</Text><Text style={{ color: signalTone(signal), fontSize: 10, marginTop: 5 }}>{signalStatus(signal)}</Text></View>
-        <View style={{ alignItems: "flex-end" }}><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 22, fontWeight: "900" }}>{score ?? "—"}<Text style={{ color: colors.muted, fontSize: 8 }}>/100</Text></Text><Text style={styles.caption}>좋은 구간 프레임 비율</Text></View>
+        <View style={{ alignItems: "flex-end" }}><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: score === null ? 14 : 22, fontWeight: "900" }}>{score === null ? "점수 없음" : <>{score}<Text style={{ color: colors.muted, fontSize: 8 }}>/100</Text></>}</Text><Text style={styles.caption}>좋은 구간 프레임 비율</Text></View>
       </View>
-      <View style={{ marginTop: 14 }}>
-        <View style={{ backgroundColor: colors.surfaceRaised, height: 52, overflow: "hidden", position: "relative" }}>
-          <View style={{ backgroundColor: "rgba(201,255,56,0.13)", height: "100%", left: `${bandLeft}%`, position: "absolute", width: `${bandWidth}%` }} />
-          <View style={{ backgroundColor: colors.primary, height: 2, left: "3%", position: "absolute", right: "3%", top: 25, transform: [{ rotate: "-2deg" }] }} />
-          <View style={{ backgroundColor: colors.lime, borderRadius: 4, height: 8, left: `${marker}%`, marginLeft: -4, position: "absolute", top: 22, width: 8 }} />
-        </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 5 }}><Text style={styles.caption}>F01</Text><Text style={styles.caption}>좋은 구간 {formatValue(range.min, range.unit)}–{formatValue(range.max, range.unit)}</Text><Text style={styles.caption}>F84</Text></View>
-      </View>
+      <Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 16, fontWeight: "800", marginTop: 10 }}>{formatValue(signal.value, signal.unit)}</Text>
+      <DynamicRangeBar value={signal.value} range={range} />
     </View>
   );
 }
@@ -197,7 +161,7 @@ export function SignalReading({ signal }: { signal: DisplaySignal }) {
 export function SignalStrip({ items, onSelect }: { items: DisplaySignal[]; onSelect: (id: string) => void }) {
   return (
     <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", marginTop: 7 }}>
-      {items.map((item, index) => <Pressable key={item.displayId} onPress={() => onSelect(item.displayId)} style={{ alignItems: "center", borderRightColor: colors.border, borderRightWidth: index < items.length - 1 ? 1 : 0, flex: 1, minHeight: 72, paddingHorizontal: 4, paddingVertical: 9 }}><Text style={{ color: colors.muted, fontSize: 8 }}>{item.short}</Text><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 16, fontWeight: "900", marginTop: 5 }}>{item.confidencePct === null ? "—" : Math.round(item.confidencePct)}</Text><Text style={{ color: signalTone(item), fontSize: 7, marginTop: 5 }}>{signalStatus(item)}</Text></Pressable>)}
+      {items.map((item, index) => { const score = signalScore(item); return <Pressable key={item.displayId} onPress={() => onSelect(item.displayId)} style={{ alignItems: "center", borderRightColor: colors.border, borderRightWidth: index < items.length - 1 ? 1 : 0, flex: 1, minHeight: 72, paddingHorizontal: 4, paddingVertical: 9 }}><Text style={{ color: colors.muted, fontSize: 8 }}>{item.short}</Text><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 13, fontWeight: "900", marginTop: 5 }}>{item.displayId === "feature1" ? formatValue(item.value, item.unit) : score === null ? "점수 없음" : `${score}점`}</Text><Text style={{ color: signalTone(item), fontSize: 7, marginTop: 5 }}>{signalStatus(item)}</Text></Pressable>; })}
     </View>
   );
 }

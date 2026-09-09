@@ -15,7 +15,7 @@ ENV PATH="/opt/venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 NVID
 COPY runpod/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY worker/video_analysis_contract.py /app/worker/video_analysis_contract.py
-COPY coach/model_plugins/sehyeon-e2fe43e /app/coach/model_plugins/sehyeon-e2fe43e
+COPY coach/model_plugins/sehyeon-57e4938 /app/coach/model_plugins/sehyeon-57e4938
 COPY runpod /app/runpod
 EXPOSE 8000
 CMD ["uvicorn", "runpod.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-access-log"]
