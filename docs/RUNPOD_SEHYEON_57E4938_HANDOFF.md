@@ -18,7 +18,7 @@ The same `attempt_id` is the idempotency key. Repeating a submit must return the
 
 `GET /v4/storage-video-analysis/{remote_job_id}` returns `queued` or `running`; `complete` adds `manifest_object`; `failed` adds `error_code` and `error_message`. Every response repeats the matching `job_id` and `attempt_id`. The manifest path is exactly `jobs/{job_id}/video-analysis/{attempt_id}/pose_manifest.json`.
 
-OCI schedules each poll as a separate Celery task; it neither polls in FastAPI nor sleeps in a worker. `RUNPOD_POLL_INTERVAL_SECONDS` defaults to 10 and `RUNPOD_MAX_POLL_SECONDS` defaults to 4200. Temporary transport/5xx/429 errors are retried, while timeout, 404, malformed responses, and explicit remote failure end the attempt and job consistently.
+OCI schedules each poll as a separate Celery task; it neither polls in FastAPI nor sleeps in a worker. `RUNPOD_POLL_INTERVAL_SECONDS` defaults to 3, while temporary submit/poll transport retries retain a separate `RUNPOD_TRANSIENT_RETRY_INTERVAL_SECONDS` default of 10. `RUNPOD_MAX_POLL_SECONDS` defaults to 4200. Temporary transport/5xx/429 errors are retried, while timeout, 404, malformed responses, and explicit remote failure end the attempt and job consistently.
 
 This repository contains the OCI client and the complete request/manifest contract, but not the RunPod HTTP server deployment. The RunPod owner must implement and deploy that endpoint from the exact plugin release below before production activation.
 
