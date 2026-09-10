@@ -45,6 +45,11 @@ function verdictLabel(feature: FeatureAnalysis) {
   return "검토 중";
 }
 
+function cardFeedback(feature: FeatureAnalysis) {
+  return feature.coachingAction
+    || (feature.verdict === "maintain" ? "현재 자세를 유지해 보세요." : "자세를 조금 조정해 보세요.");
+}
+
 function RunMetricCell({ label, value }: { label: string; value: string }) {
   return <View style={{ flex: 1, minHeight: 92, padding: 10 }}><Text style={{ color: colors.muted, fontSize: 8 }}>{label}</Text><Text style={{ color: colors.lime, fontFamily: fonts.mono, fontSize: 14, fontWeight: "900", marginTop: 9 }}>{value}</Text></View>;
 }
@@ -129,7 +134,7 @@ export default function ResultScreen() {
         </View>
         <View style={{ backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, padding: 14 }}>
           <SectionHeading label="자세 지표" meta={formatDate(result.completedAt)} />
-          <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", flexWrap: "wrap", marginTop: 9 }}>{postureFeatures.map((feature) => { const active = feature.featureId === selected?.featureId; return <Pressable accessibilityLabel={`${shortLabel(feature)} 측정값 ${formatValue(feature.representativeValue, feature.unit)}, 프레임 그래프 보기`} key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ backgroundColor: active ? colors.surfaceRaised : colors.background, borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 154, padding: 9, width: "50%" }}><View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}><Text style={{ color: active ? colors.lime : colors.muted, fontSize: 8, fontWeight: "800" }}>{shortLabel(feature)}</Text><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 14, fontWeight: "900" }}>{formatValue(feature.representativeValue, feature.unit)}</Text></View><View style={{ marginTop: 7 }}><FeatureMiniChart feature={feature} /></View></Pressable>; })}<View accessibilityLabel="향후 feature5 영역" style={{ borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 154, width: "50%" }} /></View>
+          <View style={{ borderColor: colors.border, borderWidth: 1, flexDirection: "row", flexWrap: "wrap", marginTop: 9 }}>{postureFeatures.map((feature) => { const active = feature.featureId === selected?.featureId; return <Pressable accessibilityLabel={`${shortLabel(feature)} 측정값 ${formatValue(feature.representativeValue, feature.unit)}, ${cardFeedback(feature)}, 프레임 그래프 보기`} key={feature.featureId} onPress={() => setSelectedId(feature.featureId)} style={{ backgroundColor: active ? colors.surfaceRaised : colors.background, borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 172, padding: 9, width: "50%" }}><View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}><Text style={{ color: active ? colors.lime : colors.muted, fontSize: 8, fontWeight: "800" }}>{shortLabel(feature)}</Text><Text style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 14, fontWeight: "900" }}>{formatValue(feature.representativeValue, feature.unit)}</Text></View><View style={{ marginTop: 7 }}><FeatureMiniChart feature={feature} /></View><Text numberOfLines={1} style={{ color: colors.primary, fontSize: 8, fontWeight: "700", lineHeight: 12, marginTop: 6 }}>{cardFeedback(feature)}</Text></Pressable>; })}<View accessibilityLabel="향후 feature5 영역" style={{ borderBottomColor: colors.border, borderBottomWidth: 1, borderRightColor: colors.border, borderRightWidth: 1, minHeight: 172, width: "50%" }} /></View>
         </View>
 
         {storedMediaUrl ? <StoredResultVideo uri={storedMediaUrl} skeleton={showingSkeleton} /> : <Button label="저장된 결과 영상 보기" onPress={() => void openVideo()} loading={videoLoading} kind="secondary" style={{ marginTop: 8 }} />}
