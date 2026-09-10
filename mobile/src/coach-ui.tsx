@@ -86,7 +86,7 @@ export function ImprovementChips({ signals, onPress }: { signals: PostureSignal[
       {items.map((signal, index) => (
         <Pressable key={signal.featureId} accessibilityRole="button" onPress={onPress} style={({ pressed }) => ({ alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, flex: 1, flexDirection: "row", gap: 7, minHeight: 48, opacity: pressed ? 0.72 : 1, paddingHorizontal: 9 })}>
           <Text style={{ color: colors.amber, fontFamily: fonts.mono, fontSize: 9, fontWeight: "900" }}>0{index + 1}</Text>
-          <Text numberOfLines={2} style={{ color: colors.primary, flex: 1, fontSize: 10, fontWeight: "700", lineHeight: 14 }}>{signal.message || signal.label}</Text>
+          <Text numberOfLines={2} style={{ color: colors.primary, flex: 1, fontSize: 10, fontWeight: "700", lineHeight: 14 }}>{signal.verdict === "improve" ? `${signal.label} 자세를 조정해 보세요` : `${signal.label} 자세가 좋습니다`}</Text>
         </Pressable>
       ))}
     </View>
